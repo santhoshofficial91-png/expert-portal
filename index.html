@@ -197,7 +197,7 @@ const GICON = {
   other:'<svg class="gi" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>'
 };
 const OUT_FALLBACK = [{k:'dashboard',label:'Dashboard'},{k:'outstanding',label:'Outstanding'},{k:'billing',label:'Billing'},{k:'collection',label:'Collection'},{k:'chat',label:'Chat'},{k:'edits',label:'Edit History'},{k:'activity',label:'Activity log'}];
-const RENAME = {outstanding:'Customer Outstanding'};
+const RENAME = {outstanding:{outstanding:'Customer Outstanding'}, payments:{dash:'Pending Request', exp:'Pending Expenses Request'}};
 const MOD_NAV = {};          // module key -> {items, view, role}
 let openG = {}, subOpen = {}, frameMod = null, frameReady = false, pendingGo = null;
 const cacheKey = k => 'portal_nav_' + (P && P.id) + '_' + k;
@@ -207,7 +207,7 @@ function cleanItems(a){ return (Array.isArray(a) ? a : []).slice(0, 40).map(it =
 function isOn(m, it){ const info = MOD_NAV[m] || {}; return current === m && info.view === it.k && (!it.role || info.role === it.role); }
 function subBtn(m, it, l2){
   const bdg = it.badge ? `<span class="bdg">${it.badge}</span>` : '';
-  return `<button class="si ${l2 ? 'l2' : ''} ${isOn(m, it) ? 'on' : ''}" data-m="${esc(m)}" data-k="${esc(it.k)}" data-role="${esc(it.role || '')}">${esc(RENAME[it.k] && m === 'outstanding' ? RENAME[it.k] : it.label)}${bdg}</button>`;
+  return `<button class="si ${l2 ? 'l2' : ''} ${isOn(m, it) ? 'on' : ''}" data-m="${esc(m)}" data-k="${esc(it.k)}" data-role="${esc(it.role || '')}">${esc((RENAME[m] && RENAME[m][it.k]) || it.label)}${bdg}</button>`;
 }
 function topBtn(m, it){
   const bdg = it.badge ? `<span class="bdg">${it.badge}</span>` : '';
