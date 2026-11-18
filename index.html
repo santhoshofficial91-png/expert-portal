@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expert Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:Manrope,system-ui,sans-serif;background:#f4f5f7;color:#1c2330;font-size:14px}
+button,input,select{font:inherit}
+.hide{display:none!important}
+/* login */
+.lg{min-height:100%;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg,#0f1b2d,#1d3557)}
+.lcard{background:#fff;border-radius:14px;padding:32px 28px;width:100%;max-width:380px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+.brand{font-weight:800;letter-spacing:.08em;font-size:12px;color:#12a594}
+.lcard h1{margin:6px 0 18px;font-size:22px}
+label{display:block;font-weight:600;font-size:12px;margin:12px 0 5px;color:#4a5568}
+input[type=text],input[type=password],input[type=email],select{width:100%;padding:10px 12px;border:1px solid #cbd2dc;border-radius:8px;background:#fff}
+input:focus,select:focus{outline:2px solid #12a59455;border-color:#12a594}
+.btn{border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer;background:#12a594;color:#fff}
+.btn:disabled{opacity:.55;cursor:default}
+.btn.sec{background:#e6e9ee;color:#1c2330}
+.btn.sm{padding:6px 10px;font-size:12px}
+.btn.dng{background:#c0392b}
+.lbtn{width:100%;margin-top:18px}
+.err{color:#c0392b;font-size:13px;min-height:18px;margin-top:10px}
+/* app */
+#app{display:flex;height:100%}
+#side{width:236px;background:#0f1b2d;color:#cfd8e6;display:flex;flex-direction:column;flex:none}
+#side .top{padding:18px 16px 12px;border-bottom:1px solid #ffffff14}
+#side .top b{display:block;color:#fff;font-size:15px;letter-spacing:.04em}
+#side .top span{font-size:11px;color:#8fa0b8}
+#nav{flex:1;overflow:auto;padding:10px 8px}
+.grp{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#6f829d;margin:14px 10px 6px}
+.nv{display:block;width:100%;text-align:left;background:none;border:0;color:#cfd8e6;padding:9px 12px;border-radius:8px;cursor:pointer;font-weight:600}
+.nv:hover{background:#ffffff10}
+.nv.on{background:#12a594;color:#fff}
+#me{padding:12px 14px;border-top:1px solid #ffffff14;font-size:12px}
+#me b{display:block;color:#fff;font-size:13px}
+#me .btn{margin-top:8px;width:100%}
+#main{flex:1;min-width:0;position:relative;background:#fff}
+#frame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff}
+#page{position:absolute;inset:0;overflow:auto;padding:22px 26px;background:#f4f5f7}
+#burger{display:none;position:fixed;top:10px;left:10px;z-index:30;background:#0f1b2d;color:#fff;border:0;border-radius:8px;padding:8px 11px;font-size:16px}
+@media(max-width:800px){#side{position:fixed;inset:0 auto 0 0;z-index:20;transform:translateX(-100%);transition:transform .2s}#side.open{transform:none}#burger{display:block}#page{padding-top:56px}}
+/* access page */
+h2{margin:0 0 4px;font-size:20px}
+.sub{color:#667085;margin-bottom:16px}
+table{border-collapse:collapse;width:100%;background:#fff;border-radius:10px;overflow:hidden}
+th,td{padding:9px 10px;border-bottom:1px solid #eceff3;text-align:left;vertical-align:middle}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#667085;background:#fafbfc}
+td select,td input[type=text]{padding:6px 8px;font-size:13px}
+.mut{color:#8a94a6;font-size:12px}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700;background:#e8f1fb;color:#1d5fa8}
+.ok{color:#12805c;font-weight:700}
+.row-actions{display:flex;gap:6px;flex-wrap:wrap}
+.modal{position:fixed;inset:0;background:#0008;z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
+.mbox{background:#fff;border-radius:12px;padding:22px;width:100%;max-width:460px;max-height:92vh;overflow:auto}
+.mbox h3{margin:0 0 6px}
+.chk{display:flex;align-items:center;gap:8px;margin:8px 0;font-weight:600}
+.chk input{width:auto}
+.fr{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+.note{background:#fff7e0;border:1px solid #f2dc8f;color:#7a5b00;padding:9px 12px;border-radius:8px;margin:12px 0;font-size:12.5px}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1c2330;color:#fff;padding:10px 16px;border-radius:8px;z-index:99;opacity:0;pointer-events:none;transition:opacity .2s}
+#toast.on{opacity:1}
+</style>
+</head>
+<body>
+<div id="toast"></div>
+
+<div id="login" class="lg hide">
+  <form class="lcard" id="lform" autocomplete="on">
+    <div class="brand">EXPERT PORTAL</div>
+    <h1>Sign in</h1>
+    <label for="lu">Username</label>
+    <input type="text" id="lu" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    <label for="lp">Password</label>
+    <input type="password" id="lp" name="password" autocomplete="current-password" required>
+    <button class="btn lbtn" id="lbtn" type="submit">Sign in</button>
+    <div class="err" id="lerr" role="alert"></div>
+  </form>
+</div>
+
+<div id="boot" class="lg"><div class="lcard"><div class="brand">EXPERT PORTAL</div><h1 style="margin:6px 0 0">Loading…</h1></div></div>
+
+<button id="burger" class="hide" aria-label="Menu">☰</button>
+<div id="app" class="hide">
+  <aside id="side">
+    <div class="top"><b>EXPERT PORTAL</b><span id="who2"></span></div>
+    <nav id="nav"></nav>
+    <div id="me"><b id="meName"></b><span id="meRole" class="mut"></span><button class="btn sec sm" id="logout">Sign out</button></div>
+  </aside>
+  <main id="main">
+    <iframe id="frame" title="Module" class="hide"></iframe>
+    <div id="page" class="hide"></div>
+  </main>
+</div>
+
+<script>
+const SB_URL = 'https://ogvltuavclcgbxlyxkhs.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ndmx0dWF2Y2xjZ2J4bHl4a2hzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3MjY4MDAsImV4cCI6MjExMDMwMjgwMH0.M8toXkbQui8TjCacIobkiyew9O-6IrqgZTTzIkQV8Sg';
+const MODULES = {
+  out: {key:'outstanding', title:'Customer Outstanding', path:'outstanding/'},
+  pay: {key:'payments', title:'Payment Request', path:'payments/'}
+};
+const PR_DEPTS = ['Sub Admin','HR','Purchase','Delivery','Excoso','Branding'];
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sb = supabase.createClient(SB_URL, SB_KEY);
+let P = null;            // my_profile()
+let current = null;      // current view key
+let loginBusy = false;
+
+function toast(t){ const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 3200); }
+function show(which){
+  $('#boot').classList.toggle('hide', which !== 'boot');
+  $('#login').classList.toggle('hide', which !== 'login');
+  $('#app').classList.toggle('hide', which !== 'app');
+  $('#burger').classList.toggle('hide', which !== 'app');
+}
+const isAdmin = () => !!P && P.role === 'Admin' && (P.mods || []).includes('out');
+const myMods = () => (P && P.mods ? P.mods.filter(m => MODULES[m]) : []);
+
+/* ---------- session / login ---------- */
+async function boot(){
+  show('boot');
+  let session = null;
+  try { session = (await sb.auth.getSession()).data.session; } catch(e){}
+  if (!session){ showLogin(''); return; }
+  await enter();
+}
+function showLogin(msg){
+  P = null; current = null;
+  $('#frame').src = 'about:blank'; $('#frame').classList.add('hide'); $('#page').classList.add('hide');
+  $('#lerr').textContent = msg || ''; $('#lp').value = ''; $('#lbtn').disabled = false;
+  show('login'); setTimeout(() => $('#lu').focus(), 50);
+}
+async function enter(){
+  const {data, error} = await sb.rpc('my_profile');
+  if (error || !data){ await sb.auth.signOut(); showLogin('This account has no portal profile. Ask the Admin.'); return; }
+  if (data.active === false){ await sb.auth.signOut(); showLogin('This account is not active. Ask the Admin.'); return; }
+  P = data;
+  if (!myMods().length){ await sb.auth.signOut(); showLogin('No module access has been given to this account. Ask the Admin.'); return; }
+  $('#meName').textContent = P.name || P.username;
+  $('#meRole').textContent = '@' + P.username;
+  buildNav(); show('app');
+  const want = (location.hash || '').replace('#', '') || localStorage.getItem('portal_last') || '';
+  openView(viewAllowed(want) ? want : defaultView());
+}
+$('#lform').addEventListener('submit', async ev => {
+  ev.preventDefault(); if (loginBusy) return; loginBusy = true; $('#lbtn').disabled = true; $('#lerr').textContent = '';
+  const u = $('#lu').value.trim().toLowerCase().replace(/\s+/g, ''), pw = $('#lp').value;
+  try {
+    const {error} = await sb.auth.signInWithPassword({email: u + '@cot.app', password: pw});
+    if (error){ $('#lerr').textContent = 'Wrong username or password.'; $('#lbtn').disabled = false; }
+    else await enter();
+  } catch(e){ $('#lerr').textContent = 'Could not reach the server. Check your internet and try again.'; $('#lbtn').disabled = false; }
+  loginBusy = false;
+});
+$('#logout').addEventListener('click', async () => { try { await sb.auth.signOut(); } catch(e){} showLogin(''); });
+sb.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT' && P) showLogin('You were signed out.'); });
+window.addEventListener('storage', async () => { if (!P) return; const s = (await sb.auth.getSession()).data.session; if (!s) showLogin('You were signed out.'); });
+
+/* ---------- menu ---------- */
+function allowedViews(){ const v = myMods().map(m => MODULES[m].key); if (isAdmin()) v.push('access'); return v; }
+const viewAllowed = k => allowedViews().includes(k);
+const defaultView = () => allowedViews()[0];
+function buildNav(){
+  const mods = myMods(); let h = '';
+  h += '<div class="grp">Modules</div>';
+  mods.forEach(m => { h += `<button class="nv" data-v="${MODULES[m].key}">${esc(MODULES[m].title)}</button>`; });
+  if (isAdmin()) h += '<div class="grp">Admin</div><button class="nv" data-v="access">Users &amp; Access</button>';
+  $('#nav').innerHTML = h;
+}
+$('#nav').addEventListener('click', ev => { const b = ev.target.closest('.nv'); if (b) openView(b.dataset.v); $('#side').classList.remove('open'); });
+$('#burger').addEventListener('click', () => $('#side').classList.toggle('open'));
+window.addEventListener('hashchange', () => { const k = location.hash.replace('#', ''); if (P && k !== current && viewAllowed(k)) openView(k); });
+
+function openView(k){
+  if (!viewAllowed(k)) k = defaultView();
+  current = k; try { localStorage.setItem('portal_last', k); } catch(e){}
+  if (location.hash !== '#' + k) history.replaceState(null, '', '#' + k);
+  document.querySelectorAll('#nav .nv').forEach(b => b.classList.toggle('on', b.dataset.v === k));
+  const mod = Object.values(MODULES).find(m => m.key === k);
+  if (mod){
+    $('#page').classList.add('hide');
+    const f = $('#frame'); f.classList.remove('hide');
+    if (!f.src.endsWith('/' + mod.path)) f.src = mod.path;
+  } else if (k === 'access'){
+    $('#frame').classList.add('hide'); $('#frame').src = 'about:blank';
+    const pg = $('#page'); pg.classList.remove('hide'); renderAccess();
+  }
+}
+
+/* ---------- Users & Access (admin) ---------- */
+let USERS = [];
+async function loadUsers(){
+  const {data, error} = await sb.from('docs').select('id,data').eq('col', 'users');
+  if (error){ toast('Could not load users: ' + error.message); return false; }
+  USERS = data.map(r => ({...r.data, id: r.id})).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  return true;
+}
+const hasMod = (u, m) => Array.isArray(u.mods) ? u.mods.includes(m) : m === 'out';
+async function renderAccess(){
+  const pg = $('#page'); pg.innerHTML = '<h2>Users &amp; Access</h2><div class="sub">Loading…</div>';
+  if (!(await loadUsers())) return;
+  const mgrs = USERS.filter(u => hasMod(u, 'pay') && u.prRole === 'manager' && u.active !== false);
+  const rows = USERS.map(u => {
+    const pay = hasMod(u, 'pay'), out = hasMod(u, 'out'), me = u.id === P.id;
+    return `<tr data-id="${u.id}">
+      <td><b>${esc(u.name)}</b><div class="mut">@${esc(u.username)}${me ? ' · you' : ''}</div></td>
+      <td><label class="chk" style="margin:0"><input type="checkbox" class="m-out" ${out ? 'checked' : ''}> <span class="mut">${esc(u.role || '')}</span></label></td>
+      <td><label class="chk" style="margin:0"><input type="checkbox" class="m-pay" ${pay ? 'checked' : ''}></label></td>
+      <td><select class="pr-role"><option value="">—</option>${['admin','manager','executive'].map(r => `<option ${u.prRole === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
+      <td><select class="pr-dept"><option value="">—</option>${PR_DEPTS.map(d => `<option ${u.prDept === d ? 'selected' : ''}>${d}</option>`).join('')}</select></td>
+      <td><select class="pr-mgr"><option value="">—</option>${mgrs.filter(m => m.id !== u.id).map(m => `<option value="${m.id}" ${u.prManagerId === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></td>
+      <td><label class="chk" style="margin:0"><input type="checkbox" class="act" ${u.active !== false ? 'checked' : ''} ${me ? 'disabled' : ''}></label></td>
+      <td><div class="row-actions"><button class="btn sm" data-a="save">Save</button><button class="btn sm sec" data-a="pw">Password</button></div></td></tr>`;
+  }).join('');
+  pg.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <div><h2>Users &amp; Access</h2><div class="sub" style="margin:0">Tick which modules each person can open. Payment Request role, department and manager apply only when that module is ticked.</div></div>
+      <button class="btn" id="addUser">+ Add user</button></div>
+    <div class="note">Customer Outstanding role, areas and linked manager are edited inside Customer Outstanding → Users. Payment Request-only people appear here only.</div>
+    <div style="overflow:auto"><table><thead><tr><th>Person</th><th>Customer Outstanding</th><th>Payment Request</th><th>PR role</th><th>PR dept</th><th>PR manager</th><th>Active</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  $('#addUser').onclick = () => addUserModal(mgrs);
+}
+$('#page').addEventListener('click', async ev => {
+  const b = ev.target.closest('button[data-a]'); if (!b) return;
+  const tr = b.closest('tr'), u = USERS.find(x => x.id === tr.dataset.id); if (!u) return;
+  if (b.dataset.a === 'pw') return pwModal(u);
+  const out = tr.querySelector('.m-out').checked, pay = tr.querySelector('.m-pay').checked;
+  const prRole = tr.querySelector('.pr-role').value, prDept = tr.querySelector('.pr-dept').value, prMgr = tr.querySelector('.pr-mgr').value;
+  const act = tr.querySelector('.act').checked;
+  if (!out && !pay){ toast('Tick at least one module.'); return; }
+  if (u.id === P.id && !(out && (u.role === 'Admin'))){ toast('You cannot remove your own Customer Outstanding access.'); return; }
+  if (pay && !prRole){ toast('Choose a Payment Request role.'); return; }
+  if (pay && prRole === 'executive' && !prMgr && prDept !== 'Sub Admin'){ toast('Choose the PR manager for this executive (or set department Sub Admin).'); return; }
+  if (out && !u.role){ toast('This person has no Customer Outstanding role yet. Create the role in Customer Outstanding → Users first.'); return; }
+  const mods = [out && 'out', pay && 'pay'].filter(Boolean);
+  const data = {...u}; delete data.id;
+  data.mods = mods; data.active = act;
+  if (pay){ data.prRole = prRole; data.prDept = prDept; if (prMgr) data.prManagerId = prMgr; else delete data.prManagerId; }
+  b.disabled = true;
+  const {error} = await sb.from('docs').upsert({col: 'users', id: u.id, data});
+  b.disabled = false;
+  if (error){ toast('Could not save: ' + error.message); return; }
+  toast('Saved ' + (u.name || u.username)); renderAccess();
+});
+
+function modal(html){
+  const m = document.createElement('div'); m.className = 'modal'; m.innerHTML = `<div class="mbox">${html}</div>`;
+  m.addEventListener('mousedown', e => { if (e.target === m) m.remove(); });
+  document.body.appendChild(m); return m;
+}
+async function callManage(body){
+  const {data, error} = await sb.functions.invoke('manage-users', {body});
+  let msg = error ? error.message : (data && data.error);
+  if (error && error.context && error.context.json){ try { msg = (await error.context.json()).error || msg; } catch(e){} }
+  return {data, msg};
+}
+function pwModal(u){
+  const m = modal(`<h3>Set password</h3><div class="sub">${esc(u.name)} (@${esc(u.username)})</div>
+    <label>New password (6+ characters)</label><input type="text" id="np" autocomplete="off">
+    <div class="err" id="pe"></div><div class="fr"><button class="btn sec" id="pc">Cancel</button><button class="btn" id="ps">Save</button></div>`);
+  m.querySelector('#pc').onclick = () => m.remove();
+  m.querySelector('#ps').onclick = async () => {
+    const pw = m.querySelector('#np').value; if (pw.length < 6){ m.querySelector('#pe').textContent = 'Password needs 6 or more characters.'; return; }
+    m.querySelector('#ps').disabled = true;
+    const doc = {...u}; delete doc.id;
+    const {msg} = await callManage({id: u.id, username: u.username, password: pw, doc});
+    if (msg){ m.querySelector('#pe').textContent = msg; m.querySelector('#ps').disabled = false; return; }
+    m.remove(); toast('Password updated for ' + u.name);
+  };
+}
+function addUserModal(mgrs){
+  const m = modal(`<h3>Add user</h3>
+    <label>Name</label><input type="text" id="an" autocomplete="off">
+    <label>Username</label><input type="text" id="au" autocapitalize="none" autocomplete="off">
+    <label>Password (6+ characters)</label><input type="text" id="ap" autocomplete="off">
+    <label>Phone (optional)</label><input type="text" id="aph" autocomplete="off">
+    <label class="chk"><input type="checkbox" id="ao"> Customer Outstanding</label>
+    <div id="aob" class="hide"><label>Customer Outstanding role</label><select id="aor"><option>Executive</option><option>Manager</option><option>Sub Admin</option></select><div class="mut">Areas and linked manager are set afterwards in Customer Outstanding → Users.</div></div>
+    <label class="chk"><input type="checkbox" id="apy" checked> Payment Request</label>
+    <div id="apb"><label>PR role</label><select id="apr"><option value="executive">executive</option><option value="manager">manager</option></select>
+      <label>PR department</label><select id="apd">${PR_DEPTS.map(d => `<option>${d}</option>`).join('')}</select>
+      <label>PR manager (executives)</label><select id="apm"><option value="">—</option>${mgrs.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></div>
+    <div class="err" id="ae"></div><div class="fr"><button class="btn sec" id="ac">Cancel</button><button class="btn" id="as">Create</button></div>`);
+  const sync = () => { m.querySelector('#aob').classList.toggle('hide', !m.querySelector('#ao').checked); m.querySelector('#apb').classList.toggle('hide', !m.querySelector('#apy').checked); };
+  m.querySelector('#ao').onchange = sync; m.querySelector('#apy').onchange = sync; sync();
+  m.querySelector('#ac').onclick = () => m.remove();
+  m.querySelector('#as').onclick = async () => {
+    const g = id => m.querySelector(id), err = t => { g('#ae').textContent = t; };
+    const name = g('#an').value.trim(), username = g('#au').value.trim().toLowerCase().replace(/\s+/g, ''), password = g('#ap').value;
+    const out = g('#ao').checked, pay = g('#apy').checked;
+    if (!name || !username){ err('Name and username are required.'); return; }
+    if (password.length < 6){ err('Password needs 6 or more characters.'); return; }
+    if (!out && !pay){ err('Tick at least one module.'); return; }
+    if (USERS.some(x => x.username === username)){ err('That username is taken.'); return; }
+    const prRole = g('#apr').value, prDept = g('#apd').value, prMgr = g('#apm').value;
+    if (pay && prRole === 'executive' && !prMgr && prDept !== 'Sub Admin'){ err('Choose the PR manager for an executive (or department Sub Admin).'); return; }
+    const doc = {name, phone: g('#aph').value.trim(), active: true, created: new Date().toISOString(), subs: [],
+      role: out ? g('#aor').value : (prRole === 'manager' ? 'Manager' : 'Executive'), mods: [out && 'out', pay && 'pay'].filter(Boolean)};
+    if (pay){ doc.prRole = prRole; doc.prDept = prDept; if (prMgr) doc.prManagerId = prMgr; }
+    g('#as').disabled = true;
+    const {msg} = await callManage({username, password, doc});
+    if (msg){ err(msg); g('#as').disabled = false; return; }
+    m.remove(); toast('Created ' + name); renderAccess();
+  };
+}
+
+boot();
+</script>
+</body>
+</html>
