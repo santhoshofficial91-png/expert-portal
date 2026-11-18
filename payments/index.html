@@ -758,7 +758,9 @@ function noAccess(){var l=$('login');if(l)l.innerHTML='<div style="padding:40px;
  if(!EMBED)return;
  var st=document.createElement('style');st.textContent='#app{grid-template-columns:1fr!important}#app>aside{display:none!important}#out,#out2{display:none!important}';document.head.appendChild(st);
  var last='';
- function items(){if(!ME)return[];var mm=menu(),done={},out=[];mm.forEach(function(x){var g=NAVG.filter(function(G){return G.k.indexOf(x[0])>=0})[0];
+ var LBL={admin:{dash:'Pending Request',exp:'Pending Expenses Request'},other:{pay:'Create Payment Request',exp:'Create Expenses Request'}};
+ function lb(x){var m=LBL[ME.role==='admin'?'admin':'other'];return m[x[0]]||x[1]}
+ function items(){if(!ME)return[];var mm=menu().map(function(x){return [x[0],lb(x),x[2]]}),done={},out=[];mm.forEach(function(x){var g=NAVG.filter(function(G){return G.k.indexOf(x[0])>=0})[0];
   if(!g){out.push({k:x[0],label:x[1]});return}if(done[g.id])return;done[g.id]=1;
   out.push({k:'grp_'+g.id,label:g.t,children:mm.filter(function(y){return g.k.indexOf(y[0])>=0}).map(function(y){return {k:y[0],label:y[1]}})})});return out}
  function emit(){try{var msg={type:'portal-nav',mod:'payments',items:items(),view:ME?CUR:null,role:null};var j=JSON.stringify(msg);if(j===last)return;last=j;parent.postMessage(msg,location.origin)}catch(e){}}

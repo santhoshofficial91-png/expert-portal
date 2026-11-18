@@ -197,7 +197,7 @@ const GICON = {
   other:'<svg class="gi" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>'
 };
 const OUT_FALLBACK = [{k:'dashboard',label:'Dashboard'},{k:'outstanding',label:'Outstanding'},{k:'billing',label:'Billing'},{k:'collection',label:'Collection'},{k:'chat',label:'Chat'},{k:'edits',label:'Edit History'},{k:'activity',label:'Activity log'}];
-const RENAME = {outstanding:{outstanding:'Customer Outstanding'}, payments:{dash:'Pending Request', exp:'Pending Expenses Request'}};
+const RENAME = {outstanding:{outstanding:'Customer Outstanding'}};  // Purchase labels are set by the module (they depend on the role)
 const MOD_NAV = {};          // module key -> {items, view, role}
 let openG = {}, subOpen = {}, frameMod = null, frameReady = false, pendingGo = null;
 const cacheKey = k => 'portal_nav_' + (P && P.id) + '_' + k;
