@@ -118,6 +118,7 @@ td select,td input[type=text]{padding:6px 8px;font-size:13px}
 <script>
 const SB_URL = 'https://ogvltuavclcgbxlyxkhs.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ndmx0dWF2Y2xjZ2J4bHl4a2hzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3MjY4MDAsImV4cCI6MjExMDMwMjgwMH0.M8toXkbQui8TjCacIobkiyew9O-6IrqgZTTzIkQV8Sg';
+const BUILD = '20261118183203';   // set by build.sh; makes browsers fetch fresh module pages after each update
 const MODULES = {
   out: {key:'outstanding', title:'Customer Outstanding', path:'outstanding/'},
   pay: {key:'payments', title:'Payment Request', path:'payments/'}
@@ -297,7 +298,7 @@ function openView(k){
   if (mod){
     $('#page').classList.add('hide');
     const f = $('#frame'); f.classList.remove('hide');
-    if (frameMod !== k){ frameMod = k; frameReady = false; f.src = mod.path + '?embed=1'; }
+    if (frameMod !== k){ frameMod = k; frameReady = false; f.src = mod.path + '?embed=1&v=' + BUILD; }
   } else if (k === 'access'){
     frameMod = null; frameReady = false;
     $('#frame').classList.add('hide'); $('#frame').src = 'about:blank';
