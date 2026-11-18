@@ -315,13 +315,27 @@ async function loadUsers(){
   return true;
 }
 const hasMod = (u, m) => Array.isArray(u.mods) ? u.mods.includes(m) : m === 'out';
+const isPrMgr = u => hasMod(u, 'pay') && u.prRole === 'manager';
+// every active manager: Payment Request managers and Customer Outstanding (Sales) managers
+const allMgrs = () => USERS.filter(u => u.active !== false && (isPrMgr(u) || (hasMod(u, 'out') && u.role === 'Manager')));
+const mgrLabel = m => esc(m.name) + (isPrMgr(m) ? '' : ' (Sales only)');
+// A Sales-only manager picked as PR manager must get Payment Request manager access too, or the team rules cannot work.
+async function ensurePrMgr(id, dept){
+  const m = USERS.find(x => x.id === id); if (!m || isPrMgr(m)) return true;
+  if (!confirm(`${m.name} has no Payment Request access yet.\n\nGive ${m.name} Payment Request access as manager (department ${dept || '—'})? This is needed so ${m.name} can see the team's requests.`)) return false;
+  const d = {...m}; delete d.id;
+  d.mods = [...new Set([...(Array.isArray(m.mods) ? m.mods : ['out']), 'pay'])]; d.prRole = 'manager'; if (!d.prDept) d.prDept = dept || '';
+  const {error} = await sb.from('docs').upsert({col: 'users', id: m.id, data: d});
+  if (error){ toast('Could not update ' + m.name + ': ' + error.message); return false; }
+  return true;
+}
 // PR "sub admin" is stored as prRole executive + prDept Sub Admin (that is how the Payment Request rules work)
 const uiPrRole = u => (u.prRole === 'executive' && u.prDept === 'Sub Admin') ? 'sub admin' : (u.prRole || '');
 function prStore(role, dept){ return role === 'sub admin' ? {prRole: 'executive', prDept: 'Sub Admin'} : {prRole: role, prDept: dept}; }
 async function renderAccess(){
   const pg = $('#page'); pg.innerHTML = '<h2>Users &amp; Access</h2><div class="sub">Loading…</div>';
   if (!(await loadUsers())) return;
-  const mgrs = USERS.filter(u => hasMod(u, 'pay') && u.prRole === 'manager' && u.active !== false);
+  const mgrs = allMgrs();
   const rows = USERS.map(u => {
     const pay = hasMod(u, 'pay'), out = hasMod(u, 'out'), me = u.id === P.id;
     return `<tr data-id="${u.id}">
@@ -330,7 +344,7 @@ async function renderAccess(){
       <td><label class="chk" style="margin:0"><input type="checkbox" class="m-pay" ${pay ? 'checked' : ''}></label></td>
       <td><select class="pr-role"><option value="">—</option>${['admin','manager','executive','sub admin'].map(r => `<option ${uiPrRole(u) === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
       <td><select class="pr-dept"><option value="">—</option>${PR_DEPTS.map(d => `<option ${u.prDept === d ? 'selected' : ''}>${d}</option>`).join('')}</select></td>
-      <td><select class="pr-mgr"><option value="">—</option>${mgrs.filter(m => m.id !== u.id).map(m => `<option value="${m.id}" ${u.prManagerId === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></td>
+      <td><select class="pr-mgr"><option value="">—</option>${mgrs.filter(m => m.id !== u.id).map(m => `<option value="${m.id}" ${u.prManagerId === m.id ? 'selected' : ''}>${mgrLabel(m)}</option>`).join('')}</select></td>
       <td><label class="chk" style="margin:0"><input type="checkbox" class="act" ${u.active !== false ? 'checked' : ''} ${me ? 'disabled' : ''}></label></td>
       <td><div class="row-actions"><button class="btn sm" data-a="save">Save</button><button class="btn sm sec" data-a="pw">Password</button></div></td></tr>`;
   }).join('');
@@ -358,10 +372,11 @@ $('#page').addEventListener('click', async ev => {
   data.mods = mods; data.active = act;
   if (pay){ data.prRole = prRole; data.prDept = prDept; if (prMgr) data.prManagerId = prMgr; else delete data.prManagerId; }
   b.disabled = true;
+  if (pay && prMgr && !(await ensurePrMgr(prMgr, prDept))){ b.disabled = false; return; }
   const {error} = await sb.from('docs').upsert({col: 'users', id: u.id, data});
   b.disabled = false;
   if (error){ toast('Could not save: ' + error.message); return; }
-  toast('Saved ' + (u.name || u.username)); renderAccess();
+  toast(!pay && tr.querySelector('.pr-mgr').value ? 'Saved ' + (u.name || u.username) + '. PR manager is used only when Payment Request is ticked. The Sales manager is set in Customer Outstanding → Users.' : 'Saved ' + (u.name || u.username)); renderAccess();
 });
 
 function modal(html){
@@ -400,7 +415,7 @@ function addUserModal(mgrs){
     <label class="chk"><input type="checkbox" id="apy" checked> Payment Request</label>
     <div id="apb"><label>PR role</label><select id="apr"><option value="executive">executive</option><option value="manager">manager</option><option value="sub admin">sub admin</option></select>
       <label>PR department</label><select id="apd">${PR_DEPTS.map(d => `<option>${d}</option>`).join('')}</select>
-      <label>PR manager (executives)</label><select id="apm"><option value="">—</option>${mgrs.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></div>
+      <label>PR manager (executives)</label><select id="apm"><option value="">—</option>${mgrs.map(x => `<option value="${x.id}">${mgrLabel(x)}</option>`).join('')}</select></div>
     <div class="err" id="ae"></div><div class="fr"><button class="btn sec" id="ac">Cancel</button><button class="btn" id="as">Create</button></div>`);
   const sync = () => { m.querySelector('#aob').classList.toggle('hide', !m.querySelector('#ao').checked); m.querySelector('#apb').classList.toggle('hide', !m.querySelector('#apy').checked); };
   m.querySelector('#ao').onchange = sync; m.querySelector('#apy').onchange = sync; sync();
@@ -419,6 +434,7 @@ function addUserModal(mgrs){
       role: out ? g('#aor').value : (prRole === 'manager' ? 'Manager' : 'Executive'), mods: [out && 'out', pay && 'pay'].filter(Boolean)};
     if (pay){ doc.prRole = prRole; doc.prDept = prDept; if (prMgr) doc.prManagerId = prMgr; }
     g('#as').disabled = true;
+    if (pay && prMgr && !(await ensurePrMgr(prMgr, prDept))){ g('#as').disabled = false; return; }
     const {msg} = await callManage({username, password, doc});
     if (msg){ err(msg); g('#as').disabled = false; return; }
     m.remove(); toast('Created ' + name); renderAccess();
