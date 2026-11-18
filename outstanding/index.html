@@ -1558,6 +1558,43 @@ function annTick(){
 }
 setInterval(annTick, 1000);
 render(); Store.init();
+
+/* ---------- portal embed: when opened inside the portal, hide own sidebar and let the portal drive the menu ---------- */
+(function(){
+  if (window.parent === window || !/[?&]embed=1/.test(location.search)) return;
+  const st = document.createElement('style');
+  st.textContent = '.side,.tg,.tgh{display:none!important}.shell{flex-direction:row!important}';
+  document.head.appendChild(st);
+  let last = '';
+  function items(){
+    const missedN = isTop() ? scoped().filter(missed).length : 0;
+    return NAV.filter(n => n[3]()).map(n => {
+      const it = {k:n[0], label:n[1]};
+      if (n[0] === 'create') it.children = (isAdm() ? ['Area','Sub Admin','Manager','Executive'] : ['Area','Manager','Executive']).map(r => ({k:'create', role:r, label:r}));
+      if (n[0] === 'chat') it.badge = chatUnread();
+      if (n[0] === 'outstanding' && isTop()) it.badge = missedN;
+      return it;
+    });
+  }
+  function emit(){
+    try {
+      const ok = !!(typeof me === 'function' && me() && me().active !== false);
+      const msg = {type:'portal-nav', mod:'outstanding', items: ok ? items() : [], view: S.view, role: S.view === 'create' ? F.cr : null};
+      const j = JSON.stringify(msg); if (j === last) return; last = j;
+      parent.postMessage(msg, location.origin);
+    } catch(e){}
+  }
+  const _render = render;
+  render = function(){ _render.apply(this, arguments); emit(); };
+  addEventListener('message', ev => {
+    if (ev.origin !== location.origin || ev.source !== parent) return;
+    const d = ev.data; if (!d || d.type !== 'portal-go') return;
+    const k = String(d.k || ''); if (!NAV.filter(n => n[3]()).some(n => n[0] === k)) return;
+    const t = {dataset:{k}}; if (k === 'create' && d.role) t.dataset.role = String(d.role);
+    ACT.nav(t);
+  });
+  emit();
+})();
 </script>
 </body>
 </html>

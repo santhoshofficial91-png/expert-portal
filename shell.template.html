@@ -30,17 +30,30 @@ input:focus,select:focus{outline:2px solid #12a59455;border-color:#12a594}
 .err{color:#c0392b;font-size:13px;min-height:18px;margin-top:10px}
 /* app */
 #app{display:flex;height:100%}
-#side{width:236px;background:#0f1b2d;color:#cfd8e6;display:flex;flex-direction:column;flex:none}
-#side .top{padding:18px 16px 12px;border-bottom:1px solid #ffffff14}
-#side .top b{display:block;color:#fff;font-size:15px;letter-spacing:.04em}
-#side .top span{font-size:11px;color:#8fa0b8}
-#nav{flex:1;overflow:auto;padding:10px 8px}
-.grp{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#6f829d;margin:14px 10px 6px}
-.nv{display:block;width:100%;text-align:left;background:none;border:0;color:#cfd8e6;padding:9px 12px;border-radius:8px;cursor:pointer;font-weight:600}
-.nv:hover{background:#ffffff10}
-.nv.on{background:#12a594;color:#fff}
-#me{padding:12px 14px;border-top:1px solid #ffffff14;font-size:12px}
-#me b{display:block;color:#fff;font-size:13px}
+#side{width:262px;background:#fff;color:#1c2330;display:flex;flex-direction:column;flex:none;border-right:1px solid #e3e7ee}
+#side .top{padding:20px 20px 14px}
+.logo{font-weight:800;font-size:32px;letter-spacing:-.03em;line-height:1;color:#3d3d57}
+.logo i{font-style:normal;color:#c0392b}
+.logo small{display:block;font-size:9px;letter-spacing:.15em;font-weight:800;color:#3d3d57;margin-top:5px}
+#who2{display:none}
+#nav{flex:1;overflow:auto;padding:6px 10px 14px}
+.gh{display:flex;align-items:center;gap:13px;width:100%;background:none;border:0;padding:12px 12px;border-radius:10px;cursor:pointer;font-weight:600;font-size:15px;color:#1c2330;text-align:left}
+.gh:hover{background:#f2f4f7}
+.gh svg.gi{width:21px;height:21px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.gh .chev{margin-left:auto;width:14px;height:14px;flex:none;stroke:#7b8697;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}
+.gh.open .chev,.si.open .chev{transform:rotate(90deg)}
+.gh.cur{color:#0c7d70}
+.sub-l{display:none;padding:0 0 8px}
+.gh.open + .sub-l{display:block}
+.si{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;padding:9px 12px 9px 46px;border-radius:8px;cursor:pointer;color:#5b6577;font-weight:500;font-size:14px}
+.si:hover{background:#f2f4f7;color:#1c2330}
+.si.on{background:#e3f5f2;color:#0c7d70;font-weight:700}
+.si.l2{padding-left:64px;font-size:13.5px}
+.si .chev{margin-left:auto;width:12px;height:12px;stroke:#7b8697;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}
+.si .bdg{margin-left:auto;background:#c0392b;color:#fff;border-radius:99px;font-size:11px;padding:1px 7px;font-weight:700}
+.sl-note{padding:6px 12px 6px 46px;font-size:12px;color:#8a94a6}
+#me{padding:12px 16px;border-top:1px solid #e3e7ee;font-size:12px}
+#me b{display:block;color:#1c2330;font-size:13px}
 #me .btn{margin-top:8px;width:100%}
 #main{flex:1;min-width:0;position:relative;background:#fff}
 #frame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff}
@@ -90,7 +103,7 @@ td select,td input[type=text]{padding:6px 8px;font-size:13px}
 <button id="burger" class="hide" aria-label="Menu">☰</button>
 <div id="app" class="hide">
   <aside id="side">
-    <div class="top"><b>EXPERT PORTAL</b><span id="who2"></span></div>
+    <div class="top"><div class="logo">EX<i>PERT</i><small>CORPORATE SOLUTIONS</small></div><span id="who2"></span></div>
     <nav id="nav"></nav>
     <div id="me"><b id="meName"></b><span id="meRole" class="mut"></span><button class="btn sec sm" id="logout">Sign out</button></div>
   </aside>
@@ -134,7 +147,7 @@ async function boot(){
   await enter();
 }
 function showLogin(msg){
-  P = null; current = null;
+  P = null; current = null; frameMod = null; frameReady = false; pendingGo = null; openG = {}; MOD_NAV_RESET();
   $('#frame').src = 'about:blank'; $('#frame').classList.add('hide'); $('#page').classList.add('hide');
   $('#lerr').textContent = msg || ''; $('#lp').value = ''; $('#lbtn').disabled = false;
   show('login'); setTimeout(() => $('#lu').focus(), 50);
@@ -147,7 +160,7 @@ async function enter(){
   if (!myMods().length){ await sb.auth.signOut(); showLogin('No module access has been given to this account. Ask the Admin.'); return; }
   $('#meName').textContent = P.name || P.username;
   $('#meRole').textContent = '@' + P.username;
-  buildNav(); show('app');
+  loadNavCache(); buildNav(); show('app');
   const want = (location.hash || '').replace('#', '') || localStorage.getItem('portal_last') || '';
   openView(viewAllowed(want) ? want : defaultView());
 }
@@ -169,14 +182,66 @@ window.addEventListener('storage', async () => { if (!P) return; const s = (awai
 function allowedViews(){ const v = myMods().map(m => MODULES[m].key); if (isAdmin()) v.push('access'); return v; }
 const viewAllowed = k => allowedViews().includes(k);
 const defaultView = () => allowedViews()[0];
+const CHEV = '<svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
+const GICON = {
+  outstanding:'<svg class="gi" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>',
+  payments:'<svg class="gi" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 15h2"/></svg>',
+  admin:'<svg class="gi" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 6.5a3 3 0 010 5.5M18 14.5c1.8.7 3 2.3 3 4.5"/></svg>'
+};
+const MOD_NAV = {};          // module key -> {items, view, role}
+let openG = {}, createOpen = false, frameMod = null, frameReady = false, pendingGo = null;
+const cacheKey = k => 'portal_nav_' + (P && P.id) + '_' + k;
+function loadNavCache(){ MOD_NAV_RESET(); myMods().forEach(m => { const k = MODULES[m].key; try { const c = JSON.parse(localStorage.getItem(cacheKey(k)) || 'null'); if (c && Array.isArray(c.items)) MOD_NAV[k] = {items: c.items, view: null, role: null, cached: true}; } catch(e){} }); }
+function MOD_NAV_RESET(){ Object.keys(MOD_NAV).forEach(k => delete MOD_NAV[k]); }
+function cleanItems(a){ return (Array.isArray(a) ? a : []).slice(0, 40).map(it => ({k: String(it.k || ''), label: String(it.label || ''), role: it.role ? String(it.role) : '', badge: Number(it.badge) || 0, children: it.children ? cleanItems(it.children) : null})); }
+function subBtn(m, it, info, l2){
+  const on = current === m && info.view === it.k && (!it.role || info.role === it.role);
+  const bdg = it.badge ? `<span class="bdg">${it.badge}</span>` : '';
+  return `<button class="si ${l2 ? 'l2' : ''} ${on ? 'on' : ''}" data-m="${esc(m)}" data-k="${esc(it.k)}" data-role="${esc(it.role)}">${esc(it.label)}${bdg}</button>`;
+}
 function buildNav(){
-  const mods = myMods(); let h = '';
-  h += '<div class="grp">Modules</div>';
-  mods.forEach(m => { h += `<button class="nv" data-v="${MODULES[m].key}">${esc(MODULES[m].title)}</button>`; });
-  if (isAdmin()) h += '<div class="grp">Admin</div><button class="nv" data-v="access">Users &amp; Access</button>';
+  let h = '';
+  myMods().forEach(m => {
+    const mod = MODULES[m], k = mod.key, info = MOD_NAV[k], cur = current === k;
+    h += `<button class="gh ${openG[k] ? 'open' : ''} ${cur ? 'cur' : ''}" data-g="${k}">${GICON[k] || ''}<span>${esc(mod.title)}</span>${CHEV}</button><div class="sub-l">`;
+    if (!info) h += `<div class="sl-note">${cur ? 'Loading…' : 'Click to open'}</div>`;
+    else if (!info.items.length) h += `<div class="sl-note">${info.cached ? 'Click to open' : 'Coming soon — still being moved here'}</div>`;
+    else info.items.forEach(it => {
+      if (it.children && it.children.length){
+        h += `<button class="si ${createOpen ? 'open' : ''}" data-tog="${esc(k)}:${esc(it.k)}">${esc(it.label)}${CHEV}</button>`;
+        if (createOpen) h += it.children.map(c => subBtn(k, c, info, true)).join('');
+      } else h += subBtn(k, it, info, false);
+    });
+    h += '</div>';
+  });
+  if (isAdmin()) h += `<button class="gh ${openG.admin ? 'open' : ''} ${current === 'access' ? 'cur' : ''}" data-g="admin">${GICON.admin}<span>Admin</span>${CHEV}</button><div class="sub-l"><button class="si ${current === 'access' ? 'on' : ''}" data-v="access">Users &amp; Access</button></div>`;
   $('#nav').innerHTML = h;
 }
-$('#nav').addEventListener('click', ev => { const b = ev.target.closest('.nv'); if (b) openView(b.dataset.v); $('#side').classList.remove('open'); });
+function sendGo(){ if (!pendingGo || !frameReady) return; try { $('#frame').contentWindow.postMessage({type:'portal-go', k: pendingGo.k, role: pendingGo.role || ''}, location.origin); } catch(e){} pendingGo = null; }
+function goSub(m, k, role){ pendingGo = {k, role}; if (current !== m) openView(m); sendGo(); }
+$('#nav').addEventListener('click', ev => {
+  const g = ev.target.closest('.gh[data-g]');
+  if (g){
+    const k = g.dataset.g, was = !!openG[k]; openG[k] = !was;
+    if (!was && k !== 'admin' && current !== k) openView(k); else if (!was && k === 'admin' && !current) openView('access'); else buildNav();
+    return;
+  }
+  const t = ev.target.closest('.si[data-tog]'); if (t){ createOpen = !createOpen; buildNav(); return; }
+  const s = ev.target.closest('.si[data-m]'); if (s){ goSub(s.dataset.m, s.dataset.k, s.dataset.role); $('#side').classList.remove('open'); return; }
+  const v = ev.target.closest('.si[data-v]'); if (v){ openView(v.dataset.v); $('#side').classList.remove('open'); }
+});
+window.addEventListener('message', ev => {
+  if (ev.origin !== location.origin) return;
+  const f = $('#frame'); if (!f || ev.source !== f.contentWindow) return;
+  const d = ev.data; if (!d || d.type !== 'portal-nav' || !P || !current || d.mod !== current) return;
+  const items = cleanItems(d.items), first = !frameReady && items.length > 0;
+  if (items.length) frameReady = true;
+  if (first && !pendingGo){ try { const st = JSON.parse(localStorage.getItem('portal_sub_' + current) || 'null'); if (st && st.k && (st.k !== d.view || (st.role || '') !== (d.role || '')) && items.some(i => i.k === st.k)) pendingGo = st; } catch(e){} }
+  MOD_NAV[current] = {items, view: d.view || null, role: d.role || null};
+  if (items.length){ try { localStorage.setItem(cacheKey(current), JSON.stringify({items: items.map(i => ({...i, badge: 0, children: i.children && i.children.map(c => ({...c, badge: 0}))}))})); } catch(e){} }
+  if (!first && !pendingGo && items.length && d.view){ try { localStorage.setItem('portal_sub_' + current, JSON.stringify({k: d.view, role: d.role || ''})); } catch(e){} }
+  buildNav(); sendGo();
+});
 $('#burger').addEventListener('click', () => $('#side').classList.toggle('open'));
 window.addEventListener('hashchange', () => { const k = location.hash.replace('#', ''); if (P && k !== current && viewAllowed(k)) openView(k); });
 
@@ -184,16 +249,17 @@ function openView(k){
   if (!viewAllowed(k)) k = defaultView();
   current = k; try { localStorage.setItem('portal_last', k); } catch(e){}
   if (location.hash !== '#' + k) history.replaceState(null, '', '#' + k);
-  document.querySelectorAll('#nav .nv').forEach(b => b.classList.toggle('on', b.dataset.v === k));
   const mod = Object.values(MODULES).find(m => m.key === k);
   if (mod){
     $('#page').classList.add('hide');
-    const f = $('#frame'); f.classList.remove('hide');
-    if (!f.src.endsWith('/' + mod.path)) f.src = mod.path;
+    const f = $('#frame'); f.classList.remove('hide'); openG[k] = true;
+    if (frameMod !== k){ frameMod = k; frameReady = false; f.src = mod.path + '?embed=1'; }
   } else if (k === 'access'){
-    $('#frame').classList.add('hide'); $('#frame').src = 'about:blank';
+    frameMod = null; frameReady = false;
+    $('#frame').classList.add('hide'); $('#frame').src = 'about:blank'; openG.admin = true;
     const pg = $('#page'); pg.classList.remove('hide'); renderAccess();
   }
+  buildNav();
 }
 
 /* ---------- Users & Access (admin) ---------- */
