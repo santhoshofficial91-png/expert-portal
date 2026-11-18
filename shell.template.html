@@ -82,10 +82,40 @@ td select,td input[type=text]{padding:6px 8px;font-size:13px}
 .note{background:#fff7e0;border:1px solid #f2dc8f;color:#7a5b00;padding:9px 12px;border-radius:8px;margin:12px 0;font-size:12.5px}
 #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#1c2330;color:#fff;padding:10px 16px;border-radius:8px;z-index:99;opacity:0;pointer-events:none;transition:opacity .2s}
 #toast.on{opacity:1}
+
+/* notifications */
+#sbell{position:fixed;top:14px;right:22px;z-index:25}
+.nbell{position:relative;width:40px;height:40px;border-radius:12px;border:1px solid #e3e7ee;background:#fff;cursor:pointer;display:grid;place-items:center;color:#3d3d57;box-shadow:0 2px 8px rgba(40,30,120,.08)}
+.nbell svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.nbell .nb{position:absolute;top:-6px;right:-6px;min-width:19px;height:19px;padding:0 5px;border-radius:99px;background:#c0392b;color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center}
+#npanel{position:fixed;top:66px;right:18px;width:390px;max-width:calc(100vw - 24px);max-height:72vh;display:flex;flex-direction:column;background:#fff;border:1px solid #e3e7ee;border-radius:14px;box-shadow:0 18px 50px rgba(15,27,45,.25);z-index:60}
+#npanel .nh{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #eceff3}
+#npanel .nh b{font-size:16px;margin-right:auto}
+#npanel .nl{overflow:auto;padding:6px}
+.ni{display:block;width:100%;text-align:left;background:none;border:0;border-radius:10px;padding:10px 12px;cursor:pointer;color:#1c2330}
+.ni:hover{background:#f2f4f7}
+.ni b{display:block;font-size:13.5px}
+.ni p{margin:3px 0;font-size:13px;color:#4a5568;white-space:pre-wrap;word-break:break-word}
+.ni small{color:#8a94a6;font-size:11.5px}
+.ni.un{background:#eef8f6}.ni.un b::before{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;background:#12a594;margin-right:7px;vertical-align:middle}
+.nempty{padding:30px 12px;text-align:center;color:#8a94a6}
+#npop{position:fixed;inset:0;z-index:200;background:rgba(15,27,45,.72);display:flex;align-items:center;justify-content:center;padding:18px}
+#npop .pb{background:#fff;border-radius:16px;width:100%;max-width:620px;max-height:88vh;overflow:auto;padding:30px 30px 24px;box-shadow:0 30px 80px rgba(0,0,0,.4)}
+#npop .tag{display:inline-block;background:#e3f5f2;color:#0c7d70;font-weight:800;font-size:11px;letter-spacing:.08em;border-radius:99px;padding:4px 10px}
+#npop h2{font-size:24px;margin:12px 0 6px}
+#npop .meta{color:#8a94a6;font-size:12.5px;margin-bottom:16px}
+#npop .body{font-size:16px;line-height:1.6;white-space:pre-wrap;word-break:break-word;color:#1c2330}
+#npop .fr{margin-top:24px}
+#npop .btn{padding:12px 34px;font-size:15px}
+.ppl{max-height:220px;overflow:auto;border:1px solid #e3e7ee;border-radius:8px;padding:6px 10px;margin-top:6px}
+textarea{width:100%;padding:10px 12px;border:1px solid #cbd2dc;border-radius:8px;font:inherit;min-height:110px;resize:vertical}
 </style>
 </head>
 <body>
 <div id="toast"></div>
+<div id="npanel" class="hide"></div>
+<div id="npop" class="hide"></div>
+<button id="sbell" class="nbell hide" title="Notifications" aria-label="Notifications"></button>
 
 <div id="login" class="lg hide">
   <form class="lcard" id="lform" autocomplete="on">
@@ -150,6 +180,7 @@ async function boot(){
   await enter();
 }
 function showLogin(msg){
+  try { stopNotes(); } catch(e){}
   P = null; current = null; frameMod = null; frameReady = false; pendingGo = null; openG = {}; subOpen = {}; MOD_NAV_RESET();
   $('#frame').src = 'about:blank'; $('#frame').classList.add('hide'); $('#page').classList.add('hide');
   $('#lerr').textContent = msg || ''; $('#lp').value = ''; $('#lbtn').disabled = false;
@@ -163,7 +194,7 @@ async function enter(){
   if (!myMods().length){ await sb.auth.signOut(); showLogin('No module access has been given to this account. Ask the Admin.'); return; }
   $('#meName').textContent = P.name || P.username;
   $('#meRole').textContent = '@' + P.username;
-  loadNavCache(); buildNav(); show('app');
+  loadNavCache(); buildNav(); show('app'); startNotes();
   const want = (location.hash || '').replace('#', '') || localStorage.getItem('portal_last') || '';
   openView(viewAllowed(want) ? want : defaultView());
 }
@@ -278,7 +309,10 @@ $('#nav').addEventListener('click', ev => {
 window.addEventListener('message', ev => {
   if (ev.origin !== location.origin) return;
   const f = $('#frame'); if (!f || ev.source !== f.contentWindow) return;
-  const d = ev.data; if (!d || d.type !== 'portal-nav' || !P || !current || d.mod !== current) return;
+  const d = ev.data;
+  if (d && d.type === 'portal-bell'){ if (P) togglePanel(); return; }
+  if (d && d.type === 'portal-ready'){ updateBadge(); return; }
+  if (!d || d.type !== 'portal-nav' || !P || !current || d.mod !== current) return;
   const items = cleanItems(d.items), first = !frameReady && items.length > 0;
   if (items.length) frameReady = true;
   if (first && !pendingGo){ try { const st = JSON.parse(localStorage.getItem('portal_sub_' + current) || 'null'); if (st && st.k && (st.k !== d.view || (st.role || '') !== (d.role || '')) && items.some(i => i.k === st.k)) pendingGo = st; } catch(e){} }
@@ -304,7 +338,7 @@ function openView(k){
     $('#frame').classList.add('hide'); $('#frame').src = 'about:blank';
     const pg = $('#page'); pg.classList.remove('hide'); renderAccess();
   }
-  buildNav();
+  buildNav(); try { updateBadge(); } catch(e){}
 }
 
 /* ---------- Users & Access (admin) ---------- */
@@ -446,6 +480,100 @@ function addUserModal(mgrs){
     if (msg){ err(msg); g('#as').disabled = false; return; }
     m.remove(); toast('Created ' + name); renderAccess();
   };
+}
+
+/* ---------- notifications (bell, list, send, full-screen push) ---------- */
+const BELL_SVG = '<svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1112 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10.3 21a1.94 1.94 0 003.4 0"/></svg>';
+let NOTES = [], READS = new Set(), popOpen = false, ntCh = null, ntPoll = null, PEOPLE = null;
+const unreadNotes = () => NOTES.filter(n => !READS.has(n.id) && n.sender !== P.id);
+const fmtWhen = t => { try { return new Date(t).toLocaleString('en-IN', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', hour12:true}); } catch(e){ return ''; } };
+async function loadNotes(){
+  if (!P) return;
+  const {data, error} = await sb.from('portal_notes').select('id,created_at,sender,sender_name,kind,title,body,audience,link').order('id', {ascending:false}).limit(100);
+  if (error || !P) return;
+  NOTES = data || [];
+  if (NOTES.length){
+    const r = await sb.from('portal_note_reads').select('note_id').in('note_id', NOTES.map(n => n.id));
+    if (!r.error) READS = new Set((r.data || []).map(x => x.note_id));
+  } else READS = new Set();
+  updateBadge(); if (!$('#npanel').classList.contains('hide')) renderPanel(); nextPop();
+}
+function updateBadge(){
+  const n = P ? unreadNotes().length : 0, t = n > 99 ? '99+' : String(n);
+  $('#sbell').innerHTML = BELL_SVG + (n ? `<span class="nb">${t}</span>` : '');
+  $('#sbell').classList.toggle('hide', !P || current !== 'access');
+  try { $('#frame').contentWindow.postMessage({type:'portal-badge', n}, location.origin); } catch(e){}
+}
+async function markRead(ids){
+  ids = ids.filter(id => !READS.has(id)); if (!ids.length) return;
+  ids.forEach(id => READS.add(id)); updateBadge();
+  await sb.from('portal_note_reads').upsert(ids.map(id => ({note_id: id, user_id: P.id})), {onConflict: 'note_id,user_id', ignoreDuplicates: true});
+}
+function nextPop(){
+  if (popOpen || !P) return;
+  const q = unreadNotes().filter(n => n.kind === 'push').sort((a, b) => a.id - b.id);
+  if (!q.length) return;
+  const n = q[0]; popOpen = true;
+  const box = $('#npop');
+  box.innerHTML = `<div class="pb" role="alertdialog" aria-modal="true" aria-labelledby="npt"><span class="tag">NOTIFICATION${q.length > 1 ? ' · 1 of ' + q.length : ''}</span>
+    <h2 id="npt">${esc(n.title || 'Notification')}</h2><div class="meta">From ${esc(n.sender_name || '—')} · ${fmtWhen(n.created_at)}</div>
+    <div class="body">${esc(n.body)}</div><div class="fr"><button class="btn" id="npok">OK</button></div></div>`;
+  box.classList.remove('hide'); setTimeout(() => { const b = $('#npok'); if (b) b.focus(); }, 30);
+  $('#npok').onclick = async () => { $('#npok').disabled = true; await markRead([n.id]); box.classList.add('hide'); box.innerHTML = ''; popOpen = false; nextPop(); };
+}
+function renderPanel(){
+  const list = NOTES.length ? NOTES.map(n => `<button class="ni ${!READS.has(n.id) && n.sender !== P.id ? 'un' : ''}" data-n="${n.id}"><b>${esc(n.title || 'Notification')}</b>${n.body ? `<p>${esc(n.body)}</p>` : ''}<small>${n.sender === P.id ? 'You' : esc(n.sender_name || 'System')} · ${fmtWhen(n.created_at)}${n.kind === 'push' ? ' · message' : ''}</small></button>`).join('') : '<div class="nempty">No notifications yet.</div>';
+  $('#npanel').innerHTML = `<div class="nh"><b>Notifications</b><button class="btn sm sec" id="nall">Mark all read</button><button class="btn sm" id="nsend">+ Send</button></div><div class="nl">${list}</div>`;
+}
+function togglePanel(force){
+  const pn = $('#npanel'), open = force !== undefined ? force : pn.classList.contains('hide');
+  if (open){ renderPanel(); pn.classList.remove('hide'); } else pn.classList.add('hide');
+}
+$('#sbell').addEventListener('click', ev => { ev.stopPropagation(); togglePanel(); });
+document.addEventListener('click', ev => { if (!ev.target.closest('#npanel') && !ev.target.closest('#sbell') && !ev.target.closest('.modal')) $('#npanel').classList.add('hide'); });
+$('#npanel').addEventListener('click', async ev => {
+  if (ev.target.closest('#nall')){ await markRead(NOTES.filter(n => n.sender !== P.id).map(n => n.id)); renderPanel(); return; }
+  if (ev.target.closest('#nsend')){ togglePanel(false); sendModal(); return; }
+  const it = ev.target.closest('.ni'); if (!it) return;
+  const n = NOTES.find(x => x.id === +it.dataset.n); if (!n) return;
+  await markRead([n.id]); renderPanel();
+  if (n.link){ const [m, k] = n.link.split(':'); if (m && k && viewAllowed(m)){ togglePanel(false); goSub(m, k, ''); } }
+});
+async function sendModal(){
+  if (!PEOPLE){ const r = await sb.rpc('portal_people'); PEOPLE = r.error ? [] : (r.data || []).filter(x => x.id !== P.id); }
+  const m = document.createElement('div'); m.className = 'modal';
+  m.innerHTML = `<div class="mbox" style="max-width:520px"><h3>Send a notification</h3><div class="mut">It opens full-screen for each person the next time they open the portal (or right away if it is open). They must press OK.</div>
+    <label for="stt">Title</label><input type="text" id="stt" maxlength="200" placeholder="e.g. Office closed tomorrow">
+    <label for="sbd">Message</label><textarea id="sbd" maxlength="4000"></textarea>
+    <label for="sto">Send to</label><select id="sto"><option value="all">Everyone</option><option value="out">Sales users (Customer Outstanding)</option><option value="pay">Purchase users (Payment Request)</option><option value="users">Choose people…</option></select>
+    <div id="spp" class="ppl hide">${PEOPLE.map(x => `<label class="chk" style="margin:4px 0"><input type="checkbox" value="${x.id}"> ${esc(x.name || x.username)}</label>`).join('') || '<div class="mut">No people found.</div>'}</div>
+    <div class="err" id="sse"></div><div class="fr"><button class="btn sec" id="ssc">Cancel</button><button class="btn" id="sss">Send</button></div></div>`;
+  document.body.appendChild(m);
+  const g = id => m.querySelector(id);
+  g('#sto').onchange = () => g('#spp').classList.toggle('hide', g('#sto').value !== 'users');
+  g('#ssc').onclick = () => m.remove();
+  g('#sss').onclick = async () => {
+    const title = g('#stt').value.trim(), body = g('#sbd').value.trim(), audience = g('#sto').value;
+    const target = audience === 'users' ? [...m.querySelectorAll('#spp input:checked')].map(x => x.value) : [];
+    if (!title){ g('#sse').textContent = 'Write a title.'; return; }
+    if (!body){ g('#sse').textContent = 'Write the message.'; return; }
+    if (audience === 'users' && !target.length){ g('#sse').textContent = 'Tick at least one person.'; return; }
+    g('#sss').disabled = true;
+    const {error} = await sb.from('portal_notes').insert({title, body, audience, target});
+    if (error){ g('#sse').textContent = 'Could not send: ' + error.message; g('#sss').disabled = false; return; }
+    m.remove(); toast('Notification sent.'); loadNotes();
+  };
+  setTimeout(() => g('#stt').focus(), 30);
+}
+function startNotes(){
+  stopNotes(); loadNotes();
+  ntCh = sb.channel('portal-notes').on('postgres_changes', {event: 'INSERT', schema: 'public', table: 'portal_notes'}, () => loadNotes()).subscribe();
+  ntPoll = setInterval(loadNotes, 60000);
+}
+function stopNotes(){
+  if (ntCh){ try { sb.removeChannel(ntCh); } catch(e){} ntCh = null; }
+  clearInterval(ntPoll); ntPoll = null; NOTES = []; READS = new Set(); PEOPLE = null; popOpen = false;
+  $('#npop').classList.add('hide'); $('#npop').innerHTML = ''; $('#npanel').classList.add('hide'); $('#sbell').classList.add('hide');
 }
 
 boot();
