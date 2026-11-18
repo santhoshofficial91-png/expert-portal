@@ -621,7 +621,7 @@ async function boot(){
  var role=ROLEMAP[p.role],lab=p.role==='admin'?'Administrator':(p.role==='manager'?'Manager':'Executive')+(p.manager_name?' (reports to '+p.manager_name+')':'');
  start({role:role,name:p.name,label:lab,id:p.id,username:p.username,dept:p.department||''});
  await loadAll(true);subRT();show(true);render(location.hash.slice(1)||'dash');return true}
-function menu(){var A={admin:['dash','po','pay','paid','exp','expaid'],mgr:['dash','po','pay','paid','sent','exp','expaid','esent'],exe:['dash','pay','paid','sent','exp','expaid','esent']}[ME.role]||['dash'];if(ME.role!=='admin'&&ME.dept==='HR')A=['exp','expaid','esent'];if(ME.role==='exe'&&ME.dept==='Sub Admin')A=['po'];if(ME.role!=='admin'&&ME.dept==='HR')return A.map(function(k){return MENU.filter(function(x){return x[0]===k})[0]});return MENU.filter(function(x){return A.indexOf(x[0])>=0})}
+function menu(){var A={admin:['dash','po','pay','paid','exp','expaid'],mgr:['po','pay','paid','sent','exp','expaid','esent'],exe:['pay','paid','sent','exp','expaid','esent']}[ME.role]||['dash'];if(ME.role!=='admin'&&ME.dept==='HR')A=['exp','expaid','esent'];if(ME.role==='exe'&&ME.dept==='Sub Admin')A=['po'];if(ME.role!=='admin'&&ME.dept==='HR')return A.map(function(k){return MENU.filter(function(x){return x[0]===k})[0]});return MENU.filter(function(x){return A.indexOf(x[0])>=0})}
 
 $('lf').addEventListener('submit',async function(e){
   e.preventDefault();var u=$('u').value.trim().toLowerCase(),btn=$('lf').querySelector('button[type=submit],button');$('err').textContent='';if(btn)btn.disabled=true;
