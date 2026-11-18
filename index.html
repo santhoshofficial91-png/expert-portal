@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Expert Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700;12..96,800&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 *{box-sizing:border-box}
@@ -109,6 +109,58 @@ td select,td input[type=text]{padding:6px 8px;font-size:13px}
 #npop .btn{padding:12px 34px;font-size:15px}
 .ppl{max-height:220px;overflow:auto;border:1px solid #e3e7ee;border-radius:8px;padding:6px 10px;margin-top:6px}
 textarea{width:100%;padding:10px 12px;border:1px solid #cbd2dc;border-radius:8px;font:inherit;min-height:110px;resize:vertical}
+
+/* ---------- sign-in (EXPERT brand: charcoal + red; ribbons = Sales / Purchase / Expenses) ---------- */
+.au{--ink:#2b2b45;--red:#c0392b;--sales:#0f9b8e;--buy:#f2a516;--spend:#8b3d8f;--mist:#f4f5f9;
+  min-height:100%;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(360px,.85fr);font-family:'Bricolage Grotesque',Manrope,system-ui,sans-serif;background:#fff;color:var(--ink)}
+.au-art{position:relative;overflow:hidden;background:var(--ink);color:#fff;padding:56px 64px;display:flex;flex-direction:column;justify-content:space-between;min-height:100%}
+.au-rib{position:absolute;left:-12%;width:140%;height:104px;border-radius:52px;transform:rotate(-14deg);transform-origin:left center}
+.au-rib span{position:absolute;left:16%;top:50%;transform:translateY(-50%);font-weight:700;font-size:15px;letter-spacing:.02em;color:rgba(255,255,255,.92)}
+.au-rib.r1{top:10%;background:var(--sales)}
+.au-rib.r2{top:calc(10% + 122px);background:var(--buy)}.au-rib.r2 span{color:#3b2a00}
+.au-rib.r3{top:calc(10% + 244px);background:var(--spend)}
+@media (prefers-reduced-motion:no-preference){
+  .au-rib{animation:auSweep .9s cubic-bezier(.2,.8,.2,1) both}
+  .au-rib.r2{animation-delay:.12s}.au-rib.r3{animation-delay:.24s}
+  @keyframes auSweep{from{transform:rotate(-14deg) translateX(-70%);opacity:0}to{transform:rotate(-14deg) translateX(0);opacity:1}}
+}
+.au-copy{position:relative;z-index:1;margin-top:auto}
+.au-hello{font-size:17px;font-weight:500;color:rgba(255,255,255,.75);margin:0 0 14px}
+.au-slogan{margin:0;font-size:clamp(40px,5.2vw,72px);line-height:1.02;font-weight:800;letter-spacing:-.025em;font-variation-settings:'opsz' 96}
+.au-slogan span{display:block;padding-left:22px;position:relative}
+.au-slogan span::before{content:'';position:absolute;left:0;top:.16em;bottom:.12em;width:8px;border-radius:4px}
+.au-slogan .s1::before{background:var(--sales)}.au-slogan .s2::before{background:var(--buy)}.au-slogan .s3::before{background:var(--spend)}
+.au-sub{margin:22px 0 0;font-size:17px;line-height:1.5;color:rgba(255,255,255,.78);max-width:34ch}
+.au-form{display:flex;flex-direction:column;justify-content:center;padding:56px clamp(28px,6vw,80px);background:#fff}
+.au-form form{width:100%;max-width:380px;margin:0 auto}
+.au-logo{font-weight:800;font-size:46px;line-height:.95;letter-spacing:-.035em;color:var(--ink);font-variation-settings:'opsz' 96}
+.au-logo i{font-style:normal;color:var(--red)}
+.au-logo small{display:block;font-size:11px;letter-spacing:.32em;font-weight:700;margin-top:8px;color:var(--ink)}
+.au h1{font-size:28px;font-weight:700;letter-spacing:-.015em;margin:44px 0 6px}
+.au-lead{margin:0 0 26px;color:#5d6178;font-size:15.5px;line-height:1.5}
+.au label{font-family:'Bricolage Grotesque',Manrope,sans-serif;font-size:14px;font-weight:600;color:var(--ink);margin:16px 0 7px}
+.au input[type=text],.au input[type=password]{height:50px;border-radius:12px;border:1.5px solid #d8dbe6;background:var(--mist);font-size:16px;padding:0 14px;transition:border-color .15s,background .15s}
+.au input:focus{outline:none;border-color:var(--ink);background:#fff;box-shadow:0 0 0 4px rgba(43,43,69,.12)}
+.au-pw{position:relative}.au-pw input{padding-right:70px!important}
+.au-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:none;color:#5d6178;font:600 13px 'Bricolage Grotesque',sans-serif;padding:8px 10px;border-radius:8px;cursor:pointer}
+.au-eye:hover{color:var(--ink);background:#e9ebf2}.au-eye:focus-visible{outline:2px solid var(--ink)}
+.au .lbtn{height:52px;margin-top:26px;border-radius:12px;background:var(--red);font:700 16.5px 'Bricolage Grotesque',sans-serif;letter-spacing:.01em;transition:background .15s,transform .1s}
+.au .lbtn:hover{background:#a93226}.au .lbtn:active{transform:translateY(1px)}.au .lbtn:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+.au .err{font-size:14px;margin-top:12px}
+.au-foot{margin:34px 0 0;font-size:13px;color:#8a8ea3;line-height:1.5}
+.au-boot{display:flex;align-items:center;justify-content:center;gap:14px;font-size:20px;font-weight:700}
+.au-dots{display:flex;gap:6px}.au-dots i{width:12px;height:12px;border-radius:50%;background:var(--sales)}.au-dots i:nth-child(2){background:var(--buy)}.au-dots i:nth-child(3){background:var(--spend)}
+@media (prefers-reduced-motion:no-preference){.au-dots i{animation:auDot 1s ease-in-out infinite alternate}.au-dots i:nth-child(2){animation-delay:.15s}.au-dots i:nth-child(3){animation-delay:.3s}@keyframes auDot{to{transform:translateY(-6px)}}}
+@media (max-width:860px){
+  .au{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .au-art{padding:30px 24px 28px;min-height:0}
+  .au-rib{height:54px;border-radius:27px}.au-rib span{display:none}
+  .au-rib.r1{top:-6px}.au-rib.r2{top:58px}.au-rib.r3{top:122px}
+  .au-copy{margin-top:150px}
+  .au-slogan{font-size:32px}.au-sub{display:none}.au-hello{font-size:15px;margin-bottom:10px}
+  .au-form{padding:30px 24px 40px;justify-content:flex-start}
+  .au-logo{font-size:36px}.au h1{margin-top:26px}
+}
 </style>
 </head>
 <body>
@@ -117,20 +169,34 @@ textarea{width:100%;padding:10px 12px;border:1px solid #cbd2dc;border-radius:8px
 <div id="npop" class="hide"></div>
 <button id="sbell" class="nbell hide" title="Notifications" aria-label="Notifications"></button>
 
-<div id="login" class="lg hide">
-  <form class="lcard" id="lform" autocomplete="on">
-    <div class="brand">EXPERT PORTAL</div>
-    <h1>Sign in</h1>
-    <label for="lu">Username</label>
-    <input type="text" id="lu" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
-    <label for="lp">Password</label>
-    <input type="password" id="lp" name="password" autocomplete="current-password" required>
-    <button class="btn lbtn" id="lbtn" type="submit">Sign in</button>
-    <div class="err" id="lerr" role="alert"></div>
-  </form>
+<div id="login" class="au hide">
+  <section class="au-art" aria-hidden="true">
+    <div class="au-rib r1"><span>Sales</span></div>
+    <div class="au-rib r2"><span>Purchase</span></div>
+    <div class="au-rib r3"><span>Expenses</span></div>
+    <div class="au-copy">
+      <p class="au-hello" id="auHello">Welcome back</p>
+      <p class="au-slogan"><span class="s1">Sell well.</span><span class="s2">Buy right.</span><span class="s3">Spend wisely.</span></p>
+      <p class="au-sub">Every entry you make today keeps the team moving. Sales, Purchase and Expenses, all in one place.</p>
+    </div>
+  </section>
+  <section class="au-form">
+    <form id="lform" autocomplete="on" novalidate>
+      <div class="au-logo" aria-label="Expert Corporate Solutions">EX<i>PERT</i><small>CORPORATE SOLUTIONS</small></div>
+      <h1>Sign in to your workspace</h1>
+      <p class="au-lead">Use the username and password your admin gave you.</p>
+      <label for="lu">Username</label>
+      <input type="text" id="lu" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+      <label for="lp">Password</label>
+      <div class="au-pw"><input type="password" id="lp" name="password" autocomplete="current-password" required><button type="button" class="au-eye" id="lpeye" aria-label="Show password" aria-pressed="false">Show</button></div>
+      <button class="btn lbtn" id="lbtn" type="submit">Sign in</button>
+      <div class="err" id="lerr" role="alert"></div>
+      <p class="au-foot">Forgot your password? Ask your admin to reset it from Users &amp; Access.</p>
+    </form>
+  </section>
 </div>
 
-<div id="boot" class="lg"><div class="lcard"><div class="brand">EXPERT PORTAL</div><h1 style="margin:6px 0 0">Loading…</h1></div></div>
+<div id="boot" class="au" style="grid-template-columns:1fr"><div class="au-boot"><span class="au-dots" aria-hidden="true"><i></i><i></i><i></i></span>Opening your workspace…</div></div>
 
 <button id="burger" class="hide" aria-label="Menu">☰</button>
 <div id="app" class="hide">
@@ -148,7 +214,7 @@ textarea{width:100%;padding:10px 12px;border:1px solid #cbd2dc;border-radius:8px
 <script>
 const SB_URL = 'https://ogvltuavclcgbxlyxkhs.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ndmx0dWF2Y2xjZ2J4bHl4a2hzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3MjY4MDAsImV4cCI6MjExMDMwMjgwMH0.M8toXkbQui8TjCacIobkiyew9O-6IrqgZTTzIkQV8Sg';
-const BUILD = '20261118183850';   // set by build.sh; makes browsers fetch fresh module pages after each update
+const BUILD = '20261118185648';   // set by build.sh; makes browsers fetch fresh module pages after each update
 const MODULES = {
   out: {key:'outstanding', title:'Customer Outstanding', path:'outstanding/'},
   pay: {key:'payments', title:'Payment Request', path:'payments/'}
@@ -201,6 +267,7 @@ async function enter(){
 $('#lform').addEventListener('submit', async ev => {
   ev.preventDefault(); if (loginBusy) return; loginBusy = true; $('#lbtn').disabled = true; $('#lerr').textContent = '';
   const u = $('#lu').value.trim().toLowerCase().replace(/\s+/g, ''), pw = $('#lp').value;
+  if (!u || !pw){ $('#lerr').textContent = !u ? 'Enter your username.' : 'Enter your password.'; (!u ? $('#lu') : $('#lp')).focus(); $('#lbtn').disabled = false; loginBusy = false; return; }
   try {
     const {error} = await sb.auth.signInWithPassword({email: u + '@cot.app', password: pw});
     if (error){ $('#lerr').textContent = 'Wrong username or password.'; $('#lbtn').disabled = false; }
@@ -575,6 +642,15 @@ function stopNotes(){
   clearInterval(ntPoll); ntPoll = null; NOTES = []; READS = new Set(); PEOPLE = null; popOpen = false;
   $('#npop').classList.add('hide'); $('#npop').innerHTML = ''; $('#npanel').classList.add('hide'); $('#sbell').classList.add('hide');
 }
+
+/* sign-in page helpers */
+(function(){
+  const h = +new Intl.DateTimeFormat('en-GB', {timeZone: 'Asia/Kolkata', hour: 'numeric', hourCycle: 'h23'}).format(new Date());
+  const el = document.getElementById('auHello');
+  if (el) el.textContent = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  const eye = document.getElementById('lpeye'), pw = document.getElementById('lp');
+  if (eye) eye.addEventListener('click', () => { const show = pw.type === 'password'; pw.type = show ? 'text' : 'password'; eye.textContent = show ? 'Hide' : 'Show'; eye.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); eye.setAttribute('aria-pressed', String(show)); pw.focus(); });
+})();
 
 boot();
 </script>
