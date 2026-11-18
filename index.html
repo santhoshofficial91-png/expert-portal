@@ -149,7 +149,7 @@ async function boot(){
   await enter();
 }
 function showLogin(msg){
-  P = null; current = null; frameMod = null; frameReady = false; pendingGo = null; openG = {}; MOD_NAV_RESET();
+  P = null; current = null; frameMod = null; frameReady = false; pendingGo = null; openG = {}; subOpen = {}; MOD_NAV_RESET();
   $('#frame').src = 'about:blank'; $('#frame').classList.add('hide'); $('#page').classList.add('hide');
   $('#lerr').textContent = msg || ''; $('#lp').value = ''; $('#lbtn').disabled = false;
   show('login'); setTimeout(() => $('#lu').focus(), 50);
@@ -198,7 +198,7 @@ const GICON = {
 const OUT_FALLBACK = [{k:'dashboard',label:'Dashboard'},{k:'outstanding',label:'Outstanding'},{k:'billing',label:'Billing'},{k:'collection',label:'Collection'},{k:'chat',label:'Chat'},{k:'edits',label:'Edit History'},{k:'activity',label:'Activity log'}];
 const RENAME = {outstanding:'Customer Outstanding'};
 const MOD_NAV = {};          // module key -> {items, view, role}
-let openG = {}, createOpen = false, frameMod = null, frameReady = false, pendingGo = null;
+let openG = {}, subOpen = {}, frameMod = null, frameReady = false, pendingGo = null;
 const cacheKey = k => 'portal_nav_' + (P && P.id) + '_' + k;
 function loadNavCache(){ MOD_NAV_RESET(); myMods().forEach(m => { const k = MODULES[m].key; try { const c = JSON.parse(localStorage.getItem(cacheKey(k)) || 'null'); if (c && Array.isArray(c.items)) MOD_NAV[k] = {items: c.items, view: null, role: null, cached: true}; } catch(e){} }); }
 function MOD_NAV_RESET(){ Object.keys(MOD_NAV).forEach(k => delete MOD_NAV[k]); }
@@ -214,8 +214,8 @@ function topBtn(m, it){
 }
 function itemHTML(m, it){
   if (it.children && it.children.length){
-    const anyOn = it.children.some(c => isOn(m, c)), op = createOpen || anyOn;
-    return `<button class="si ${op ? 'open' : ''}" data-tog="${esc(m)}:${esc(it.k)}">${esc(it.label)}${CHEV}</button>` + (op ? it.children.map(c => subBtn(m, c, true)).join('') : '');
+    const key = m + ':' + it.k, anyOn = it.children.some(c => isOn(m, c)), op = subOpen[key] === undefined ? anyOn : subOpen[key];
+    return `<button class="si ${op ? 'open' : ''}" data-tog="${esc(key)}">${esc(it.label)}${CHEV}</button>` + (op ? it.children.map(c => subBtn(m, c, true)).join('') : '');
   }
   return subBtn(m, it, false);
 }
@@ -242,7 +242,7 @@ function buildNav(){
   if (hasPay){
     const info = MOD_NAV.payments; let pi = '';
     if (!info) pi = `<div class="sl-note">${current === 'payments' ? 'Loading…' : 'Click to open'}</div>`;
-    else if (!info.items.length) pi = `<div class="sl-note">${info.cached ? 'Click to open' : 'Coming soon — still being moved here'}</div>`;
+    else if (!info.items.length) pi = `<div class="sl-note">${info.cached ? 'Click to open' : 'No Purchase access for this account — ask the Admin'}</div>`;
     else pi = info.items.map(it => itemHTML('payments', it)).join('');
     h += groupHTML('purchase', 'Purchase', pi, current === 'payments');
   }
@@ -259,7 +259,7 @@ $('#nav').addEventListener('click', ev => {
     if (!was && id === 'purchase' && current !== 'payments' && !(MOD_NAV.payments && MOD_NAV.payments.items.length)) openView('payments'); else buildNav();
     return;
   }
-  const t = ev.target.closest('.si[data-tog]'); if (t){ createOpen = !(t.classList.contains('open')); buildNav(); return; }
+  const t = ev.target.closest('.si[data-tog]'); if (t){ subOpen[t.dataset.tog] = !t.classList.contains('open'); buildNav(); return; }
   const s = ev.target.closest('[data-m]'); if (s){ goSub(s.dataset.m, s.dataset.k, s.dataset.role); $('#side').classList.remove('open'); return; }
   const v = ev.target.closest('.si[data-v]'); if (v){ openView(v.dataset.v); $('#side').classList.remove('open'); }
 });
