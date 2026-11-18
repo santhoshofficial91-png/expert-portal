@@ -315,6 +315,9 @@ async function loadUsers(){
   return true;
 }
 const hasMod = (u, m) => Array.isArray(u.mods) ? u.mods.includes(m) : m === 'out';
+// PR "sub admin" is stored as prRole executive + prDept Sub Admin (that is how the Payment Request rules work)
+const uiPrRole = u => (u.prRole === 'executive' && u.prDept === 'Sub Admin') ? 'sub admin' : (u.prRole || '');
+function prStore(role, dept){ return role === 'sub admin' ? {prRole: 'executive', prDept: 'Sub Admin'} : {prRole: role, prDept: dept}; }
 async function renderAccess(){
   const pg = $('#page'); pg.innerHTML = '<h2>Users &amp; Access</h2><div class="sub">Loading…</div>';
   if (!(await loadUsers())) return;
@@ -325,7 +328,7 @@ async function renderAccess(){
       <td><b>${esc(u.name)}</b><div class="mut">@${esc(u.username)}${me ? ' · you' : ''}</div></td>
       <td><label class="chk" style="margin:0"><input type="checkbox" class="m-out" ${out ? 'checked' : ''}> <span class="mut">${esc(u.role || '')}</span></label></td>
       <td><label class="chk" style="margin:0"><input type="checkbox" class="m-pay" ${pay ? 'checked' : ''}></label></td>
-      <td><select class="pr-role"><option value="">—</option>${['admin','manager','executive'].map(r => `<option ${u.prRole === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
+      <td><select class="pr-role"><option value="">—</option>${['admin','manager','executive','sub admin'].map(r => `<option ${uiPrRole(u) === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
       <td><select class="pr-dept"><option value="">—</option>${PR_DEPTS.map(d => `<option ${u.prDept === d ? 'selected' : ''}>${d}</option>`).join('')}</select></td>
       <td><select class="pr-mgr"><option value="">—</option>${mgrs.filter(m => m.id !== u.id).map(m => `<option value="${m.id}" ${u.prManagerId === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></td>
       <td><label class="chk" style="margin:0"><input type="checkbox" class="act" ${u.active !== false ? 'checked' : ''} ${me ? 'disabled' : ''}></label></td>
@@ -343,7 +346,7 @@ $('#page').addEventListener('click', async ev => {
   const tr = b.closest('tr'), u = USERS.find(x => x.id === tr.dataset.id); if (!u) return;
   if (b.dataset.a === 'pw') return pwModal(u);
   const out = tr.querySelector('.m-out').checked, pay = tr.querySelector('.m-pay').checked;
-  const prRole = tr.querySelector('.pr-role').value, prDept = tr.querySelector('.pr-dept').value, prMgr = tr.querySelector('.pr-mgr').value;
+  const st = prStore(tr.querySelector('.pr-role').value, tr.querySelector('.pr-dept').value), prRole = st.prRole, prDept = st.prDept, prMgr = prDept === 'Sub Admin' ? '' : tr.querySelector('.pr-mgr').value;
   const act = tr.querySelector('.act').checked;
   if (!out && !pay){ toast('Tick at least one module.'); return; }
   if (u.id === P.id && !(out && (u.role === 'Admin'))){ toast('You cannot remove your own Customer Outstanding access.'); return; }
@@ -395,7 +398,7 @@ function addUserModal(mgrs){
     <label class="chk"><input type="checkbox" id="ao"> Customer Outstanding</label>
     <div id="aob" class="hide"><label>Customer Outstanding role</label><select id="aor"><option>Executive</option><option>Manager</option><option>Sub Admin</option></select><div class="mut">Areas and linked manager are set afterwards in Customer Outstanding → Users.</div></div>
     <label class="chk"><input type="checkbox" id="apy" checked> Payment Request</label>
-    <div id="apb"><label>PR role</label><select id="apr"><option value="executive">executive</option><option value="manager">manager</option></select>
+    <div id="apb"><label>PR role</label><select id="apr"><option value="executive">executive</option><option value="manager">manager</option><option value="sub admin">sub admin</option></select>
       <label>PR department</label><select id="apd">${PR_DEPTS.map(d => `<option>${d}</option>`).join('')}</select>
       <label>PR manager (executives)</label><select id="apm"><option value="">—</option>${mgrs.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></div>
     <div class="err" id="ae"></div><div class="fr"><button class="btn sec" id="ac">Cancel</button><button class="btn" id="as">Create</button></div>`);
@@ -410,7 +413,7 @@ function addUserModal(mgrs){
     if (password.length < 6){ err('Password needs 6 or more characters.'); return; }
     if (!out && !pay){ err('Tick at least one module.'); return; }
     if (USERS.some(x => x.username === username)){ err('That username is taken.'); return; }
-    const prRole = g('#apr').value, prDept = g('#apd').value, prMgr = g('#apm').value;
+    const st = prStore(g('#apr').value, g('#apd').value), prRole = st.prRole, prDept = st.prDept, prMgr = prDept === 'Sub Admin' ? '' : g('#apm').value;
     if (pay && prRole === 'executive' && !prMgr && prDept !== 'Sub Admin'){ err('Choose the PR manager for an executive (or department Sub Admin).'); return; }
     const doc = {name, phone: g('#aph').value.trim(), active: true, created: new Date().toISOString(), subs: [],
       role: out ? g('#aor').value : (prRole === 'manager' ? 'Manager' : 'Executive'), mods: [out && 'out', pay && 'pay'].filter(Boolean)};
