@@ -122,7 +122,7 @@ const MODULES = {
   out: {key:'outstanding', title:'Customer Outstanding', path:'outstanding/'},
   pay: {key:'payments', title:'Payment Request', path:'payments/'}
 };
-const PR_DEPTS = ['Sub Admin','HR','Purchase','Delivery','Excoso','Branding'];
+const PR_DEPTS = ['Sub Admin','Sales','HR','Purchase','Delivery','Excoso','Branding'];
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const sb = supabase.createClient(SB_URL, SB_KEY);
@@ -238,8 +238,6 @@ function buildNav(){
   // Sales
   const sal = ['outstanding', 'billing', 'collection'].map(get).filter(Boolean);
   if (sal.length) h += groupHTML('sales', 'Sales', sal.map(it => itemHTML('outstanding', it)).join(''), sal.some(it => on('outstanding', it)));
-  ['chat', 'edits', 'activity'].forEach(k => { const it = get(k); if (it) h += topBtn('outstanding', it); });
-  oi.filter(it => !used.has(it.k)).forEach(it => { h += it.children ? itemHTML('outstanding', it) : topBtn('outstanding', it); });
   // Purchase
   if (hasPay){
     const info = MOD_NAV.payments; let pi = '';
@@ -248,6 +246,8 @@ function buildNav(){
     else pi = info.items.map(it => itemHTML('payments', it)).join('');
     h += groupHTML('purchase', 'Purchase', pi, current === 'payments');
   }
+  ['chat', 'edits', 'activity'].forEach(k => { const it = get(k); if (it) h += topBtn('outstanding', it); });
+  oi.filter(it => !used.has(it.k)).forEach(it => { h += it.children ? itemHTML('outstanding', it) : topBtn('outstanding', it); });
   $('#nav').innerHTML = h;
 }
 function sendGo(){ if (!pendingGo || !frameReady) return; try { $('#frame').contentWindow.postMessage({type:'portal-go', k: pendingGo.k, role: pendingGo.role || ''}, location.origin); } catch(e){} pendingGo = null; }
