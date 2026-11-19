@@ -1028,6 +1028,10 @@ function userForm(u, r){
   return `<h2 style="font-size:22px;margin:0 0 4px">${u ? 'Edit' : 'Create'} ${r}</h2>
   <label for="un">Name</label><input id="un" value="${esc(u?.name || '')}" required>
   <label for="uu">Username</label><input id="uu" value="${esc(u?.username || '')}" autocomplete="off" required>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 14px">
+    <div><label for="uph">Mobile number <span class="mut">(optional)</span></label><input id="uph" type="tel" inputmode="tel" autocomplete="off" value="${esc(u?.phone || '')}" placeholder="e.g. 98765 43210"></div>
+    <div><label for="uem">Email ID <span class="mut">(optional)</span></label><input id="uem" type="email" autocomplete="off" value="${esc(u?.email || '')}" placeholder="name@company.com"></div>
+  </div>
   ${dept}
   ${!u || isAdm() ? `<label for="upw">${u ? 'Login password' : 'Password (6+ characters)'}</label><input id="upw" type="${isAdm() ? 'text' : 'password'}" autocomplete="off" value="${esc((SB ? SECRETS[u?.id] : u?.pw) || '')}" placeholder="${u && !(SB ? SECRETS[u.id] : u.pw) ? 'Not stored yet. Type a new password to set it.' : ''}" ${u ? '' : 'required'} minlength="6">${u && isAdm() ? '<div class="mut" style="margin-top:6px;font-size:12px">Only the Admin can see and change this.</div>' : ''}` : ''}
   ${exec}
@@ -1070,9 +1074,12 @@ function viewCreate(){
 async function submitUser(form){
   const id = form.dataset.id, role = form.dataset.role, old = id ? D.users.get(id) : null, err = form.querySelector('#uerr');
   const username = val('uu').toLowerCase().replace(/\s+/g, ''), name = val('un'), pw = val('upw');
-  if ([...D.users.values()].some(x => x.username === username && x.id !== id)){ err.textContent = 'That username is taken.'; return; }
+  const phone = (form.querySelector('#uph')?.value || '').trim(), email = (form.querySelector('#uem')?.value || '').trim().toLowerCase();
+  if ([...(ALLU.size ? ALLU : D.users).values()].some(x => x.username === username && x.id !== id)){ err.textContent = 'That username is taken.'; return; }
+  if (phone && !/^[+]?[0-9][0-9 -]{6,16}$/.test(phone)){ err.textContent = 'Enter a valid mobile number (digits only), or leave it empty.'; return; }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ err.textContent = 'Enter a valid email ID, or leave it empty.'; return; }
   if (pw && pw.length < 6){ err.textContent = 'Password needs 6 or more characters.'; return; }
-  const u = {...(old || {active:true, created:nowISO(), phone:''}), username, name, role};
+  const u = {...(old || {active:true, created:nowISO(), phone:''}), username, name, role, phone, email};
   const deptUI = !!form.querySelector('.udep');
   const depts = [...form.querySelectorAll('.udep:checked')].map(x => x.value), sales = !deptUI || depts.includes('Sales'), pur = deptUI && depts.includes('Purchase');
   if (deptUI && !depts.length){ err.textContent = 'Select a department: Sales, Purchase or both.'; return; }
