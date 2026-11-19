@@ -296,6 +296,8 @@ const viewAllowed = k => allowedViews().includes(k);
 const defaultView = () => allowedViews()[0];
 const CHEV = '<svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
 const GICON = {
+  mail:'<svg class="gi" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+  contacts:'<svg class="gi" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M7.5 17c.8-2 2.5-3 4.5-3s3.7 1 4.5 3"/></svg>',
   dashboard:'<svg class="gi" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="8" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="15" width="7" height="6" rx="1.5"/></svg>',
   sales:'<svg class="gi" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>',
   purchase:'<svg class="gi" viewBox="0 0 24 24"><path d="M3 4h2l2.4 11h11l2-8H6.2"/><circle cx="9" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/></svg>',
@@ -343,13 +345,14 @@ function buildNav(){
   let h = '';
   const dash = get('dashboard'); if (dash) h += topBtn('outstanding', dash);
   const wa = get('wa'); if (wa) h += topBtn('outstanding', wa);
+  const ml = get('mail'); if (ml) h += topBtn('outstanding', ml);
   // Admin: Create + Users & Access
   const cr = get('create'); let ai = '';
   if (cr) ai += itemHTML('outstanding', cr);
   if (isAdmin()) ai += `<button class="si ${current === 'access' ? 'on' : ''}" data-v="access">Users &amp; Access</button>`;
   if (ai) h += groupHTML('admin', 'Admin', ai, on('outstanding', cr) || current === 'access');
   // Sales
-  const sal = ['outstanding', 'billing', 'collection'].map(get).filter(Boolean);
+  const sal = ['outstanding', 'billing', 'collection', 'contacts'].map(get).filter(Boolean);
   if (sal.length) h += groupHTML('sales', 'Sales', sal.map(it => itemHTML('outstanding', it)).join(''), sal.some(it => on('outstanding', it)));
   // Purchase + Expenses (from the Payment Request module; its "Supplier Payment" sub-group is flattened, "Expense" becomes its own group)
   if (hasPay){
