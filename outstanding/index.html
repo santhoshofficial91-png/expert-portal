@@ -590,27 +590,51 @@ const contactOf = p => D.contacts.get(pkey(p)) || {};
 const threadOf = id => (id && D.mailthread.get(id)) || null;
 const partyThreads = p => [...D.mailthread.values()].filter(t => (t.party || '').trim() === p).sort((a, b) => (b.lastAt || '') < (a.lastAt || '') ? -1 : 1);
 const threadRows = t => [...D.entries.values()].filter(e => (e.party || '').trim() === (t.party || '').trim() && ((t.ids || []).includes(e.id) || (!(t.ids || []).length && (t.invs || []).includes(e.ref))));
-function mailHTML(party, rows, n){
-  const td = 'border:1px solid #000;padding:5px 10px;', total = sum(rows);
-  const over = rows.some(e => e.due && e.due < TODAY);
-  const days = e => !e.due ? '—' : over ? (od(e) > 0 ? od(e) : '—') : (dn(e.due) - TDN === 0 ? 'Today' : dn(e.due) - TDN);
-  const body = rows.map(e => `<tr><td style="${td}text-align:center">${dShort(e.date)}</td><td style="${td}text-align:center">${esc(e.ref || '—')}</td><td style="${td}text-align:right">${n2(e.amount)}</td><td style="${td}text-align:center">${dShort(e.due)}</td><td style="${td}text-align:center">${days(e)}</td></tr>`).join('');
-  const tot = rows.length > 1 ? `<tr><td style="${td}font-weight:bold" colspan="2">Total</td><td style="${td}text-align:right;font-weight:bold">${n2(total)}</td><td style="${td}" colspan="2"></td></tr>` : '';
-  const table = `<table style="border-collapse:collapse;font-family:Verdana,Arial,sans-serif;font-size:13px;margin:10px 0"><tr><td colspan="5" style="${td}text-align:center;font-weight:bold">${esc(party)}</td></tr><tr><th style="${td}font-weight:normal;text-align:center">Date</th><th style="${td}font-weight:normal;text-align:center">Inv Num</th><th style="${td}font-weight:normal;text-align:center">Pending Amt</th><th style="${td}font-weight:normal;text-align:center">Due Date</th><th style="${td}font-weight:normal;font-style:italic;text-align:center">${over ? 'Overdue' : 'Due'}</th></tr>${body}${tot}</table>`;
+// Payment mail body. Used by the app preview (outstanding/index.html) and by the mail service (supabase/send-mail). Keep both copies identical.
+// kind: 'inv' = invoice copy mail (first mail), 'out' = outstanding mail (first mail, overdue),
+//       'fu'  = follow-up before the due date, 'rem' = Reminder N after the due date.
+function mailBody(party, rows, kind, remN, today){
+  const E = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const M3 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const DS = s => { if (!s) return '—'; const [y, m, d] = s.split('-'); return d + '-' + M3[+m - 1] + '-' + y.slice(2); };
+  const DN = s => { const [y, m, d] = s.split('-').map(Number); return Math.floor(Date.UTC(y, m - 1, d) / 864e5); };
+  const N2 = n => (n || 0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const RS = n => '₹' + Math.trunc(n || 0).toLocaleString('en-IN');
+  const T = DN(today), od = e => e.due ? T - DN(e.due) : null, left = e => e.due ? DN(e.due) - T : null;
+  const total = rows.reduce((a, e) => a + (e.amount || 0), 0), over = rows.some(e => e.due && e.due < today);
+  if (kind === 'out' && !over) kind = 'fu';
+  if (kind === 'fu' && over) kind = 'rem';
+  const td = 'border:1px solid #000;padding:5px 10px;';
+  const th = (t, x) => `<th style="${td}font-weight:normal;text-align:center${x || ''}">${t}</th>`;
+  const lastCol = kind === 'inv' ? '' : (over ? 'Overdue' : 'Due');
+  const cell = e => kind === 'inv' ? '' : `<td style="${td}text-align:center">${!e.due ? '—' : over ? (od(e) > 0 ? od(e) : '—') : (left(e) === 0 ? 'Today' : left(e))}</td>`;
+  const cols = kind === 'inv' ? 4 : 5;
+  const body = rows.map(e => `<tr><td style="${td}text-align:center">${DS(e.date)}</td><td style="${td}text-align:center">${E(e.ref || '—')}</td><td style="${td}text-align:right">${N2(e.amount)}</td><td style="${td}text-align:center">${DS(e.due)}</td>${cell(e)}</tr>`).join('');
+  const tot = rows.length > 1 ? `<tr><td style="${td}font-weight:bold" colspan="2">Total</td><td style="${td}text-align:right;font-weight:bold">${N2(total)}</td><td style="${td}" colspan="${cols - 3}"></td></tr>` : '';
+  const table = `<table style="border-collapse:collapse;font-family:Verdana,Arial,sans-serif;font-size:13px;margin:10px 0"><tr><td colspan="${cols}" style="${td}text-align:center;font-weight:bold">${E(party)}</td></tr><tr>${th('Date')}${th('Inv Num')}${th(kind === 'inv' ? 'Amount' : 'Pending Amt')}${th('Due Date')}${lastCol ? th(lastCol, ';font-style:italic') : ''}</tr>${body}${tot}</table>`;
   const p = t => `<p style="margin:0 0 12px">${t}</p>`;
-  const sign = p('Thank you for your cooperation.') + `<p style="margin:0">Best Regards,<br>Accounts Department<br>Expert Corporate Solutions</p>`;
+  const sign = (kind === 'inv' ? p('Thank you for your business.') : p('Thank you for your cooperation.')) + `<p style="margin:0">Best Regards,<br>Accounts Department<br>Expert Corporate Solutions</p>`;
+  const inv = rows.length > 1 ? 'invoices' : 'invoice', are = rows.length > 1 ? 'are' : 'is';
   const odDays = rows.map(od).filter(x => x > 0), maxOd = odDays.length ? Math.max(...odDays) : 0;
-  const inv = rows.length > 1 ? 'invoices' : 'invoice', inv2 = rows.length > 1 ? 'are' : 'is';
-  if (n > 0) return `<div style="text-align:center;font-weight:bold;font-size:15px;margin:0 0 12px">Reminder ${n}</div>` + p('Dear Customer,') +
-    p(`We have not yet received any reply to our previous mail regarding the outstanding ${inv} below. The payment of ${money(total)} is still pending.`) + table +
+  const dd = rows.map(left).filter(x => x != null), dmin = dd.length ? Math.min(...dd) : null;
+  if (kind === 'inv') return p('Dear Customer,') + p(`Please find attached our ${inv} for your reference. Kindly account the same in your books.`) + table +
+    p('Kindly arrange the payment on or before the due date as per the agreed payment terms.') + sign;
+  if (kind === 'rem') return `<div style="text-align:center;font-weight:bold;font-size:15px;margin:0 0 12px">Reminder ${remN || 1}</div>` + p('Dear Customer,') +
+    p(`We have not yet received any reply to our previous mail regarding the outstanding ${inv} below. The payment of ${RS(total)} is still pending.`) + table +
     p('Kindly reply to this mail and confirm the date on which the payment will be released, so that we can update our records accordingly.') + sign;
-  if (over) return p('Dear Customer,') + p(`This is a gentle reminder regarding the outstanding ${inv} below, which ${inv2} still pending for payment.`) + table +
-    p(`The payment of ${money(total)} is currently overdue by ${odDays.length > 1 && new Set(odDays).size > 1 ? 'up to ' : ''}${maxOd} days against the agreed payment terms.`) +
+  if (kind === 'out') return p('Dear Customer,') + p(`This is a gentle reminder regarding the outstanding ${inv} below, which ${are} still pending for payment.`) + table +
+    p(`The payment of ${RS(total)} is currently overdue by ${odDays.length > 1 && new Set(odDays).size > 1 ? 'up to ' : ''}${maxOd} days against the agreed payment terms.`) +
     p('We kindly request you to check the status and arrange for the payment release at the earliest. Also, please share the confirmed payment release date so that we can update our records accordingly.') + sign;
-  const dd = rows.filter(e => e.due).map(e => dn(e.due) - TDN), dmin = dd.length ? Math.min(...dd) : null;
-  return p('Dear Customer,') + p(`This is a gentle reminder that the payment of ${money(total)} will become due ${dmin === 0 ? 'today' : dmin == null ? 'soon' : 'in ' + dmin + ' day' + (dmin === 1 ? '' : 's')}, as per the agreed payment terms.`) + table +
+  return p('Dear Customer,') + p(`This is a gentle reminder that the payment of ${RS(total)} will become due ${dmin === 0 ? 'today' : dmin == null ? 'soon' : 'in ' + dmin + ' day' + (dmin === 1 ? '' : 's')}, as per the agreed payment terms.`) + table +
     p('We kindly request you to arrange the payment on or before the due date to ensure timely settlement.') + sign;
 }
+// What the next mail of a thread is: before the due date a follow-up, after it Reminder N.
+function nextKind(t, rows, today){
+  if (!t) return null;
+  const over = rows.some(e => e.due && e.due < today);
+  return over ? {kind:'rem', remN:(t.remCount != null ? t.remCount : Math.max(0, (t.count || 1) - 1)) + 1} : {kind:'fu', remN:0};
+}
+
 async function mailCall(body){
   if (!SB) return {error:'Mail works only on the live site.'};
   const {data, error} = await Store.sb.functions.invoke('send-mail', {body});
@@ -625,23 +649,22 @@ function viewMail(){
   const parties = custParties(), P = F.mparty && parties.includes(F.mparty) ? F.mparty : '';
   const pick = `<label class="sf" style="min-width:320px"><span>Customer</span><input list="mplist" id="mparty" value="${esc(P || F.mpq || '')}" placeholder="Type the customer name" autocomplete="off"></label><datalist id="mplist">${parties.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
   const warn = MAILREADY === 'no' ? `<div class="note bad" style="margin-bottom:10px">Mail is not connected yet. The Gmail app password for expertcorporatesolutions2023@gmail.com must be added once (see the setup steps from Claude).</div>` : '';
-  if (!P) return `<div class="head"><div><h1>Send Payment Mail</h1><p class="sub">Mails go from expertcorporatesolutions2023@gmail.com. Every next mail to the same customer goes as Reminder 1, 2, 3… in the same mail thread (Reply All).</p></div></div>${warn}<div class="bar sfb">${pick}</div>${mailThreadsHTML()}`;
+  if (!P) return `<div class="head"><div><h1>Send Payment Mail</h1><p class="sub">Mails go from expertcorporatesolutions2023@gmail.com. Every next mail of a thread goes in the same mail thread (Reply All).</p></div></div>${warn}${autoGlobalHTML()}<div class="bar sfb">${pick}</div>${mailThreadsHTML()}`;
   const th = threadOf(F.mthread && D.mailthread.get(F.mthread) && (D.mailthread.get(F.mthread).party || '').trim() === P ? F.mthread : ''), n = th ? th.count : 0, c = contactOf(P);
+  const AUTO = D.meta.get('mailauto') || {}, paused = !!contactOf(P).autoPaused;
   const rows = (th ? threadRows(th).filter(e => e.status !== 'Paid') : [...D.entries.values()].filter(e => e.status !== 'Paid' && (e.party || '').trim() === P)).sort((a, b) => (a.due || '') < (b.due || '') ? -1 : 1);
   const sel = F.msel || (F.msel = new Set(th ? rows.map(e => e.id) : []));
   const picked = rows.filter(e => sel.has(e.id)), allOn = rows.length > 0 && picked.length === rows.length;
   const paidN = th ? threadRows(th).length - rows.length : 0;
   const list = rows.map(e => `<tr><td><input type="checkbox" class="msel" value="${e.id}" ${sel.has(e.id) ? 'checked' : ''} aria-label="Select ${esc(e.ref || '')}"></td><td>${fmtD(e.date)}</td><td class="mono">${esc(e.ref || '—')}</td><td>${esc(e.sub)}</td><td class="r num">${inr2(e.amount)}</td><td>${fmtD(e.due)}</td><td class="r">${od(e) > 0 ? `<span class="pill bad">${od(e)} d</span>` : e.due ? (dn(e.due) === TDN ? 'Due today' : 'Due in ' + (dn(e.due) - TDN) + ' d') : '—'}</td><td>${e.expectedDate ? fmtD(e.expectedDate) : '—'}</td></tr>`).join('');
   const others = th ? [] : partyThreads(P);
-  const hist = th ? `<div class="note info" style="margin:0 0 10px">Mails sent in this thread: <b>${th.count}</b> · last on <b>${fmtD(th.lastAt.slice(0, 10))} ${new Date(th.lastAt).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', hour12:true})}</b> by ${esc((th.log || []).slice(-1)[0]?.byName || '')}. Only the invoices of this thread are shown${paidN ? ` (${paidN} already Paid)` : ''}. The next mail goes as <b>Reminder ${n}</b> in the same thread. <button class="btn sm" data-act="mailReset" style="margin-left:6px">Customer replied – close this thread</button></div>`
-    : `<div class="note info" style="margin:0 0 10px">New mail: tick the invoices to send. It starts a new mail thread; the next mails of that thread go as Reminder 1, 2, 3…${others.length ? `<br>This customer already has ${others.length} open thread${others.length > 1 ? 's' : ''}: ${others.map(t => `<button class="btn sm" data-act="mailOpen" data-k="${esc(t.party)}" data-t="${esc(t.id)}" style="margin:4px 4px 0 0">${esc((t.invs || []).slice(0, 2).join(', '))}${(t.invs || []).length > 2 ? ' +' + ((t.invs || []).length - 2) : ''} · ${t.count} sent</button>`).join('')}` : ''}</div>`;
+  const hist = th ? `<div class="note info" style="margin:0 0 10px">Mails sent in this thread: <b>${th.count}</b> · last on <b>${fmtD(th.lastAt.slice(0, 10))} ${new Date(th.lastAt).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', hour12:true})}</b> by ${esc((th.log || []).slice(-1)[0]?.byName || '')}. Only the invoices of this thread are shown${paidN ? ` (${paidN} already Paid)` : ''}. The next mail goes in the same thread. <button class="btn sm" data-act="mailReset" style="margin-left:6px">Customer replied – close this thread</button></div>`
+    : `<div class="note info" style="margin:0 0 10px">New mail: tick the invoices, choose Invoice mail or Outstanding mail, and send. It starts a new mail thread.${others.length ? `<br>This customer already has ${others.length} open thread${others.length > 1 ? 's' : ''}: ${others.map(t => `<button class="btn sm" data-act="mailOpen" data-k="${esc(t.party)}" data-t="${esc(t.id)}" style="margin:4px 4px 0 0">${esc((t.invs || []).slice(0, 2).join(', '))}${(t.invs || []).length > 2 ? ' +' + ((t.invs || []).length - 2) : ''} · ${t.count} sent</button>`).join('')}` : ''}</div>`;
   return `<div class="head"><div><h1>Send Payment Mail</h1><p class="sub">From expertcorporatesolutions2023@gmail.com · ${th ? 'Subject: ' + esc('Re: ' + th.subject) : 'New mail thread'}</p></div><div class="bar" style="margin:0"><button class="btn" data-act="mailBack">← All customers</button></div></div>${warn}
   <div class="bar sfb">${pick}</div>${th ? replyNote(th) : ''}${hist}
   <div class="card"><h2 style="margin:0 0 8px">1. Tick the invoices</h2><div class="tw"><table><thead><tr><th><input type="checkbox" id="mall" ${allOn ? 'checked' : ''} ${rows.length ? '' : 'disabled'} aria-label="Tick all invoices" title="Tick / untick all"></th><th>Date</th><th>Inv Num</th><th>Area</th><th class="r">Pending Amt</th><th>Due Date</th><th class="r">Overdue</th><th>Expected</th></tr></thead><tbody>${list || '<tr><td colspan="8" class="empty">No open invoices.</td></tr>'}</tbody></table></div></div>
   <div class="card" style="margin-top:12px"><h2 style="margin:0 0 8px">2. Mail IDs</h2><div class="frow"><label class="f">To (customer mail IDs, separate with comma)<input id="mto" value="${esc(F.mto ?? c.to ?? '')}" placeholder="accounts@customer.com"></label></div><div class="frow"><label class="f">CC<input id="mcc" value="${esc(F.mcc ?? c.cc ?? '')}" placeholder="optional"></label></div><p class="mut" style="margin:4px 0 0">Saved to Customer Contacts after sending.</p></div>
-  <div class="card" style="margin-top:12px"><h2 style="margin:0 0 8px">3. Check the mail and send</h2>${picked.length ? `<div class="mprev">${mailHTML(P, picked, n)}</div>` : rows.length ? `<div class="note" style="margin:0 0 8px;background:#fff7e0;border:1px solid #e0a800;color:#6b4e00">No invoice ticked yet. This preview shows all the invoices above — tick the ones you want to send.</div><div class="mprev" style="opacity:.75">${mailHTML(P, rows, n)}</div>` : '<p class="mut">No open invoices for this customer.</p>'}
-  ${n ? '' : attachHTML()}
-  <div class="err" id="merr"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="mailSend" ${picked.length && MAILREADY !== 'no' ? '' : 'disabled'}>${n ? 'Send Reminder ' + n : 'Send mail'}</button></div></div>${th ? autoCard(th) : ''}`;
+  <div class="card" style="margin-top:12px"><h2 style="margin:0 0 8px">3. Check the mail and send</h2>${mailStep3(P, th, rows, picked)}</div>${th ? autoCard(th, rows) : ''}`;
 }
 
 const tm12 = x => { const [h, m] = x.split(':').map(Number); return ((h % 12) || 12) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' am' : ' pm'); };
@@ -651,19 +674,45 @@ let MAILCHK = 0;
 function mailAutoCheck(force){ if (!SB || (!force && Date.now() - MAILCHK < 5 * 60000)) return Promise.resolve(); MAILCHK = Date.now(); return mailCall({action:'check'}); }
 function replyNote(th){
   if (!th.repliedAt) return '';
-  return `<div class="note" style="margin:0 0 10px;background:#e7f6ec;border:1px solid #25a244;color:#0b5d22"><b>✉ Customer replied</b> on <b>${atTxt(th.repliedAt)}</b> from ${esc(th.replyFrom || '')}. Automatic reminders are stopped for this thread. <a class="btn sm" target="_blank" rel="noopener" href="${gmailLink(th)}" style="margin-left:6px">Read the reply in Gmail</a></div>`;
+  return `<div class="note" style="margin:0 0 10px;background:#e7f6ec;border:1px solid #25a244;color:#0b5d22"><b>✉ Customer replied</b> on <b>${atTxt(th.repliedAt)}</b> from ${esc(th.replyFrom || '')}. Automatic mails are stopped for this thread. <a class="btn sm" target="_blank" rel="noopener" href="${gmailLink(th)}" style="margin-left:6px">Read the reply in Gmail</a></div>`;
 }
-function autoCard(th){
-  const a = th.auto || {}, times = a.times && a.times.length ? a.times : ['10:00', '15:00'];
-  const tmr = new Date(Date.now() + 330 * 60000 + 864e5).toISOString().slice(0, 10);
-  const st = a.on ? `<div class="note info" style="margin:0 0 10px"><b>Automatic reminders are ON</b> · every day at <b>${times.map(tm12).join(' and ')}</b> from <b>${fmtD(a.from)}</b> · set by ${esc(a.byName || '')}. They stop by themselves when the customer replies or all invoices of this thread are Paid.${a.lastError ? `<br><span style="color:#b42318">Last automatic mail failed: ${esc(a.lastError)}</span>` : ''}</div>`
-    : (a.stopped ? `<p class="mut" style="margin:0 0 8px">Automatic reminders stopped: ${esc(a.stopped)} (${atTxt(a.stoppedAt)}).</p>` : '');
-  return `<div class="card" style="margin-top:12px"><h2 style="margin:0 0 8px">Automatic reminders</h2>${st}
-    <div class="frow" style="align-items:flex-end;flex-wrap:wrap"><label class="f" style="max-width:160px">1st time<input type="time" id="at1" value="${esc(times[0] || '10:00')}"></label><label class="f" style="max-width:160px">2nd time (optional)<input type="time" id="at2" value="${esc(times[1] || '')}"></label><label class="f" style="max-width:190px">Start from<input type="date" id="afrom" value="${esc(a.on && a.from ? a.from : tmr)}"></label>
-    <div style="display:flex;gap:8px;padding-bottom:2px">${a.on ? '<button class="btn pri" data-act="autoSave" data-on="1">Update times</button><button class="btn dng" data-act="autoSave" data-on="0">Stop automatic</button>' : (th.repliedAt ? '<button class="btn" data-act="autoSave" data-on="1" data-force="1">Customer replied but not paid – start automatic again</button>' : '<button class="btn pri" data-act="autoSave" data-on="1">Start automatic reminders</button>')}</div></div>
-    <p class="mut" style="margin:6px 0 0">Each automatic mail goes as the next Reminder in this same thread, to the same To / CC, with the invoices of this thread that are still not Paid.</p></div>`;
+function mailPlan(th, rows){   // which mail goes next
+  if (th){ const k = nextKind(th, rows, TODAY); return {kind:k.kind, remN:k.remN, label:k.kind === 'rem' ? 'Send Reminder ' + k.remN : 'Send follow-up mail'}; }
+  const t = F.mtype || 'inv';
+  return {kind:t, remN:0, label:t === 'inv' ? 'Send invoice mail' : 'Send outstanding mail'};
 }
-
+function mailStep3(P, th, rows, picked){
+  const use = picked.length ? picked : rows, pl = mailPlan(th, use), t = F.mtype || 'inv';
+  const pickType = th ? `<p class="mut" style="margin:0 0 8px">Next mail in this thread: <b>${pl.kind === 'rem' ? 'Reminder ' + pl.remN + ' (due date crossed)' : 'Follow-up (before the due date)'}</b></p>`
+    : `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px" role="group" aria-label="Mail type"><button class="btn ${t === 'inv' ? 'pri' : ''}" data-act="mtype" data-k="inv" aria-pressed="${t === 'inv'}">Invoice mail</button><button class="btn ${t === 'out' ? 'pri' : ''}" data-act="mtype" data-k="out" aria-pressed="${t === 'out'}">Outstanding mail</button></div>
+      <p class="mut" style="margin:0 0 8px">${t === 'inv' ? 'Invoice mail: send the invoice copy so the customer accounts it. From 7 days before the due date a follow-up mail goes every day; after the due date Reminder 1, 2, 3… every day.' : 'Outstanding mail: for invoices already overdue. After this, Reminder 1, 2, 3… go every day in the same thread.'}</p>`;
+  const prev = !use.length ? '<p class="mut">No open invoices for this customer.</p>'
+    : (picked.length ? '' : `<div class="note" style="margin:0 0 8px;background:#fff7e0;border:1px solid #e0a800;color:#6b4e00">No invoice ticked yet. This preview shows all the invoices above — tick the ones you want to send.</div>`) +
+      `<div class="mprev" style="${picked.length ? '' : 'opacity:.75'}">${mailBody(P, use, pl.kind, pl.remN, TODAY)}</div>`;
+  return pickType + prev + (th ? '' : attachHTML()) + `<div class="err" id="merr"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="mailSend" ${picked.length && MAILREADY !== 'no' ? '' : 'disabled'}>${pl.label}</button></div>`;
+}
+function autoCard(th, rows){
+  const A = D.meta.get('mailauto') || {}, on = A.on !== false, time = A.time || '10:00', c = contactOf(th.party), paused = !!c.autoPaused;
+  const T = DN0(TODAY), dd = rows.filter(e => e.due).map(e => dn(e.due) - TDN), dmin = dd.length ? Math.min(...dd) : null, over = rows.some(e => e.due && e.due < TODAY);
+  let st;
+  if (!rows.length) st = 'All invoices of this thread are Paid — no more automatic mails.';
+  else if (!on) st = 'Automatic mails are switched OFF for all customers (Send Payment Mail page).';
+  else if (paused) st = 'Automatic mails are <b>paused for this customer</b>.';
+  else if (th.repliedAt) st = 'Stopped because the customer replied.';
+  else if (over) st = `Next automatic mail: <b>Reminder ${nextKind(th, rows, TODAY).remN}</b> at <b>${tm12(time)}</b> every day.`;
+  else if (dmin != null && dmin <= 7) st = `Next automatic mail: <b>Follow-up</b> (due in ${dmin} day${dmin === 1 ? '' : 's'}) at <b>${tm12(time)}</b> every day.`;
+  else st = dmin == null ? 'No due date on these invoices — no automatic mails.' : `Automatic follow-ups start on <b>${fmtD(new Date(Date.UTC(1970, 0, 1 + TDN + dmin - 7)).toISOString().slice(0, 10))}</b> (7 days before the due date) at <b>${tm12(time)}</b>.`;
+  const err = th.autoErr ? `<br><span style="color:#b42318">Last automatic mail failed: ${esc(th.autoErr)}</span>` : '';
+  return `<div class="card" style="margin-top:12px"><h2 style="margin:0 0 8px">Automatic mails</h2><div class="note info" style="margin:0 0 10px">${st}${err}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${paused ? `<button class="btn pri" data-act="custPause" data-k="${esc(th.party)}" data-on="0">Resume automatic mails for this customer</button>` : `<button class="btn" data-act="custPause" data-k="${esc(th.party)}" data-on="1">Pause automatic mails for this customer</button>`}${th.repliedAt ? '<button class="btn" data-act="mailResume">Customer replied but not paid – continue automatic mails</button>' : ''}</div>
+    <p class="mut" style="margin:6px 0 0">One mail a day, in this same thread, to the same To / CC, with the invoices of this thread that are still not Paid. It stops when the customer replies or the invoices are Paid.</p></div>`;
+}
+const DN0 = s => dn(s);
+function autoGlobalHTML(){
+  const A = D.meta.get('mailauto') || {}, on = A.on !== false, time = A.time || '10:00';
+  return `<div class="card" style="margin-bottom:12px"><h2 style="margin:0 0 6px">Automatic mails (all customers)</h2><p class="mut" style="margin:0 0 8px">Every day at the time below, each open mail thread gets one mail: a follow-up from 7 days before the due date, then Reminder 1, 2, 3… after the due date. Stops when the customer replies or the invoices are Paid. Pause single customers in Customer Contacts.</p>
+    <div class="frow" style="align-items:flex-end;flex-wrap:wrap"><label class="f" style="max-width:170px">Daily time<input type="time" id="agtime" value="${esc(time)}"></label><div style="display:flex;gap:8px;padding-bottom:2px"><button class="btn pri" data-act="autoGlobal" data-on="1">${on ? 'Save time' : 'Switch ON'}</button>${on ? '<button class="btn dng" data-act="autoGlobal" data-on="0">Switch OFF for all</button>' : ''}</div><span class="pill" style="margin-bottom:6px;${on ? 'background:#e7f6ec;color:#0b5d22' : 'background:#fde8e8;color:#b42318'}">${on ? 'ON · ' + tm12(time) + ' daily' : 'OFF'}</span></div></div>`;
+}
 const fsz = b => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
 function attachHTML(){
   const fs = F.matt || [], tot = fs.reduce((a, f) => a + f.size, 0);
@@ -673,7 +722,7 @@ function attachHTML(){
 function mailThreadsHTML(){
   const ts = [...D.mailthread.values()].sort((a, b) => (!!b.repliedAt - !!a.repliedAt) || ((b.lastAt || '') < (a.lastAt || '') ? -1 : 1));
   if (!ts.length) return '<div class="card"><p class="mut" style="margin:0">No payment mails sent yet. Pick a customer to start.</p></div>';
-  return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 8px"><h2 style="margin:0">Open mail threads</h2><button class="btn sm" data-act="mailCheck">Check customer replies now</button></div><div class="tw"><table><thead><tr><th>Customer</th><th>Invoices</th><th>Status</th><th class="r">Mails sent</th><th>Last sent</th><th>By</th><th></th></tr></thead><tbody>${ts.map(t => `<tr><td class="wrap">${esc(t.party)}</td><td class="mono" style="white-space:normal;max-width:260px">${esc((t.invs || []).join(', '))}</td><td>${t.repliedAt ? '<span class="pill" style="background:#e7f6ec;color:#0b5d22">✉ Customer replied</span>' : t.auto && t.auto.on ? '<span class="pill" style="background:#e8f0fe;color:#1a4fb5">Auto ' + t.auto.times.map(tm12).join(', ') + '</span>' : '<span class="mut">Waiting</span>'}</td><td class="r num">${t.count}</td><td>${fmtD((t.lastAt || '').slice(0, 10))} ${t.lastAt ? new Date(t.lastAt).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', hour12:true}) : ''}</td><td>${esc((t.log || []).slice(-1)[0]?.byName || '')}</td><td><button class="btn sm" data-act="mailOpen" data-k="${esc(t.party)}" data-t="${esc(t.id)}">Open</button></td></tr>`).join('')}</tbody></table></div></div>`;
+  return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 8px"><h2 style="margin:0">Open mail threads</h2><button class="btn sm" data-act="mailCheck">Check customer replies now</button></div><div class="tw"><table><thead><tr><th>Customer</th><th>Invoices</th><th>Status</th><th class="r">Mails sent</th><th>Last sent</th><th>By</th><th></th></tr></thead><tbody>${ts.map(t => `<tr><td class="wrap">${esc(t.party)}</td><td class="mono" style="white-space:normal;max-width:260px">${esc((t.invs || []).join(', '))}</td><td>${t.repliedAt ? '<span class="pill" style="background:#e7f6ec;color:#0b5d22">✉ Customer replied</span>' : contactOf(t.party).autoPaused ? '<span class="pill" style="background:#fff7e0;color:#6b4e00">Paused</span>' : '<span class="pill" style="background:#e8f0fe;color:#1a4fb5">Auto</span>'}</td><td class="r num">${t.count}</td><td>${fmtD((t.lastAt || '').slice(0, 10))} ${t.lastAt ? new Date(t.lastAt).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', hour12:true}) : ''}</td><td>${esc((t.log || []).slice(-1)[0]?.byName || '')}</td><td><button class="btn sm" data-act="mailOpen" data-k="${esc(t.party)}" data-t="${esc(t.id)}">Open</button></td></tr>`).join('')}</tbody></table></div></div>`;
 }
 function viewContacts(){
   const parties = custParties(); [...D.contacts.values()].forEach(c => { if (c.party && !parties.includes(c.party)) parties.push(c.party); });
@@ -681,7 +730,7 @@ function viewContacts(){
   const P = pg(list, 'ct', 25);
   return `<div class="head"><div><h1>Customer Contacts</h1><p class="sub">Mail IDs used for payment mails. Separate more than one mail ID with a comma.</p></div></div>
   <div class="bar sfb"><label class="sf"><span>Search</span><input id="ctq" data-f="ctq" type="search" placeholder="Customer" value="${esc(F.ctq || '')}" autocomplete="off"></label></div>
-  <div class="tw"><table><thead><tr><th>Customer</th><th>To</th><th>CC</th><th></th></tr></thead><tbody>${P.items.map(p => { const c = contactOf(p), k = pkey(p); return `<tr><td class="wrap">${esc(p)}</td><td><input class="ctto" data-k="${k}" value="${esc(c.to || '')}" placeholder="accounts@customer.com" style="width:100%;min-width:220px"></td><td><input class="ctcc" data-k="${k}" value="${esc(c.cc || '')}" placeholder="optional" style="width:100%;min-width:180px"></td><td><button class="btn sm pri" data-act="ctSave" data-k="${esc(p)}">Save</button></td></tr>`; }).join('') || '<tr><td colspan="4" class="empty">No customers.</td></tr>'}</tbody></table></div>${P.html}`;
+  <div class="tw"><table><thead><tr><th>Customer</th><th>To</th><th>CC</th><th>Auto mail</th><th></th></tr></thead><tbody>${P.items.map(p => { const c = contactOf(p), k = pkey(p); return `<tr><td class="wrap">${esc(p)}</td><td><input class="ctto" data-k="${k}" value="${esc(c.to || '')}" placeholder="accounts@customer.com" style="width:100%;min-width:220px"></td><td><input class="ctcc" data-k="${k}" value="${esc(c.cc || '')}" placeholder="optional" style="width:100%;min-width:180px"></td><td>${c.autoPaused ? `<button class="btn sm" data-act="custPause" data-k="${esc(p)}" data-on="0" title="Paused — click to resume">⏸ Paused</button>` : `<button class="btn sm" data-act="custPause" data-k="${esc(p)}" data-on="1" title="On — click to pause">▶ On</button>`}</td><td><button class="btn sm pri" data-act="ctSave" data-k="${esc(p)}">Save</button></td></tr>`; }).join('') || '<tr><td colspan="5" class="empty">No customers.</td></tr>'}</tbody></table></div>${P.html}`;
 }
 const mailOk = v => String(v || '').split(/[,;\s]+/).filter(Boolean).every(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
 const active = rows => rows.filter(e => e.status !== 'Paid');
@@ -1037,7 +1086,7 @@ function render(){
   if (!me() || me().active === false){ S.me = null; app.innerHTML = loginHTML(); return; }
   if (!forceRender && S.view === 'create' && document.querySelector('#main form[data-form]') && [...document.querySelectorAll('#main form[data-form] input')].some(i => i.type !== 'checkbox' && i.value)) return;
   if (!forceRender && S.editRow && document.querySelector('#main tr.editing')) return;
-  if (!forceRender && S.view === 'mail' && document.activeElement && document.activeElement.matches && document.activeElement.matches('#at1,#at2,#afrom,#mto,#mcc')) return;
+  if (!forceRender && S.view === 'mail' && document.activeElement && document.activeElement.matches && document.activeElement.matches('#agtime,#mto,#mcc')) return;
   if (!forceRender && S.view === 'contacts' && document.activeElement && document.activeElement.matches && document.activeElement.matches('.ctto,.ctcc')) return;
   if (S.view !== 'chat'){ S.chatWith = null; S.chatTab = 'all'; S.chatImg = null; }
   if (!forceRender && S.view === 'chat' && document.getElementById('chatpane')){ updateChat(); return; }
@@ -1571,18 +1620,14 @@ const ACT = {
   toggleSide:() => { S.sideHidden = !S.sideHidden; try { localStorage.setItem('cof_side', S.sideHidden ? '1' : '0'); } catch(e){} forceRender = true; render(); },
   attDel:t => { (F.matt || []).splice(+t.dataset.k, 1); forceRender = true; render(); },
   mailCheck:async t => { t.disabled = true; t.textContent = 'Checking…'; const r = await mailAutoCheck(true); if (r && r.error) toast(r.error); else toastOk(r && r.replied ? r.replied + ' new customer repl' + (r.replied > 1 ? 'ies' : 'y') + ' found' : 'No new customer replies'); forceRender = true; render(); },
-  autoSave:async t => {
-    const id = F.mthread, th = threadOf(id); if (!th) return;
-    const on = t.dataset.on === '1', times = [val('at1'), val('at2')].filter(Boolean), from = val('afrom');
-    if (on && !times.length){ toast('Enter at least one time.'); return; }
-    if (on && t.dataset.force && !confirm('The customer replied in this thread. Start automatic reminders again anyway?')) return;
-    if (!on && !confirm('Stop automatic reminders for this thread?')) return;
-    t.disabled = true;
-    const r = await mailCall({action:'schedule', party:th.party, threadId:id, on, times, from, force:!!t.dataset.force});
-    if (r.error){ toast(r.error); t.disabled = false; return; }
-    await logAct('Payment mail automatic', `${th.party} · ${on ? 'ON ' + times.map(tm12).join(', ') + ' from ' + fmtD(from) : 'OFF'}`);
-    toastOk(on ? 'Automatic reminders are ON' : 'Automatic reminders stopped'); forceRender = true; render();
-  },
+  mtype:t => { F.mtype = t.dataset.k; forceRender = true; render(); },
+  custPause:async t => { const P = t.dataset.k, k = pkey(P), on = t.dataset.on === '1';
+    await Store.set('contacts', k, {...contactOf(P), party:P, autoPaused:on, pausedAt:on ? nowISO() : null}); await logAct('Payment mail automatic', `${P} · ${on ? 'paused' : 'resumed'}`); toastOk(on ? 'Automatic mails paused for ' + P : 'Automatic mails resumed for ' + P); forceRender = true; render(); },
+  autoGlobal:async t => { const on = t.dataset.on === '1', time = val('agtime') || '10:00';
+    if (!on && !confirm('Switch OFF automatic mails for all customers?')) return;
+    await Store.set('meta', 'mailauto', {on, time, by:S.me, at:nowISO()}); await logAct('Payment mail automatic', on ? 'ON for all customers at ' + tm12(time) : 'OFF for all customers'); toastOk(on ? 'Automatic mails ON at ' + tm12(time) + ' daily' : 'Automatic mails OFF'); forceRender = true; render(); },
+  mailResume:async () => { const id = F.mthread, th = threadOf(id); if (!th || !confirm('Continue automatic mails in this thread even though the customer replied?')) return;
+    const r = await mailCall({action:'resume', party:th.party, threadId:id}); if (r.error){ toast(r.error); return; } await logAct('Payment mail automatic', th.party + ' · continued after customer reply'); toastOk('Automatic mails will continue'); forceRender = true; render(); },
   mailBack:() => { F.matt = []; F.mparty = ''; F.mpq = ''; F.msel = null; F.mthread = ''; F.mto = F.mcc = undefined; forceRender = true; render(); },
   mailOpen:t => { F.matt = []; F.mparty = t.dataset.k; F.mthread = t.dataset.t || ''; F.msel = null; F.mto = F.mcc = undefined; forceRender = true; render(); },
   mailReset:async () => { const P = F.mparty, id = F.mthread; if (!P || !id || !confirm('Did the customer reply? This mail thread will be closed. A later mail for these invoices starts a fresh thread.')) return;
@@ -1596,13 +1641,13 @@ const ACT = {
     if (!mailOk(to) || !mailOk(cc)){ err.textContent = 'A mail ID is not valid. Separate more than one with a comma.'; return; }
     const att = tid ? [] : (F.matt || []);
     if (att.reduce((a, f) => a + f.size, 0) > 15 * 1048576){ err.textContent = 'Attachments are too big. Keep them under 15 MB in total.'; return; }
-    const th = threadOf(tid), n = th ? th.count : 0;
-    if (th && th.repliedAt && !confirm('The customer has already replied in this thread (' + atTxt(th.repliedAt) + '). Send Reminder ' + n + ' anyway?')) return;
+    const th = threadOf(tid), n = th ? th.count : 0, pl = mailPlan(th, rows);
+    if (th && th.repliedAt && !confirm('The customer has already replied in this thread (' + atTxt(th.repliedAt) + '). Send this mail anyway?')) return;
     t.disabled = true; t.textContent = 'Sending…'; err.textContent = '';
-    const r = await mailCall({action:'send', party:P, threadId:tid || undefined, to, cc, n, html:mailHTML(P, rows, n), inv:rows.map(e => e.ref), ids:rows.map(e => e.id), amount:sum(rows), files:att.map(f => ({filename:f.name, content:f.b64, contentType:f.type}))});
-    if (r.error){ err.textContent = r.error; t.disabled = false; t.textContent = n ? 'Send Reminder ' + n : 'Send mail'; return; }
-    await logAct('Payment mail', `${P} · ${n ? 'Reminder ' + n : 'First mail'} · ${rows.length} invoice(s) ${money(sum(rows))} · to ${to}${att.length ? ' · ' + att.length + ' attachment(s)' : ''}`);
-    toastOk(n ? 'Reminder ' + n + ' sent to ' + P : 'Mail sent to ' + P);
+    const r = await mailCall({action:'send', party:P, threadId:tid || undefined, to, cc, n, kind:pl.kind, type:th ? undefined : pl.kind, html:mailBody(P, rows, pl.kind, pl.remN, TODAY), inv:rows.map(e => e.ref), ids:rows.map(e => e.id), amount:sum(rows), files:att.map(f => ({filename:f.name, content:f.b64, contentType:f.type}))});
+    if (r.error){ err.textContent = r.error; t.disabled = false; t.textContent = pl.label; return; }
+    await logAct('Payment mail', `${P} · ${pl.kind === 'rem' ? 'Reminder ' + pl.remN : pl.kind === 'fu' ? 'Follow-up' : pl.kind === 'inv' ? 'Invoice mail' : 'Outstanding mail'} · ${rows.length} invoice(s) ${money(sum(rows))} · to ${to}${att.length ? ' · ' + att.length + ' attachment(s)' : ''}`);
+    toastOk((pl.kind === 'rem' ? 'Reminder ' + pl.remN : 'Mail') + ' sent to ' + P);
     if (r.threadId) F.mthread = r.threadId; F.msel = null; F.matt = []; F.mto = F.mcc = undefined; forceRender = true; render();
   },
   ctSave:async t => { const P = t.dataset.k, k = pkey(P), tr = t.closest('tr'), to = tr.querySelector('.ctto').value.trim(), cc = tr.querySelector('.ctcc').value.trim();
