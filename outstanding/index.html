@@ -1547,6 +1547,11 @@ document.addEventListener('click', ev => {
   const a = ev.target.closest && ev.target.closest('a.wa[data-wa-uid]'); if (!a) return;
   const id = a.dataset.waUid + '_' + a.dataset.waKind;
   setTimeout(() => Store.set('wasent', id, {uid: a.dataset.waUid, kind: a.dataset.waKind, at: new Date().toISOString(), by: S.me}), 0);
+  // Open the WhatsApp app directly (no extra "Share on WhatsApp" browser tab). 
+  ev.preventDefault();
+  const u = new URL(a.href), ph = u.pathname.replace(/\D/g, ''), txt = u.searchParams.get('text') || '';
+  const app = 'whatsapp://send?' + (ph ? 'phone=' + ph + '&' : '') + 'text=' + encodeURIComponent(txt);
+  try { (window.top || window).location.href = app; } catch(e){ location.href = app; }
 });
 document.addEventListener('change', ev => {
   if (!ev.target.classList || !ev.target.classList.contains('udep')) return;
