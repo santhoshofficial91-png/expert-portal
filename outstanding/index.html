@@ -59,7 +59,8 @@ input,select,textarea{background:var(--surface);border:1px solid var(--line);bor
 textarea{width:100%;resize:vertical}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink2);flex:1;min-width:140px} label.f input,label.f select,label.f textarea{font-size:14px;color:var(--ink)}
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
-.wacard summary{cursor:pointer;list-style:none}.wacard summary::-webkit-details-marker{display:none}.wacard summary::before{content:'▸ ';color:#25a244}.wacard[open] summary::before{content:'▾ '}.btn.wa{background:#25a244;color:#fff;text-decoration:none;white-space:nowrap}.btn.wa:hover{background:#1e8a39}
+.wacard summary{cursor:pointer;list-style:none}.wacard summary::-webkit-details-marker{display:none}.wacard summary::before{content:'▸ ';color:#25a244}.wacard[open] summary::before{content:'▾ '}.wamgr td{font-weight:800;color:#0f1b2d;background:#eef1f6}.wagh{text-align:center;border-bottom:2px solid #25a244}.wagh .mut{font-weight:500;font-size:12px}
+.btn.wa{background:#25a244;color:#fff;text-decoration:none;white-space:nowrap}.btn.wa:hover{background:#1e8a39}
 .udd{border:1px solid var(--line);border-radius:12px;background:var(--surface)}.udd summary{list-style:none;cursor:pointer;padding:13px 14px;font-weight:600;display:flex;justify-content:space-between;align-items:center}.udd summary::-webkit-details-marker{display:none}.udd summary::after{content:'▾';opacity:.6}.udd[open] summary{border-bottom:1px solid var(--line)}.uddl{padding:8px 14px 10px}.uddl .chk{display:flex;align-items:center;gap:8px;margin:6px 0}
 .chip{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:16px;padding:5px 12px;cursor:pointer;white-space:nowrap}
 .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)} .chip small{opacity:.7;margin-left:4px;font-family:var(--mono)}
@@ -526,35 +527,38 @@ function shortParty(p){
   if (out.length === 1 && tail && !/\d/.test(tail) && tail.split(/\s+/).length <= 2) name += ' - ' + tail;
   return name;
 }
-function waText(u){
+// Two WhatsApp messages: kind 'out' = due-crossed outstanding without expected date, kind 'exp' = expected (commitment) date crossed
+function waText(u, kind){
   const rows = waRows(u), MAX = 25, mgr = u.role === 'Manager';
   const who = list => { if (!mgr) return ''; const n = [...new Set(list.map(e => uname(ownerOf(e))).filter(Boolean))]; return n.length ? ' (' + n.join(', ') + ')' : ''; };
   const group = (list, keyOf) => { const m = new Map(); list.forEach(e => { const k = keyOf(e); if (!m.has(k)) m.set(k, []); m.get(k).push(e); }); return [...m.entries()].map(([k, l]) => ({k, l, amt: sum(l)})); };
   let t = `Hi ${u.name},\n*Need Customer Outstanding Update*`;
-  // due date crossed: one line per customer, total only
-  const due = waNoExp(rows), dp = group(due, e => shortParty(e.party)).sort((x, y) => y.amt - x.amt);
-  t += `\n\n*Outstanding due crossed (expected date not given): ${money(sum(due))}*\n`;
-  t += dp.length ? '\n' + dp.slice(0, MAX).map((g, i) => `${i + 1}. ${g.k} = ${money(g.amt)}${who(g.l)}`).join('\n') + (dp.length > MAX ? `\n…and ${dp.length - MAX} more customers (see expertone.org)` : '') : '\nNone.';
-  // expected (commitment) date crossed: customer = amount | commitment date
-  const miss = rows.filter(missed);
-  const mp = group(miss, e => shortParty(e.party) + '\u0001' + e.expectedDate).sort((x, y) => x.l[0].expectedDate < y.l[0].expectedDate ? -1 : x.l[0].expectedDate > y.l[0].expectedDate ? 1 : y.amt - x.amt);
-  t += `\n\n*Expected date crossed: ${money(sum(miss))}*\n`;
-  if (!mp.length) t += '\nNone. Good work!';
-  else {
-    t += '\n' + mp.slice(0, MAX).map((g, i) => `${i + 1}. ${g.k.split('\u0001')[0]} = ${inr2(g.amt)} | Commitment date: ${fmtD(g.l[0].expectedDate)}${who(g.l)}`).join('\n') + (mp.length > MAX ? `\n…and ${mp.length - MAX} more (see expertone.org)` : '');
-    const ds = [...new Set(miss.map(e => e.expectedDate))];
-    t += `\n\n*Payment Follow-up Reminder*\nAs per your previous update, the customer payment was expected on ${ds.length === 1 ? fmtD(ds[0]) : 'the commitment dates above'}. However, the payment has not yet been received.\nKindly follow up with the customer on priority, confirm the reason for the delay, and ensure the payment is collected immediately.`;
+  if (kind === 'out'){
+    const due = waNoExp(rows), dp = group(due, e => shortParty(e.party)).sort((x, y) => y.amt - x.amt);
+    t += `\n\n*Outstanding due crossed (expected date not given): ${money(sum(due))}*\n`;
+    t += dp.length ? '\n' + dp.slice(0, MAX).map((g, i) => `${i + 1}. ${g.k} = ${money(g.amt)}${who(g.l)}`).join('\n') + (dp.length > MAX ? `\n…and ${dp.length - MAX} more customers (see expertone.org)` : '') : '\nNone.';
+  } else {
+    const miss = rows.filter(missed);
+    const mp = group(miss, e => shortParty(e.party) + '\u0001' + e.expectedDate).sort((x, y) => x.l[0].expectedDate < y.l[0].expectedDate ? -1 : x.l[0].expectedDate > y.l[0].expectedDate ? 1 : y.amt - x.amt);
+    t += `\n\n*Expected date crossed: ${money(sum(miss))}*\n`;
+    if (!mp.length) t += '\nNone. Good work!';
+    else {
+      t += '\n' + mp.slice(0, MAX).map((g, i) => `${i + 1}. ${g.k.split('\u0001')[0]} = ${inr2(g.amt)} | Commitment date: ${fmtD(g.l[0].expectedDate)}${who(g.l)}`).join('\n') + (mp.length > MAX ? `\n…and ${mp.length - MAX} more (see expertone.org)` : '');
+      const ds = [...new Set(miss.map(e => e.expectedDate))];
+      t += `\n\n*Payment Follow-up Reminder*\nAs per your previous update, the customer payment was expected on ${ds.length === 1 ? fmtD(ds[0]) : 'the commitment dates above'}. However, the payment has not yet been received.\nKindly follow up with the customer on priority, confirm the reason for the delay, and ensure the payment is collected immediately.`;
+    }
   }
   t += mgr ? '\n\nKindly inform your team to update the expected date in the ExpertOne web app (expertone.org).' : '\n\nKindly update the expected date in the ExpertOne web app (expertone.org).';
   return t + '\n\n- Expert Corporate Solutions';
 }
 function viewWA(){
   const ppl = waPeople(); if (!ppl.length) return `<div class="head"><div><h1>Send WhatsApp Alert</h1></div></div><div class="card"><p class="mut">No executives or managers to message.</p></div>`;
-  const rowsH = ppl.map(u => { const all = waRows(u), r = waNoExp(all), m = all.filter(missed), n = waNum(u.phone), none = !r.length && !m.length;
-    return `<tr><td>${esc(u.name)}</td><td>${esc(u.role)}</td><td class="r num">${r.length}</td><td class="r num">${money(sum(r))}</td><td class="r num">${m.length ? `<span class="pill bad">${m.length}</span>` : '0'}</td><td class="r">${none ? '<span class="mut">Nothing to follow up</span>' : n ? `<a class="btn sm wa" target="_blank" rel="noopener" href="https://wa.me/${n}?text=${encodeURIComponent(waText(u))}">WhatsApp</a>` : '<span class="mut">Add mobile number in Create → Edit</span>'}</td></tr>`; }).join('');
+  const btn = (u, n, kind, has) => !has ? '<span class="mut">—</span>' : !n ? '<span class="mut">Add mobile number</span>' : `<a class="btn sm wa" target="_blank" rel="noopener" href="https://wa.me/${n}?text=${encodeURIComponent(waText(u, kind))}">WhatsApp</a>`;
+  const rowsH = ppl.map(u => { const all = waRows(u), r = waNoExp(all), m = all.filter(missed), n = waNum(u.phone), mg = u.role === 'Manager';
+    return `<tr class="${mg ? 'wamgr' : ''}"><td>${esc(u.name)}</td><td>${esc(u.role)}</td><td class="r num">${r.length}</td><td class="r num">${money(sum(r))}</td><td class="r">${btn(u, n, 'out', r.length > 0)}</td><td class="r num">${m.length ? `<span class="pill bad">${m.length}</span>` : '0'}</td><td class="r num">${money(sum(m))}</td><td class="r">${btn(u, n, 'exp', m.length > 0)}</td></tr>`; }).join('');
   return `<div class="head"><div><h1>Send WhatsApp Alert</h1><p class="sub">Only two things are sent: due-crossed invoices with no expected date yet, and expected (commitment) dates that have passed · ${ppl.length} people</p></div></div>
     <div class="card"><p class="mut" style="margin:0 0 10px">The WhatsApp button opens WhatsApp with the message ready. Check it and press Send.</p>
-    <div style="overflow:auto"><table><thead><tr><th>Name</th><th>Role</th><th class="r">Due crossed, no expected date</th><th class="r">Amount</th><th class="r">Commitment date crossed</th><th></th></tr></thead><tbody>${rowsH}</tbody></table></div></div>`;
+    <div style="overflow:auto"><table><thead><tr><th rowspan="2">Name</th><th rowspan="2">Role</th><th colspan="3" class="wagh">Outstanding notification<div class="mut">Due crossed, no expected date</div></th><th colspan="3" class="wagh">Expected date notification<div class="mut">Commitment date crossed</div></th></tr><tr><th class="r">Invoices</th><th class="r">Amount</th><th></th><th class="r">Invoices</th><th class="r">Amount</th><th></th></tr></thead><tbody>${rowsH}</tbody></table></div></div>`;
 }
 const active = rows => rows.filter(e => e.status !== 'Paid');
 const ownerOf = e => e.assignedTo || execs().find(x => (x.subs || []).includes(e.sub))?.id || '';
