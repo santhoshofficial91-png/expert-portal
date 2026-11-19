@@ -184,6 +184,7 @@ header .me{gap:14px}.so{display:inline-flex;align-items:center;gap:8px;height:40
 #tg{display:inline-flex;align-items:center;gap:8px;width:auto!important;padding-left:12px;padding-right:14px}#tg .tgt{font-weight:700;font-size:14px}
 </style>
 <script>try{if(window.parent!==window&&/[?&]embed=1/.test(location.search))document.documentElement.classList.add("embed")}catch(e){}</script><style>html.embed #login:not(.noacc){display:none!important}html.embed body{background:#f6f5fb}</style>
+<style>html.sub [data-d],html.sub [data-dl],html.sub #upnbtn,html.sub #advimp,html.sub [data-prv],html.sub [data-erv]{display:none!important}html.ro [data-pe],html.ro [data-edt],html.ro [data-xe],html.ro [data-rt],html.ro [data-e],html.ro [data-ee],html.ro [data-eedt],html.ro [data-eue],html.ro [data-ue],html.ro label:has(> #xl),html.ro #pof{display:none!important}html.ro .ftab tbody input,html.ro .ftab tbody select,html.ro .ftab tbody textarea,html.ro .ftab tbody button:not(.link){pointer-events:none;opacity:.75}</style>
 </head>
 <body>
 
@@ -277,7 +278,7 @@ function diffTasks(arr,snap,vals,nidx,tbl,extra){var tasks=[],ins=[],seen={};
  Object.keys(snap).forEach(function(n){if(!seen[n])tasks.push(SB.from(tbl).delete().eq('n',n))});
  if(ins.length){ins.forEach(function(r){r[nidx]=-1});tasks.push(SB.from(tbl).insert(ins.map(function(r){var o=vals(r);if(extra)Object.keys(extra).forEach(function(k){o[k]=extra[k]});return o})))}
  return tasks}
-function save(){PAY.forEach(function(r){var on=r[16]==='Request Sent'||r[16]==='With Manager';if(on&&!r[22])r[22]=Date.now();else if(!on)r[22]=0});EXP.forEach(function(r){var on=r[9]==='Request Sent';if(on&&!r[18])r[18]=Date.now();else if(!on)r[18]=0});
+function save(){if(ME&&ME.sub&&!ME.canEdit)return;PAY.forEach(function(r){var on=r[16]==='Request Sent'||r[16]==='With Manager';if(on&&!r[22])r[22]=Date.now();else if(!on)r[22]=0});EXP.forEach(function(r){var on=r[9]==='Request Sent';if(on&&!r[18])r[18]=Date.now();else if(!on)r[18]=0});
  if(!ME)return;
  var t=diffTasks(PAY,SNAP.pay,pvals,19,'pr_payments',{requester_id:ME.id}).concat(diffTasks(PO,SNAP.po,ovals,8,'pr_po')).concat(diffTasks(EXP,SNAP.exp,evals,12,'pr_expenses',{requester_id:ME.id}));
  snapAll();
@@ -619,9 +620,13 @@ async function boot(){
  var dr=await SB.rpc('pr_directory'),p=((dr&&dr.data)||[]).filter(function(x){return x.id===ss.user.id&&x.active!==false})[0];
  if(!p){if(!EMBED)await SB.auth.signOut();show(false);if(EMBED)noAccess();return false}
  var role=ROLEMAP[p.role],lab=p.role==='admin'?'Administrator':(p.role==='manager'?'Manager':'Executive')+(p.manager_name?' (reports to '+p.manager_name+')':'');
- start({role:role,name:p.name,label:lab,id:p.id,username:p.username,dept:p.department||''});
+ /* PR Sub Admin: sees the admin Purchase pages; edits only when allowed (prCanEdit); never deletes. The database enforces the same rules. */
+ var isSub=role==='exe'&&p.department==='Sub Admin',canEd=false;
+ if(isSub){try{canEd=!!(await SB.rpc('pr_sub_can_edit')).data}catch(e){canEd=false}role='admin';lab='Sub Admin'+(canEd?'':' (view only)')}
+ document.documentElement.classList.toggle('sub',isSub);document.documentElement.classList.toggle('ro',isSub&&!canEd);
+ start({role:role,name:p.name,label:lab,id:p.id,username:p.username,dept:p.department||'',sub:isSub,canEdit:canEd});
  await loadAll(true);subRT();show(true);render(location.hash.slice(1)||'dash');return true}
-function menu(){var A={admin:['dash','po','pay','paid','exp','expaid'],mgr:['po','pay','paid','sent','exp','expaid','esent'],exe:['pay','paid','sent','exp','expaid','esent']}[ME.role]||['dash'];if(ME.role!=='admin'&&ME.dept==='HR')A=['exp','expaid','esent'];if(ME.role==='exe'&&ME.dept==='Sub Admin')A=['po'];if(ME.role!=='admin'&&ME.dept==='HR')return A.map(function(k){return MENU.filter(function(x){return x[0]===k})[0]});return MENU.filter(function(x){return A.indexOf(x[0])>=0})}
+function menu(){if(ME&&ME.sub)return MENU.filter(function(x){return ['dash','po','pay','paid'].indexOf(x[0])>=0});var A={admin:['dash','po','pay','paid','exp','expaid'],mgr:['po','pay','paid','sent','exp','expaid','esent'],exe:['pay','paid','sent','exp','expaid','esent']}[ME.role]||['dash'];if(ME.role!=='admin'&&ME.dept==='HR')A=['exp','expaid','esent'];if(ME.role==='exe'&&ME.dept==='Sub Admin')A=['po'];if(ME.role!=='admin'&&ME.dept==='HR')return A.map(function(k){return MENU.filter(function(x){return x[0]===k})[0]});return MENU.filter(function(x){return A.indexOf(x[0])>=0})}
 
 $('lf').addEventListener('submit',async function(e){
   e.preventDefault();var u=$('u').value.trim().toLowerCase(),btn=$('lf').querySelector('button[type=submit],button');$('err').textContent='';if(btn)btn.disabled=true;
