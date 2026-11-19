@@ -447,7 +447,7 @@ async function renderAccess(){
       <td><select class="pr-role"><option value="">—</option>${['admin','manager','executive','sub admin'].map(r => `<option ${uiPrRole(u) === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
       <td><select class="pr-dept"><option value="">—</option>${PR_DEPTS.map(d => `<option ${u.prDept === d ? 'selected' : ''}>${d}</option>`).join('')}</select></td>
       <td><select class="pr-mgr"><option value="">—</option>${mgrs.filter(m => m.id !== u.id).map(m => `<option value="${m.id}" ${u.prManagerId === m.id ? 'selected' : ''}>${mgrLabel(m)}</option>`).join('')}</select></td>
-      <td><label class="chk" style="margin:0" title="Sub Admin can edit Purchase requests and PO (never delete)"><input type="checkbox" class="pr-edit" ${u.prCanEdit === true ? 'checked' : ''} ${uiPrRole(u) === 'sub admin' ? '' : 'disabled'}> Edit</label></td>
+      <td><label class="chk" style="margin:0" title="Sub Admin can edit Purchase requests and PO (never delete)"><input type="checkbox" class="pr-edit" ${u.prCanEdit === true ? 'checked' : ''} ${uiPrRole(u) === 'sub admin' ? '' : 'disabled'}> Edit</label><label class="chk" style="margin:4px 0 0" title="Sub Admin can add PO Master rows"><input type="checkbox" class="pr-poadd" ${u.prPoAdd === true ? 'checked' : ''} ${uiPrRole(u) === 'sub admin' ? '' : 'disabled'}> PO add</label></td>
       <td><label class="chk" style="margin:0"><input type="checkbox" class="act" ${u.active !== false ? 'checked' : ''} ${me ? 'disabled' : ''}></label></td>
       <td><div class="row-actions"><button class="btn sm" data-a="save">Save</button><button class="btn sm sec" data-a="pw">Password</button></div></td></tr>`;
   }).join('');
@@ -455,13 +455,12 @@ async function renderAccess(){
       <div><h2>Users &amp; Access</h2><div class="sub" style="margin:0">Tick which modules each person can open. Payment Request role, department and manager apply only when that module is ticked.</div></div>
       <button class="btn" id="addUser">+ Add user</button></div>
     <div class="note">Customer Outstanding role, areas and linked manager are edited inside Customer Outstanding → Users. Payment Request-only people appear here only.</div>
-    <div style="overflow:auto"><table><thead><tr><th>Person</th><th>Customer Outstanding</th><th>Payment Request</th><th>PR role</th><th>PR dept</th><th>PR manager</th><th>Sub Admin edit</th><th>Active</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    <div style="overflow:auto"><table><thead><tr><th>Person</th><th>Customer Outstanding</th><th>Payment Request</th><th>PR role</th><th>PR dept</th><th>PR manager</th><th>Sub Admin rights</th><th>Active</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
   $('#addUser').onclick = () => addUserModal(mgrs);
 }
 $('#page').addEventListener('change', ev => {
   const t = ev.target; if (!t.matches || !t.matches('.pr-role')) return;
-  const cb = t.closest('tr').querySelector('.pr-edit'); if (!cb) return;
-  cb.disabled = t.value !== 'sub admin'; if (cb.disabled) cb.checked = false;
+  t.closest('tr').querySelectorAll('.pr-edit, .pr-poadd').forEach(cb => { cb.disabled = t.value !== 'sub admin'; if (cb.disabled) cb.checked = false; });
 });
 $('#page').addEventListener('click', async ev => {
   const b = ev.target.closest('button[data-a]'); if (!b) return;
@@ -469,7 +468,7 @@ $('#page').addEventListener('click', async ev => {
   if (b.dataset.a === 'pw') return pwModal(u);
   const out = tr.querySelector('.m-out').checked, pay = tr.querySelector('.m-pay').checked;
   const st = prStore(tr.querySelector('.pr-role').value, tr.querySelector('.pr-dept').value), prRole = st.prRole, prDept = st.prDept, prMgr = prDept === 'Sub Admin' ? '' : tr.querySelector('.pr-mgr').value;
-  const act = tr.querySelector('.act').checked, prEdit = tr.querySelector('.pr-edit').checked;
+  const act = tr.querySelector('.act').checked, prEdit = tr.querySelector('.pr-edit').checked, prPoAdd = tr.querySelector('.pr-poadd').checked;
   if (!out && !pay){ toast('Tick at least one module.'); return; }
   if (u.id === P.id && !(out && (u.role === 'Admin'))){ toast('You cannot remove your own Customer Outstanding access.'); return; }
   if (pay && !prRole){ toast('Choose a Payment Request role.'); return; }
@@ -478,7 +477,7 @@ $('#page').addEventListener('click', async ev => {
   const mods = [out && 'out', pay && 'pay'].filter(Boolean);
   const data = {...u}; delete data.id;
   data.mods = mods; data.active = act;
-  if (prDept === 'Sub Admin' && prRole) data.prCanEdit = prEdit; else delete data.prCanEdit;
+  if (prDept === 'Sub Admin' && prRole){ data.prCanEdit = prEdit; data.prPoAdd = prPoAdd; } else { delete data.prCanEdit; delete data.prPoAdd; }
   // PR role / dept / manager are kept as chosen even when Payment Request is not ticked; they only take effect when it is ticked.
   if (pay || prRole){ if (prRole) data.prRole = prRole; data.prDept = prDept; if (prMgr) data.prManagerId = prMgr; else delete data.prManagerId; }
   b.disabled = true;
