@@ -556,7 +556,7 @@ function waCompose(rows, kind, o){
       t += `\n\n*Payment Follow-up Reminder*\nAs per your previous update, the customer payment was expected on ${ds.length === 1 ? fmtD(ds[0]) : 'the commitment dates above'}. However, the payment has not yet been received.\nKindly follow up with the customer on priority, confirm the reason for the delay, and ensure the payment is collected immediately.`;
     }
   }
-  t += o.group ? '\n\nKindly update the expected date in the web app.' : mgr ? '\n\nKindly inform your team to update the expected date in the ExpertOne web app (expertone.org).' : '\n\nKindly update the expected date in the ExpertOne web app (expertone.org).';
+  t += o.group ? (kind === 'out' ? '\n\nKindly update the expected date in the web app.' : '') : mgr ? '\n\nKindly inform your team to update the expected date in the ExpertOne web app (expertone.org).' : '\n\nKindly update the expected date in the ExpertOne web app (expertone.org).';
   return t + '\n\n- Expert Corporate Solutions';
 }
 function viewWA(){
