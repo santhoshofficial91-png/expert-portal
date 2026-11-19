@@ -59,7 +59,8 @@ input,select,textarea{background:var(--surface);border:1px solid var(--line);bor
 textarea{width:100%;resize:vertical}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink2);flex:1;min-width:140px} label.f input,label.f select,label.f textarea{font-size:14px;color:var(--ink)}
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
-.wacard summary{cursor:pointer;list-style:none}.wacard summary::-webkit-details-marker{display:none}.wacard summary::before{content:'▸ ';color:#25a244}.wacard[open] summary::before{content:'▾ '}.wamgr td{font-weight:800;color:#0f1b2d;background:#eef1f6}.wagh{text-align:center;border-bottom:2px solid #25a244}.wagh .mut{font-weight:500;font-size:12px}
+.wacard summary{cursor:pointer;list-style:none}.wacard summary::-webkit-details-marker{display:none}.wacard summary::before{content:'▸ ';color:#25a244}.wacard[open] summary::before{content:'▾ '}.watab{width:auto;min-width:100%;border-collapse:collapse}.watab th,.watab td{padding:7px 8px;white-space:nowrap}.watab thead th{white-space:normal;vertical-align:bottom}.watab th.c{max-width:90px}.watab td:first-child{max-width:150px;overflow:hidden;text-overflow:ellipsis}.watab td.c,.watab th.c{text-align:center}.wats{display:flex;flex-direction:column;line-height:1.25;font-size:12.5px}.wats span{color:#6b7280}
+.wamgr td{font-weight:800;color:#0f1b2d;background:#eef1f6}.wagh{text-align:center;border-bottom:2px solid #25a244}.wagh .mut{font-weight:500;font-size:12px}
 .btn.wa{background:#25a244;color:#fff;text-decoration:none;white-space:nowrap}.btn.wa:hover{background:#1e8a39}
 .udd{border:1px solid var(--line);border-radius:12px;background:var(--surface)}.udd summary{list-style:none;cursor:pointer;padding:13px 14px;font-weight:600;display:flex;justify-content:space-between;align-items:center}.udd summary::-webkit-details-marker{display:none}.udd summary::after{content:'▾';opacity:.6}.udd[open] summary{border-bottom:1px solid var(--line)}.uddl{padding:8px 14px 10px}.uddl .chk{display:flex;align-items:center;gap:8px;margin:6px 0}
 .chip{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:16px;padding:5px 12px;cursor:pointer;white-space:nowrap}
@@ -371,7 +372,7 @@ async function hashPw(pw, salt){
 }
 
 /* ---------- storage (shared db when available, local fallback) ---------- */
-const COLS_DB = ['users','entries','followups','payments','activity','edits','meta','chats','billing'];
+const COLS_DB = ['users','entries','followups','payments','activity','edits','meta','chats','billing','wasent'];   // wasent: last WhatsApp alert sent per person + type
 const D = {}; COLS_DB.forEach(c => D[c] = new Map());
 const hasOut = u => !u || !Array.isArray(u.mods) || u.mods.includes('out'); // Payment Request-only people are not Customer Outstanding users
 const ALLU = new Map();   // every user doc (Sales and Purchase), used only by the Create pages
@@ -553,12 +554,13 @@ function waText(u, kind){
 }
 function viewWA(){
   const ppl = waPeople(); if (!ppl.length) return `<div class="head"><div><h1>Send WhatsApp Alert</h1></div></div><div class="card"><p class="mut">No executives or managers to message.</p></div>`;
-  const btn = (u, n, kind, has) => !has ? '<span class="mut">—</span>' : !n ? '<span class="mut">Add mobile number</span>' : `<a class="btn sm wa" target="_blank" rel="noopener" href="https://wa.me/${n}?text=${encodeURIComponent(waText(u, kind))}">WhatsApp</a>`;
+  const last = (u, kind) => { const x = D.wasent && D.wasent.get(u.id + '_' + kind); if (!x || !x.at) return '<span class="mut">—</span>'; const t = new Date(x.at); return `<div class="wats"><b>${fmtD(ymd(t.getFullYear(), t.getMonth() + 1, t.getDate()))}</b><span>${t.toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', hour12:true})}</span></div>`; };
+  const btn = (u, n, kind, has) => !has ? '<span class="mut">—</span>' : !n ? '<span class="mut">Add mobile</span>' : `<a class="btn sm wa" data-wa-uid="${u.id}" data-wa-kind="${kind}" target="_blank" rel="noopener" href="https://wa.me/${n}?text=${encodeURIComponent(waText(u, kind))}">WhatsApp</a>`;
   const rowsH = ppl.map(u => { const all = waRows(u), r = waNoExp(all), m = all.filter(missed), n = waNum(u.phone), mg = u.role === 'Manager';
-    return `<tr class="${mg ? 'wamgr' : ''}"><td>${esc(u.name)}</td><td>${esc(u.role)}</td><td class="r num">${r.length}</td><td class="r num">${money(sum(r))}</td><td class="r">${btn(u, n, 'out', r.length > 0)}</td><td class="r num">${m.length ? `<span class="pill bad">${m.length}</span>` : '0'}</td><td class="r num">${money(sum(m))}</td><td class="r">${btn(u, n, 'exp', m.length > 0)}</td></tr>`; }).join('');
+    return `<tr class="${mg ? 'wamgr' : ''}"><td>${esc(u.name)}</td><td>${esc(u.role)}</td><td class="r num">${r.length}</td><td class="r num">${money(sum(r))}</td><td class="c">${btn(u, n, 'out', r.length > 0)}</td><td class="c">${last(u, 'out')}</td><td class="r num">${m.length ? `<span class="pill bad">${m.length}</span>` : '0'}</td><td class="r num">${money(sum(m))}</td><td class="c">${btn(u, n, 'exp', m.length > 0)}</td><td class="c">${last(u, 'exp')}</td></tr>`; }).join('');
   return `<div class="head"><div><h1>Send WhatsApp Alert</h1><p class="sub">Only two things are sent: due-crossed invoices with no expected date yet, and expected (commitment) dates that have passed · ${ppl.length} people</p></div></div>
     <div class="card"><p class="mut" style="margin:0 0 10px">The WhatsApp button opens WhatsApp with the message ready. Check it and press Send.</p>
-    <div style="overflow:auto"><table><thead><tr><th rowspan="2">Name</th><th rowspan="2">Role</th><th colspan="3" class="wagh">Outstanding notification<div class="mut">Due crossed, no expected date</div></th><th colspan="3" class="wagh">Expected date notification<div class="mut">Commitment date crossed</div></th></tr><tr><th class="r">Invoices</th><th class="r">Amount</th><th></th><th class="r">Invoices</th><th class="r">Amount</th><th></th></tr></thead><tbody>${rowsH}</tbody></table></div></div>`;
+    <div style="overflow:auto"><table class="watab"><thead><tr><th rowspan="2">Name</th><th rowspan="2">Role</th><th colspan="4" class="wagh">Outstanding notification<div class="mut">Due crossed, no expected date</div></th><th colspan="4" class="wagh">Expected date notification<div class="mut">Commitment date crossed</div></th></tr><tr><th class="r">Invoices</th><th class="r">Amount</th><th></th><th class="c">Last notification sent</th><th class="r">Invoices</th><th class="r">Amount</th><th></th><th class="c">Last notification sent</th></tr></thead><tbody>${rowsH}</tbody></table></div></div>`;
 }
 const active = rows => rows.filter(e => e.status !== 'Paid');
 const ownerOf = e => e.assignedTo || execs().find(x => (x.subs || []).includes(e.sub))?.id || '';
@@ -1526,6 +1528,11 @@ document.addEventListener('paste', async ev => {
 document.addEventListener('keydown', ev => { if (ev.target.id === 'chtxt' && ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); ACT.chatSend(); return; }
   if (ev.key === 'Escape'){ if (document.getElementById('lb')) ACT.closeLb(); else if ($('#ov').classList.contains('show')) closeModal(); else if (S.drawer) closeDrawer(); } });
 document.addEventListener('input', ev => { const t = ev.target; if (t.dataset.f){ S.editRow = null; F[t.dataset.f] = t.value; F.page = 1; F.pgs = {}; const id = t.id, pos = t.selectionStart; render(); if (id){ const el = document.getElementById(id); if (el){ el.focus(); try { const n = (pos == null ? el.value.length : pos); el.setSelectionRange(n, n); } catch(e){} } } } });
+document.addEventListener('click', ev => {
+  const a = ev.target.closest && ev.target.closest('a.wa[data-wa-uid]'); if (!a) return;
+  const id = a.dataset.waUid + '_' + a.dataset.waKind;
+  setTimeout(() => Store.set('wasent', id, {uid: a.dataset.waUid, kind: a.dataset.waKind, at: new Date().toISOString(), by: S.me}), 0);
+});
 document.addEventListener('change', ev => {
   if (!ev.target.classList || !ev.target.classList.contains('udep')) return;
   const f = ev.target.closest('form'); if (!f) return;
