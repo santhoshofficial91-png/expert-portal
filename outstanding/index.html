@@ -640,6 +640,7 @@ function viewMail(){
   <div class="card"><h2 style="margin:0 0 8px">1. Tick the invoices</h2><div class="tw"><table><thead><tr><th><input type="checkbox" id="mall" ${allOn ? 'checked' : ''} ${rows.length ? '' : 'disabled'} aria-label="Tick all invoices" title="Tick / untick all"></th><th>Date</th><th>Inv Num</th><th>Area</th><th class="r">Pending Amt</th><th>Due Date</th><th class="r">Overdue</th><th>Expected</th></tr></thead><tbody>${list || '<tr><td colspan="8" class="empty">No open invoices.</td></tr>'}</tbody></table></div></div>
   <div class="card" style="margin-top:12px"><h2 style="margin:0 0 8px">2. Mail IDs</h2><div class="frow"><label class="f">To (customer mail IDs, separate with comma)<input id="mto" value="${esc(F.mto ?? c.to ?? '')}" placeholder="accounts@customer.com"></label></div><div class="frow"><label class="f">CC<input id="mcc" value="${esc(F.mcc ?? c.cc ?? '')}" placeholder="optional"></label></div><p class="mut" style="margin:4px 0 0">Saved to Customer Contacts after sending.</p></div>
   <div class="card" style="margin-top:12px"><h2 style="margin:0 0 8px">3. Check the mail and send</h2>${picked.length ? `<div class="mprev">${mailHTML(P, picked, n)}</div>` : '<p class="mut">Tick at least one invoice.</p>'}
+  ${n ? '' : attachHTML()}
   <div class="err" id="merr"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="mailSend" ${picked.length && MAILREADY !== 'no' ? '' : 'disabled'}>${n ? 'Send Reminder ' + n : 'Send mail'}</button></div></div>${th ? autoCard(th) : ''}`;
 }
 
@@ -661,6 +662,13 @@ function autoCard(th){
     <div class="frow" style="align-items:flex-end;flex-wrap:wrap"><label class="f" style="max-width:160px">1st time<input type="time" id="at1" value="${esc(times[0] || '10:00')}"></label><label class="f" style="max-width:160px">2nd time (optional)<input type="time" id="at2" value="${esc(times[1] || '')}"></label><label class="f" style="max-width:190px">Start from<input type="date" id="afrom" value="${esc(a.on && a.from ? a.from : tmr)}"></label>
     <div style="display:flex;gap:8px;padding-bottom:2px">${a.on ? '<button class="btn pri" data-act="autoSave" data-on="1">Update times</button><button class="btn dng" data-act="autoSave" data-on="0">Stop automatic</button>' : (th.repliedAt ? '<button class="btn" data-act="autoSave" data-on="1" data-force="1">Customer replied but not paid – start automatic again</button>' : '<button class="btn pri" data-act="autoSave" data-on="1">Start automatic reminders</button>')}</div></div>
     <p class="mut" style="margin:6px 0 0">Each automatic mail goes as the next Reminder in this same thread, to the same To / CC, with the invoices of this thread that are still not Paid.</p></div>`;
+}
+
+const fsz = b => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+function attachHTML(){
+  const fs = F.matt || [], tot = fs.reduce((a, f) => a + f.size, 0);
+  return `<div style="margin:12px 0 4px"><label class="btn" for="matt" style="cursor:pointer">📎 Attach invoice copy (from your PC)</label><input id="matt" type="file" multiple accept=".pdf,image/*" style="position:absolute;opacity:0;width:1px;height:1px"> <span class="mut">First mail only · not saved in the app · up to 15 MB in total</span>
+  ${fs.length ? `<ul style="margin:8px 0 0;padding-left:18px">${fs.map((f, i) => `<li>${esc(f.name)} <span class="mut">(${fsz(f.size)})</span> <button class="btn sm" data-act="attDel" data-k="${i}" aria-label="Remove ${esc(f.name)}">Remove</button></li>`).join('')}</ul><div class="${tot > 15 * 1048576 ? 'err' : 'mut'}" style="margin-top:4px">Total ${fsz(tot)}</div>` : ''}</div>`;
 }
 function mailThreadsHTML(){
   const ts = [...D.mailthread.values()].sort((a, b) => (!!b.repliedAt - !!a.repliedAt) || ((b.lastAt || '') < (a.lastAt || '') ? -1 : 1));
@@ -1561,6 +1569,7 @@ const ACT = {
   annStart:async () => { if (!isAdm()) return; await Store.set('meta', 'announce', {active:true, at:Date.now(), by:S.me}); annTick(); },
   annClose:async () => { if (!isAdm()) return; await Store.set('meta', 'announce', {active:false, at:0, by:S.me}); forceRender = true; render(); annTick(); },
   toggleSide:() => { S.sideHidden = !S.sideHidden; try { localStorage.setItem('cof_side', S.sideHidden ? '1' : '0'); } catch(e){} forceRender = true; render(); },
+  attDel:t => { (F.matt || []).splice(+t.dataset.k, 1); forceRender = true; render(); },
   mailCheck:async t => { t.disabled = true; t.textContent = 'Checking…'; const r = await mailAutoCheck(true); if (r && r.error) toast(r.error); else toastOk(r && r.replied ? r.replied + ' new customer repl' + (r.replied > 1 ? 'ies' : 'y') + ' found' : 'No new customer replies'); forceRender = true; render(); },
   autoSave:async t => {
     const id = F.mthread, th = threadOf(id); if (!th) return;
@@ -1574,8 +1583,8 @@ const ACT = {
     await logAct('Payment mail automatic', `${th.party} · ${on ? 'ON ' + times.map(tm12).join(', ') + ' from ' + fmtD(from) : 'OFF'}`);
     toastOk(on ? 'Automatic reminders are ON' : 'Automatic reminders stopped'); forceRender = true; render();
   },
-  mailBack:() => { F.mparty = ''; F.mpq = ''; F.msel = null; F.mthread = ''; F.mto = F.mcc = undefined; forceRender = true; render(); },
-  mailOpen:t => { F.mparty = t.dataset.k; F.mthread = t.dataset.t || ''; F.msel = null; F.mto = F.mcc = undefined; forceRender = true; render(); },
+  mailBack:() => { F.matt = []; F.mparty = ''; F.mpq = ''; F.msel = null; F.mthread = ''; F.mto = F.mcc = undefined; forceRender = true; render(); },
+  mailOpen:t => { F.matt = []; F.mparty = t.dataset.k; F.mthread = t.dataset.t || ''; F.msel = null; F.mto = F.mcc = undefined; forceRender = true; render(); },
   mailReset:async () => { const P = F.mparty, id = F.mthread; if (!P || !id || !confirm('Did the customer reply? This mail thread will be closed. A later mail for these invoices starts a fresh thread.')) return;
     const r = await mailCall({action:'reset', party:P, threadId:id}); if (r.error){ toast(r.error); return; } await logAct('Payment mail thread closed', P + ' · ' + (threadOf(id)?.invs || []).join(', ')); D.mailthread.delete(id); F.mthread = ''; F.msel = null; forceRender = true; render(); },
   mailSend:async t => {
@@ -1585,14 +1594,16 @@ const ACT = {
     if (!rows.length){ err.textContent = 'Tick at least one invoice.'; return; }
     if (!to){ err.textContent = 'Enter the customer To mail ID.'; return; }
     if (!mailOk(to) || !mailOk(cc)){ err.textContent = 'A mail ID is not valid. Separate more than one with a comma.'; return; }
+    const att = tid ? [] : (F.matt || []);
+    if (att.reduce((a, f) => a + f.size, 0) > 15 * 1048576){ err.textContent = 'Attachments are too big. Keep them under 15 MB in total.'; return; }
     const th = threadOf(tid), n = th ? th.count : 0;
     if (th && th.repliedAt && !confirm('The customer has already replied in this thread (' + atTxt(th.repliedAt) + '). Send Reminder ' + n + ' anyway?')) return;
     t.disabled = true; t.textContent = 'Sending…'; err.textContent = '';
-    const r = await mailCall({action:'send', party:P, threadId:tid || undefined, to, cc, n, html:mailHTML(P, rows, n), inv:rows.map(e => e.ref), ids:rows.map(e => e.id), amount:sum(rows)});
+    const r = await mailCall({action:'send', party:P, threadId:tid || undefined, to, cc, n, html:mailHTML(P, rows, n), inv:rows.map(e => e.ref), ids:rows.map(e => e.id), amount:sum(rows), files:att.map(f => ({filename:f.name, content:f.b64, contentType:f.type}))});
     if (r.error){ err.textContent = r.error; t.disabled = false; t.textContent = n ? 'Send Reminder ' + n : 'Send mail'; return; }
-    await logAct('Payment mail', `${P} · ${n ? 'Reminder ' + n : 'First mail'} · ${rows.length} invoice(s) ${money(sum(rows))} · to ${to}`);
+    await logAct('Payment mail', `${P} · ${n ? 'Reminder ' + n : 'First mail'} · ${rows.length} invoice(s) ${money(sum(rows))} · to ${to}${att.length ? ' · ' + att.length + ' attachment(s)' : ''}`);
     toastOk(n ? 'Reminder ' + n + ' sent to ' + P : 'Mail sent to ' + P);
-    if (r.threadId) F.mthread = r.threadId; F.msel = null; F.mto = F.mcc = undefined; forceRender = true; render();
+    if (r.threadId) F.mthread = r.threadId; F.msel = null; F.matt = []; F.mto = F.mcc = undefined; forceRender = true; render();
   },
   ctSave:async t => { const P = t.dataset.k, k = pkey(P), tr = t.closest('tr'), to = tr.querySelector('.ctto').value.trim(), cc = tr.querySelector('.ctcc').value.trim();
     if (!mailOk(to) || !mailOk(cc)){ toast('A mail ID is not valid. Separate more than one with a comma.'); return; }
@@ -1692,7 +1703,9 @@ document.addEventListener('click', ev => {
 });
 document.addEventListener('input', ev => { const t = ev.target; if (t.id === 'mto') F.mto = t.value; else if (t.id === 'mcc') F.mcc = t.value; });
 document.addEventListener('change', ev => { const t = ev.target;
-  if (t.id === 'mparty'){ const v = t.value.trim(); const hit = custParties().find(x => x.toLowerCase() === v.toLowerCase()); F.mparty = hit || ''; F.mpq = hit ? '' : v; F.msel = null; F.mthread = ''; F.mto = F.mcc = undefined; if (v && !hit) toast('Customer not found. Pick a name from the list.'); setTimeout(() => { forceRender = true; render(); }, 0); return; }
+  if (t.id === 'mparty'){ const v = t.value.trim(); const hit = custParties().find(x => x.toLowerCase() === v.toLowerCase()); F.matt = []; F.mparty = hit || ''; F.mpq = hit ? '' : v; F.msel = null; F.mthread = ''; F.mto = F.mcc = undefined; if (v && !hit) toast('Customer not found. Pick a name from the list.'); setTimeout(() => { forceRender = true; render(); }, 0); return; }
+  if (t.id === 'matt'){ const files = [...t.files]; Promise.all(files.map(f => new Promise(res => { const r = new FileReader(); r.onload = () => res({name:f.name, size:f.size, type:f.type || 'application/pdf', b64:String(r.result).split(',')[1] || ''}); r.onerror = () => res(null); r.readAsDataURL(f); })))
+      .then(list => { F.matt = [...(F.matt || []), ...list.filter(Boolean)]; forceRender = true; render(); }); return; }
   if (t.id === 'mall'){ F.msel = new Set(t.checked ? [...document.querySelectorAll('.msel')].map(x => x.value) : []); setTimeout(() => { forceRender = true; render(); }, 0); return; }
   if (t.classList && t.classList.contains('msel')){ if (!F.msel) F.msel = new Set(); t.checked ? F.msel.add(t.value) : F.msel.delete(t.value); setTimeout(() => { forceRender = true; render(); }, 0); }
 });

@@ -63,7 +63,7 @@ async function threadRows(t: any) {
 }
 const when = (d: Date) => d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
 
-async function sendInThread(o: { t: any; id: string; party: string; to: string[]; cc: string[]; html: string; n: number; inv: string[]; ids: string[]; amount: number; by: string; byName: string; auto?: boolean }) {
+async function sendInThread(o: { t: any; id: string; party: string; to: string[]; cc: string[]; html: string; n: number; inv: string[]; ids: string[]; amount: number; by: string; byName: string; auto?: boolean; files?: { filename: string; content: string; contentType?: string }[] }) {
   const t = o.t, now = new Date();
   const firstSubject = 'Payment Reminder - ' + o.party + (o.inv.length ? ' - ' + o.inv[0] + (o.inv.length > 1 ? ' & ' + (o.inv.length - 1) + ' more' : '') : '');
   const baseSubject = t ? String(t.subject).replace(/^Re: /, '') : firstSubject;
@@ -76,8 +76,9 @@ async function sendInThread(o: { t: any; id: string; party: string; to: string[]
     from: { name: 'Accounts Department - Expert Corporate Solutions', address: MAIL_USER },
     to: o.to, cc: o.cc.length ? o.cc : undefined, subject: t ? 'Re: ' + baseSubject : baseSubject, html: full, messageId: msgId,
     inReplyTo: t?.lastId || undefined, references: refs.length ? refs.join(' ') : undefined,
+    attachments: (o.files ?? []).map((f) => ({ filename: f.filename, content: f.content, encoding: 'base64', contentType: f.contentType || undefined })),
   });
-  const log = [...(t?.log ?? []), { n: o.n, at: now.toISOString(), by: o.by, byName: o.byName, inv: o.inv, amount: o.amount, to: o.to, cc: o.cc, auto: !!o.auto }];
+  const log = [...(t?.log ?? []), { n: o.n, at: now.toISOString(), by: o.by, byName: o.byName, inv: o.inv, amount: o.amount, to: o.to, cc: o.cc, auto: !!o.auto, files: (o.files ?? []).map((f) => f.filename) }];
   const nt = { ...(t ?? {}), party: o.party, subject: baseSubject, count: (t?.count ?? 0) + 1, refs: [...refs, msgId].slice(-30), lastId: msgId, lastAt: now.toISOString(),
     lastHtml: full.length > 300000 ? o.html : full, to: o.to, cc: o.cc, log, startedAt: t?.startedAt ?? now.toISOString(), from: MAIL_USER,
     ids: t?.ids ?? o.ids, invs: t?.invs ?? o.inv };
@@ -223,8 +224,11 @@ Deno.serve(async (req) => {
     if (n !== expected) return json({ error: 'This mail thread changed (someone else just sent a reminder). Refresh and try again.' }, 409);
     const html = String(body.html ?? '');
     if (!html) return json({ error: 'Mail body is empty' }, 400);
+    // invoice copies: first mail only, picked from the user's PC, sent straight to Gmail (not stored)
+    const files = t ? [] : (Array.isArray(body.files) ? body.files : []).filter((f: any) => f && f.filename && f.content).map((f: any) => ({ filename: String(f.filename).slice(0, 150), content: String(f.content), contentType: f.contentType ? String(f.contentType) : undefined }));
+    if (files.reduce((a: number, f: any) => a + f.content.length * 0.75, 0) > 15 * 1024 * 1024) return json({ error: 'Attachments are too big. Keep them under 15 MB in total.' }, 400);
     const id = threadId || pkey(party) + '_' + Date.now().toString(36);
-    const nt = await sendInThread({ t, id, party, to, cc, html, n, inv: (body.inv ?? []).map(String), ids: (body.ids ?? []).map(String), amount: Number(body.amount ?? 0), by: user.id, byName: me?.name ?? '' });
+    const nt = await sendInThread({ files, t, id, party, to, cc, html, n, inv: (body.inv ?? []).map(String), ids: (body.ids ?? []).map(String), amount: Number(body.amount ?? 0), by: user.id, byName: me?.name ?? '' });
     const key = pkey(party), c = await getDoc('contacts', key);
     await putDoc('contacts', key, { ...(c ?? {}), party, to: to.join(', '), cc: cc.join(', ') });
     return json({ ok: true, count: nt.count, threadId: id });
