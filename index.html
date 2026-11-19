@@ -62,11 +62,11 @@ input:focus,select:focus{outline:2px solid #12a59455;border-color:#12a594}
 #page{position:absolute;inset:0;overflow:auto;padding:22px 26px;background:#f4f5f7}
 #burger{display:none;position:fixed;top:10px;left:10px;z-index:30;background:#0f1b2d;color:#fff;border:0;border-radius:8px;padding:8px 11px;font-size:16px}
 /* hide / show the left panel (desktop) */
-.sidehide{display:flex;align-items:center;gap:8px;margin:2px 10px 6px;padding:8px 12px;border:1px solid #e3e7ee;border-radius:10px;background:#fff;color:#5b6577;font:600 13px inherit;cursor:pointer}
-.sidehide:hover{background:#f2f4f7;color:#1c2330}
+.sidehide{display:flex;align-items:center;gap:8px;margin:2px 10px 6px;padding:9px 12px;border:0;border-radius:10px;background:#0c7d70;color:#fff;font:700 13px inherit;cursor:pointer;box-shadow:0 2px 8px rgba(12,125,112,.3)}
+.sidehide:hover{background:#096a5f}.sidehide:focus-visible{outline:3px solid #2b2b45;outline-offset:2px}
 .sidehide svg,#sideshow svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-#sideshow{display:none;position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:30;border:1px solid #e3e7ee;border-left:0;border-radius:0 12px 12px 0;background:#fff;color:#1c2330;padding:14px 8px;cursor:pointer;box-shadow:0 4px 14px rgba(15,27,45,.15)}
-#sideshow:hover{background:#e3f5f2;color:#0c7d70}
+#sideshow{display:none;position:fixed;left:0;top:50%;transform:translateY(-50%);z-index:30;border:0;border-radius:0 12px 12px 0;background:#0c7d70;color:#fff;padding:16px 9px;cursor:pointer;box-shadow:0 4px 14px rgba(12,125,112,.35)}
+#sideshow:hover{background:#096a5f}#sideshow:focus-visible{outline:3px solid #2b2b45}
 body.side-off #side{display:none}
 body.side-off #sideshow{display:block}
 @media(max-width:800px){.sidehide,#sideshow{display:none!important}body.side-off #side{display:flex}#side{position:fixed;inset:0 auto 0 0;z-index:20;transform:translateX(-100%);transition:transform .2s}#side.open{transform:none}#burger{display:block}#page{padding-top:56px}}
@@ -224,7 +224,7 @@ textarea{width:100%;padding:10px 12px;border:1px solid #cbd2dc;border-radius:8px
 <script>
 const SB_URL = 'https://ogvltuavclcgbxlyxkhs.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ndmx0dWF2Y2xjZ2J4bHl4a2hzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3MjY4MDAsImV4cCI6MjExMDMwMjgwMH0.M8toXkbQui8TjCacIobkiyew9O-6IrqgZTTzIkQV8Sg';
-const BUILD = '20261119072732';   // set by build.sh; makes browsers fetch fresh module pages after each update
+const BUILD = '20261119073259';   // set by build.sh; makes browsers fetch fresh module pages after each update
 const MODULES = {
   out: {key:'outstanding', title:'Customer Outstanding', path:'outstanding/'},
   pay: {key:'payments', title:'Payment Request', path:'payments/'}

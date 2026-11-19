@@ -510,9 +510,10 @@ function visibleFor(u, e){
 const scoped = () => [...D.entries.values()].filter(visible);
 /* ---------- WhatsApp alerts: opens WhatsApp with a ready message; the sender presses Send ---------- */
 const waNum = p => { let d = String(p || '').replace(/\D/g, ''); if (d.length === 11 && d[0] === '0') d = d.slice(1); if (d.length === 10) d = '91' + d; return d.length >= 11 && d.length <= 15 ? d : ''; };
-const waPeople = () => { const u = me(); if (!u || u.role === 'Executive') return []; const all = [...D.users.values()].filter(x => x.active !== false && (x.role === 'Executive' || x.role === 'Manager'));
+const waPeople = () => { const u = me(); if (!u || !isTop()) return []; const all = [...D.users.values()].filter(x => x.active !== false && (x.role === 'Executive' || x.role === 'Manager'));
   return (isTop() ? all : all.filter(x => x.role === 'Executive' && x.managerId === u.id)).sort((a, b) => (a.role === b.role ? 0 : a.role === 'Manager' ? -1 : 1) || (a.name || '').localeCompare(b.name || '')); };
 const waRows = u => [...D.entries.values()].filter(e => e.status !== 'Paid' && visibleFor(u, e));
+const waNoExp = rows => rows.filter(e => e.due && e.due < TODAY && !e.expectedDate);   // due crossed, no expected date filled yet
 // Short customer name for WhatsApp: "Sree Jayajothi Cements Private Limited-Maha Cement" -> "Sree Jayajothi Cements", "ALKRAFT THERMOTECHNOLOGIES (PVT) LTD" -> "ALKRAFT"
 function shortParty(p){
   const raw = String(p || '').trim(); if (!raw) return '—';
@@ -531,8 +532,8 @@ function waText(u){
   const group = (list, keyOf) => { const m = new Map(); list.forEach(e => { const k = keyOf(e); if (!m.has(k)) m.set(k, []); m.get(k).push(e); }); return [...m.entries()].map(([k, l]) => ({k, l, amt: sum(l)})); };
   let t = `Hi ${u.name},\n*Need Customer Outstanding Update*`;
   // due date crossed: one line per customer, total only
-  const due = rows.filter(e => e.due && e.due < TODAY), dp = group(due, e => shortParty(e.party)).sort((x, y) => y.amt - x.amt);
-  t += `\n\n*Outstanding due crossed: ${money(sum(due))}*\n`;
+  const due = waNoExp(rows), dp = group(due, e => shortParty(e.party)).sort((x, y) => y.amt - x.amt);
+  t += `\n\n*Outstanding due crossed (expected date not given): ${money(sum(due))}*\n`;
   t += dp.length ? '\n' + dp.slice(0, MAX).map((g, i) => `${i + 1}. ${g.k} = ${money(g.amt)}${who(g.l)}`).join('\n') + (dp.length > MAX ? `\n…and ${dp.length - MAX} more customers (see expertone.org)` : '') : '\nNone.';
   // expected (commitment) date crossed: customer = amount | commitment date
   const miss = rows.filter(missed);
@@ -548,11 +549,11 @@ function waText(u){
 }
 function viewWA(){
   const ppl = waPeople(); if (!ppl.length) return `<div class="head"><div><h1>Send WhatsApp Alert</h1></div></div><div class="card"><p class="mut">No executives or managers to message.</p></div>`;
-  const rowsH = ppl.map(u => { const r = waRows(u), m = r.filter(missed), n = waNum(u.phone);
-    return `<tr><td>${esc(u.name)}</td><td>${esc(u.role)}</td><td class="r num">${r.length}</td><td class="r num">${money(sum(r))}</td><td class="r num">${m.length ? `<span class="pill bad">${m.length}</span>` : '0'}</td><td class="r">${n ? `<a class="btn sm wa" target="_blank" rel="noopener" href="https://wa.me/${n}?text=${encodeURIComponent(waText(u))}">WhatsApp</a>` : '<span class="mut">Add mobile number in Create → Edit</span>'}</td></tr>`; }).join('');
-  return `<div class="head"><div><h1>Send WhatsApp Alert</h1><p class="sub">Send each executive and manager their due-crossed outstanding and crossed commitment dates · ${ppl.length} people</p></div></div>
+  const rowsH = ppl.map(u => { const all = waRows(u), r = waNoExp(all), m = all.filter(missed), n = waNum(u.phone), none = !r.length && !m.length;
+    return `<tr><td>${esc(u.name)}</td><td>${esc(u.role)}</td><td class="r num">${r.length}</td><td class="r num">${money(sum(r))}</td><td class="r num">${m.length ? `<span class="pill bad">${m.length}</span>` : '0'}</td><td class="r">${none ? '<span class="mut">Nothing to follow up</span>' : n ? `<a class="btn sm wa" target="_blank" rel="noopener" href="https://wa.me/${n}?text=${encodeURIComponent(waText(u))}">WhatsApp</a>` : '<span class="mut">Add mobile number in Create → Edit</span>'}</td></tr>`; }).join('');
+  return `<div class="head"><div><h1>Send WhatsApp Alert</h1><p class="sub">Only two things are sent: due-crossed invoices with no expected date yet, and expected (commitment) dates that have passed · ${ppl.length} people</p></div></div>
     <div class="card"><p class="mut" style="margin:0 0 10px">The WhatsApp button opens WhatsApp with the message ready. Check it and press Send.</p>
-    <div style="overflow:auto"><table><thead><tr><th>Name</th><th>Role</th><th class="r">Pending invoices</th><th class="r">Amount</th><th class="r">Commitment date crossed</th><th></th></tr></thead><tbody>${rowsH}</tbody></table></div></div>`;
+    <div style="overflow:auto"><table><thead><tr><th>Name</th><th>Role</th><th class="r">Due crossed, no expected date</th><th class="r">Amount</th><th class="r">Commitment date crossed</th><th></th></tr></thead><tbody>${rowsH}</tbody></table></div></div>`;
 }
 const active = rows => rows.filter(e => e.status !== 'Paid');
 const ownerOf = e => e.assignedTo || execs().find(x => (x.subs || []).includes(e.sub))?.id || '';
@@ -891,7 +892,7 @@ function viewCollection(){
 const NAVIC = {"billing": "<path d=\"M6 3h12v18l-3-2-3 2-3-2-3 2z\"/><path d=\"M9 8h6M9 12h6\"/>", "chat": "<path d=\"M21 12a8 8 0 0 1-11.7 7.1L4 20l1-4.6A8 8 0 1 1 21 12z\"/>", "collection": "<path d=\"M3 7a2 2 0 0 1 2-2h13v4\"/><path d=\"M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H5a2 2 0 0 1-2-2z\"/><circle cx=\"16\" cy=\"14.5\" r=\"1.2\"/>", "wa": "<path d=\"M21 12a8 8 0 0 1-11.7 7.1L4 20l1-4.6A8 8 0 1 1 21 12z\"/><path d=\"M9 10.5c.3 1.6 1.9 3.2 3.5 3.5l1-1 1.5.6v1.4c-2.9.3-6.4-3.2-6.1-6.1H10l.6 1.5z\"/>", "dashboard": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"2\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"2\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"2\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"2\"/>", "create": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 8v8M8 12h8\"/>", "outstanding": "<path d=\"M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z\"/><path d=\"M14 3v5h5M9 13h6M9 17h6\"/>", "parties": "<circle cx=\"9\" cy=\"8\" r=\"3.5\"/><path d=\"M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2 .8 3.5 2.7 3.5 6\"/>", "followups": "<path d=\"M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0\"/>", "edits": "<path d=\"M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z\"/>", "activity": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/>"};
 const ico = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${NAVIC[k] || ''}</svg>`;
 const NAV = [
-  ['dashboard','Dashboard',viewDashboard,()=>true],['wa','Send WhatsApp Alert',viewWA,()=>waPeople().length > 0],['create','Create',viewCreate,isAdm],['outstanding','Outstanding',viewOutstanding,()=>true],['billing','Billing',viewBilling,()=>true],['collection','Collection',viewCollection,()=>true],['chat','Chat',viewChat,()=>true],
+  ['dashboard','Dashboard',viewDashboard,()=>true],['wa','Send WhatsApp Alert',viewWA,()=>isTop() && waPeople().length > 0],['create','Create',viewCreate,isAdm],['outstanding','Outstanding',viewOutstanding,()=>true],['billing','Billing',viewBilling,()=>true],['collection','Collection',viewCollection,()=>true],['chat','Chat',viewChat,()=>true],
   ['edits','Edit History',viewEdits,()=>true],
   ['activity','Activity log',viewActivity,()=>true]
 ];
