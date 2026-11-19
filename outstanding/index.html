@@ -59,6 +59,7 @@ input,select,textarea{background:var(--surface);border:1px solid var(--line);bor
 textarea{width:100%;resize:vertical}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink2);flex:1;min-width:140px} label.f input,label.f select,label.f textarea{font-size:14px;color:var(--ink)}
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.udd{border:1px solid var(--line);border-radius:12px;background:var(--surface)}.udd summary{list-style:none;cursor:pointer;padding:13px 14px;font-weight:600;display:flex;justify-content:space-between;align-items:center}.udd summary::-webkit-details-marker{display:none}.udd summary::after{content:'▾';opacity:.6}.udd[open] summary{border-bottom:1px solid var(--line)}.uddl{padding:8px 14px 10px}.uddl .chk{display:flex;align-items:center;gap:8px;margin:6px 0}
 .chip{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:16px;padding:5px 12px;cursor:pointer;white-space:nowrap}
 .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)} .chip small{opacity:.7;margin-left:4px;font-family:var(--mono)}
 .tw{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:8px}
@@ -371,6 +372,10 @@ async function hashPw(pw, salt){
 const COLS_DB = ['users','entries','followups','payments','activity','edits','meta','chats','billing'];
 const D = {}; COLS_DB.forEach(c => D[c] = new Map());
 const hasOut = u => !u || !Array.isArray(u.mods) || u.mods.includes('out'); // Payment Request-only people are not Customer Outstanding users
+const ALLU = new Map();   // every user doc (Sales and Purchase), used only by the Create pages
+const hasPay = u => !!u && Array.isArray(u.mods) && u.mods.includes('pay');
+const uDepts = u => { const d = []; if (hasOut(u)) d.push('Sales'); if (hasPay(u)) d.push('Purchase' + (u.prDept && u.prDept !== 'Purchase' ? ' (' + u.prDept + ')' : '')); return d; };
+const anyName = id => (ALLU.get(id) || D.users.get(id))?.name || '';
 const loaded = {}; let loadFailed = false;
 function norm(snap){
   let docs = snap && snap.docs ? snap.docs : (Array.isArray(snap) ? snap : null);
@@ -385,6 +390,7 @@ const Store = {
       let rows = [], a = 0;
       for (;;){ const {data, error} = await sb.from('docs').select('col,id,data').order('col').order('id').range(a, a + 999); if (error) throw error; rows = rows.concat(data); if (data.length < 1000) break; a += 1000; }
       COLS_DB.forEach(c => { D[c] = new Map(rows.filter(r => r.col === c && (c !== 'users' || hasOut(r.data))).map(r => [r.id, {...r.data, id:r.id}])); loaded[c] = true; });
+      ALLU.clear(); rows.filter(r => r.col === 'users').forEach(r => ALLU.set(r.id, {...r.data, id:r.id}));
       if (D.users.get(S.me)?.role === 'Admin') await this.loadSecrets();
       schedule();
     };
@@ -394,8 +400,8 @@ const Store = {
     if (this.ch) sb.removeChannel(this.ch);
     let first = true;
     this.ch = sb.channel('docs-live').on('postgres_changes', {event:'*', schema:'public', table:'docs'}, p => {
-      if (p.eventType === 'DELETE'){ const o = p.old || {}; if (o.col && D[o.col]){ D[o.col].delete(o.id); schedule(); } }
-      else { const n = p.new; if (n && D[n.col] && (n.col !== 'users' || hasOut(n.data))){ D[n.col].set(n.id, {...n.data, id:n.id}); schedule(); } }
+      if (p.eventType === 'DELETE'){ const o = p.old || {}; if (o.col === 'users') ALLU.delete(o.id); if (o.col && D[o.col]){ D[o.col].delete(o.id); schedule(); } }
+      else { const n = p.new; if (n && n.col === 'users'){ ALLU.set(n.id, {...n.data, id:n.id}); if (!hasOut(n.data) && D.users.has(n.id)){ D.users.delete(n.id); schedule(); } } if (n && D[n.col] && (n.col !== 'users' || hasOut(n.data))){ D[n.col].set(n.id, {...n.data, id:n.id}); schedule(); } }
     }).subscribe(st => { if (st === 'SUBSCRIBED'){ if (first) first = false; else loadAll().catch(() => {}); } });
   },
   async loadSecrets(){ const {data} = await this.sb.from('user_secrets').select('user_id,pw'); Object.keys(SECRETS).forEach(k => delete SECRETS[k]); (data || []).forEach(r => SECRETS[r.user_id] = r.pw); },
@@ -1010,12 +1016,19 @@ function viewEdits(){
 }
 function userForm(u, r){
   const subs = allSubs(), self = u && u.id === S.me;
-  const mgrs = [...D.users.values()].filter(x => x.role === 'Manager' && (x.active !== false || x.id === u?.managerId));
-  const exec = r === 'Executive' ? `<label>Area (tick all that apply)</label>${subs.length ? '' : '<div class="mut">No areas yet. Create an Area first.</div>'}<div class="chips" style="flex-wrap:wrap;margin-bottom:4px">${subs.map(s => `<label class="chip"><input type="checkbox" class="usub" value="${esc(s)}" ${(u?.subs || []).includes(s) ? 'checked' : ''}> ${esc(s)}</label>`).join('')}</div>
-    <label for="um">Manager</label><select id="um" required><option value="">Select manager</option>${mgrs.map(m => `<option value="${m.id}" ${u?.managerId === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select>${mgrs.length ? '' : '<div class="mut" style="margin-top:6px">No managers yet. Create a Manager first.</div>'}` : '';
+  const pool = ALLU.size ? ALLU : D.users, curM = u?.managerId || u?.prManagerId;
+  const mgrs = [...pool.values()].filter(x => x.role === 'Manager' && x.id !== u?.id && (x.active !== false || x.id === curM)).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const deptUI = r === 'Manager' || r === 'Executive';
+  const dSales = !u || hasOut(u), dPur = !!u && hasPay(u);
+  const dept = deptUI ? `<label>Department</label><details class="udd"><summary id="udsum">${[dSales && 'Sales', dPur && 'Purchase'].filter(Boolean).join(', ') || 'Select department'}</summary><div class="uddl">
+      <label class="chk"><input type="checkbox" class="udep" value="Sales" ${dSales ? 'checked' : ''}> Sales <span class="mut">(Customer Outstanding)</span></label>
+      <label class="chk"><input type="checkbox" class="udep" value="Purchase" ${dPur ? 'checked' : ''}> Purchase <span class="mut">(Payment & Expense requests)</span></label></div></details>` : '';
+  const exec = r === 'Executive' ? `<div id="uareas" style="${dSales ? '' : 'display:none'}"><label>Area (tick all that apply)</label>${subs.length ? '' : '<div class="mut">No areas yet. Create an Area first.</div>'}<div class="chips" style="flex-wrap:wrap;margin-bottom:4px">${subs.map(s => `<label class="chip"><input type="checkbox" class="usub" value="${esc(s)}" ${(u?.subs || []).includes(s) ? 'checked' : ''}> ${esc(s)}</label>`).join('')}</div></div>
+    <label for="um">Manager</label><select id="um" required><option value="">Select manager</option>${mgrs.map(m => `<option value="${m.id}" ${curM === m.id ? 'selected' : ''}>${esc(m.name)} (${esc(uDepts(m).map(d => d.split(' ')[0]).join(', ') || '—')})</option>`).join('')}</select>${mgrs.length ? '' : '<div class="mut" style="margin-top:6px">No managers yet. Create a Manager first.</div>'}` : '';
   return `<h2 style="font-size:22px;margin:0 0 4px">${u ? 'Edit' : 'Create'} ${r}</h2>
   <label for="un">Name</label><input id="un" value="${esc(u?.name || '')}" required>
   <label for="uu">Username</label><input id="uu" value="${esc(u?.username || '')}" autocomplete="off" required>
+  ${dept}
   ${!u || isAdm() ? `<label for="upw">${u ? 'Login password' : 'Password (6+ characters)'}</label><input id="upw" type="${isAdm() ? 'text' : 'password'}" autocomplete="off" value="${esc((SB ? SECRETS[u?.id] : u?.pw) || '')}" placeholder="${u && !(SB ? SECRETS[u.id] : u.pw) ? 'Not stored yet. Type a new password to set it.' : ''}" ${u ? '' : 'required'} minlength="6">${u && isAdm() ? '<div class="mut" style="margin-top:6px;font-size:12px">Only the Admin can see and change this.</div>' : ''}` : ''}
   ${exec}
   ${u && !self ? `<label class="chk"><input type="checkbox" id="ua" ${u.active === false ? '' : 'checked'}> Active</label>` : ''}
@@ -1041,10 +1054,11 @@ async function submitArea(){
   createMsg = `Area "${n}" created.`; forceRender = true; render();
 }
 function roleTable(r){
-  const list = [...D.users.values()].filter(u => u.role === r).sort((a,b) => a.name.localeCompare(b.name));
-  const ex = r === 'Executive', mg = r === 'Manager';
-  const rows = list.map(u => `<tr><td>${esc(u.name)}</td><td class="mono">${esc(u.username)}</td>${ex ? `<td class="wrap">${esc((u.subs||[]).join(', ') || '—')}</td><td>${esc(uname(u.managerId) || '—')}</td>` : ''}${mg ? `<td>${teamExecs(u.id).length}</td>` : ''}<td>${u.active === false ? '<span class="pill bad">Inactive</span>' : '<span class="pill good">Active</span>'}</td><td class="r">${canManage(u) ? `<button class="btn sm" data-act="editUser" data-id="${u.id}">Edit</button>` : ''}${isAdm() && u.id !== S.me ? ` <button class="btn sm dng" data-act="delUser" data-id="${u.id}" aria-label="Delete user">Delete</button>` : ''}</td></tr>`).join('');
-  return `<h2 style="margin:26px 0 10px">${r}s created (${list.length})</h2><div class="tw"><table><thead><tr><th>Name</th><th>Username</th>${ex ? '<th>Area</th><th>Manager</th>' : ''}${mg ? '<th>Executives</th>' : ''}<th>Status</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="${ex ? 6 : mg ? 5 : 4}" class="empty">No ${r} created yet.</td></tr>`}</tbody></table></div>`;
+  const ex = r === 'Executive', mg = r === 'Manager', dc = ex || mg;
+  const list = [...(dc && ALLU.size ? ALLU : D.users).values()].filter(u => u.role === r).sort((a,b) => (a.name || '').localeCompare(b.name || ''));
+  const teamN = id => [...(ALLU.size ? ALLU : D.users).values()].filter(x => x.role === 'Executive' && (x.managerId === id || x.prManagerId === id)).length;
+  const rows = list.map(u => `<tr><td>${esc(u.name)}</td><td class="mono">${esc(u.username)}</td>${dc ? `<td>${esc(uDepts(u).join(', ') || '—')}</td>` : ''}${ex ? `<td class="wrap">${esc(hasOut(u) ? ((u.subs||[]).join(', ') || '—') : '—')}</td><td>${esc(anyName(u.managerId || u.prManagerId) || '—')}</td>` : ''}${mg ? `<td>${teamN(u.id)}</td>` : ''}<td>${u.active === false ? '<span class="pill bad">Inactive</span>' : '<span class="pill good">Active</span>'}</td><td class="r">${canManage(u) ? `<button class="btn sm" data-act="editUser" data-id="${u.id}">Edit</button>` : ''}${isAdm() && u.id !== S.me ? ` <button class="btn sm dng" data-act="delUser" data-id="${u.id}" aria-label="Delete user">Delete</button>` : ''}</td></tr>`).join('');
+  return `<h2 style="margin:26px 0 10px">${r}s created (${list.length})</h2><div class="tw"><table><thead><tr><th>Name</th><th>Username</th>${dc ? '<th>Department</th>' : ''}${ex ? '<th>Area</th><th>Manager</th>' : ''}${mg ? '<th>Executives</th>' : ''}<th>Status</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="${ex ? 7 : mg ? 6 : 4}" class="empty">No ${r} created yet.</td></tr>`}</tbody></table></div>`;
 }
 function viewCreate(){
   if (F.cr === 'Area') return viewCreateArea();
@@ -1059,10 +1073,35 @@ async function submitUser(form){
   if ([...D.users.values()].some(x => x.username === username && x.id !== id)){ err.textContent = 'That username is taken.'; return; }
   if (pw && pw.length < 6){ err.textContent = 'Password needs 6 or more characters.'; return; }
   const u = {...(old || {active:true, created:nowISO(), phone:''}), username, name, role};
+  const deptUI = !!form.querySelector('.udep');
+  const depts = [...form.querySelectorAll('.udep:checked')].map(x => x.value), sales = !deptUI || depts.includes('Sales'), pur = deptUI && depts.includes('Purchase');
+  if (deptUI && !depts.length){ err.textContent = 'Select a department: Sales, Purchase or both.'; return; }
+  if (deptUI){
+    const keep = (Array.isArray(old?.mods) ? old.mods : (old ? ['out'] : [])).filter(m => m !== 'out' && m !== 'pay');
+    u.mods = [...(sales ? ['out'] : []), ...(pur ? ['pay'] : []), ...keep];
+    if (pur){ u.prRole = role.toLowerCase(); if (!u.prDept || (role === 'Manager' && u.prDept === 'Sub Admin')) u.prDept = 'Purchase'; }
+  }
+  let mgr = null;
   if (role === 'Executive'){
-    u.subs = [...form.querySelectorAll('.usub:checked')].map(x => x.value); u.managerId = val('um');
-    if (!u.subs.length){ err.textContent = 'Select at least one area.'; return; }
-    if (!u.managerId){ err.textContent = 'Select a manager.'; return; }
+    const pick = val('um'), prSub = pur && u.prDept === 'Sub Admin' && !sales;
+    u.subs = sales ? [...form.querySelectorAll('.usub:checked')].map(x => x.value) : [];
+    if (sales && !u.subs.length){ err.textContent = 'Select at least one area.'; return; }
+    if (!pick && !prSub){ err.textContent = 'Select a manager.'; return; }
+    if (sales) u.managerId = pick; else delete u.managerId;
+    if (pur && !prSub) u.prManagerId = pick;
+    mgr = pick ? (ALLU.get(pick) || D.users.get(pick)) : null;
+    if (mgr && SB){
+      const need = [sales && !hasOut(mgr) && 'Sales', pur && !hasPay(mgr) && 'Purchase'].filter(Boolean);
+      if (need.length){
+        if (!confirm(`${mgr.name} is not a ${need.join(' and ')} manager yet.\n\nAdd ${mgr.name} to ${need.join(' and ')} as a manager too? This is needed so ${mgr.name} can see this executive's work.`)) return;
+        const m2 = {...mgr}; delete m2.id;
+        m2.mods = [...new Set([...(Array.isArray(mgr.mods) ? mgr.mods : ['out']), ...(need.includes('Sales') ? ['out'] : []), ...(need.includes('Purchase') ? ['pay'] : [])])];
+        if (need.includes('Purchase')){ m2.prRole = 'manager'; if (!m2.prDept || m2.prDept === 'Sub Admin') m2.prDept = u.prDept && u.prDept !== 'Sub Admin' ? u.prDept : 'Purchase'; }
+        const {error: me2} = await Store.sb.from('docs').upsert({col:'users', id:mgr.id, data:m2});
+        if (me2){ err.textContent = 'Could not update ' + mgr.name + ': ' + me2.message; return; }
+        ALLU.set(mgr.id, {...m2, id:mgr.id}); if (hasOut(m2)) D.users.set(mgr.id, {...m2, id:mgr.id});
+      }
+    }
   } else { u.subs = []; delete u.managerId; }
   const aEl = form.querySelector('#ua'); if (aEl) u.active = aEl.checked;
   if (SB){
@@ -1071,7 +1110,7 @@ async function submitUser(form){
     const {data, error} = await Store.sb.functions.invoke('manage-users', {body:{id:id || undefined, username, password:(pw && pw !== secret) ? pw : '', doc:u}});
     let msg = error ? error.message : (data && data.error); if (error && error.context && error.context.json){ try { msg = (await error.context.json()).error || msg; } catch(e){} }
     if (msg){ err.textContent = msg; if (btn) btn.disabled = false; return; }
-    D.users.set(data.id, {...u, id:data.id, username}); await Store.loadSecrets();
+    const full = {...u, id:data.id, username}; ALLU.set(data.id, full); if (hasOut(full)) D.users.set(data.id, full); else D.users.delete(data.id); await Store.loadSecrets();
     await logAct(old ? 'Edit user' : 'Create user', `${name} (${role})`); closeModal();
     if (!old){ createMsg = `${role} "${name}" created. Username: ${username}`; forceRender = true; } render(); return;
   }
@@ -1393,14 +1432,14 @@ const ACT = {
     render();
   },
   addEntry:() => { if (canInv()) entryModal(null); }, editEntry:t => { if (canInv()) entryModal(D.entries.get(t.dataset.id)); },
-  delUser:async t => { const u = D.users.get(t.dataset.id); if (!u || !isAdm() || u.id === S.me) return; if (!confirmDel(t, 'Delete user?')) return;
-    if (SB){ const {data, error} = await Store.sb.functions.invoke('manage-users', {body:{action:'delete', id:u.id}}); let msg = error ? error.message : (data && data.error); if (error && error.context && error.context.json){ try { msg = (await error.context.json()).error || msg; } catch(e){} } if (msg){ toast('Could not delete: ' + msg); return; } D.users.delete(u.id); delete SECRETS[u.id]; }
+  delUser:async t => { const u = D.users.get(t.dataset.id) || ALLU.get(t.dataset.id); if (!u || !isAdm() || u.id === S.me) return; if (!confirmDel(t, 'Delete user?')) return;
+    if (SB){ const {data, error} = await Store.sb.functions.invoke('manage-users', {body:{action:'delete', id:u.id}}); let msg = error ? error.message : (data && data.error); if (error && error.context && error.context.json){ try { msg = (await error.context.json()).error || msg; } catch(e){} } if (msg){ toast('Could not delete: ' + msg); return; } D.users.delete(u.id); ALLU.delete(u.id); delete SECRETS[u.id]; }
     else await Store.del('users', u.id);
     await logAct('Delete user', `${u.name} (${u.role})`); forceRender = true; render(); },
   delArea:async t => { const k = t.dataset.k; if (!isAdm()) return; if ([...D.entries.values()].some(e => e.sub === k)){ toast('This area still has invoices. Delete or move them first.'); return; } if (!confirmDel(t, 'Delete area?')) return; await Store.set('meta', 'settings', {subgroups:allSubs().filter(s => s !== k)}); await logAct('Delete area', k); forceRender = true; render(); },
   delEntry:async t => { const e = D.entries.get(t.dataset.id); if (!e || !isAdm()) return; if (!confirmDel(t, 'Delete this invoice and its history?')) return; await logEdit('Delete', e, [{f:'Invoice deleted', from:money(e.amount), to:'—'}]); await Store.del('entries', e.id); for (const f of [...D.followups.values()].filter(f => f.entryId === e.id)) await Store.del('followups', f.id); for (const p of [...D.payments.values()].filter(p => p.entryId === e.id)) await Store.del('payments', p.id); await logAct('Delete invoice', `${e.party} ${e.ref || ''}`); closeDrawer(); },
   saveFU:t => saveFU(t.dataset.id), savePay:t => savePay(t.dataset.id),
-  editUser:t => userModal(D.users.get(t.dataset.id)),
+  editUser:t => userModal(D.users.get(t.dataset.id) || ALLU.get(t.dataset.id)),
   addSub:async () => { const v = val('newsub'); if (!v) return; const s = new Set(D.meta.get('settings')?.subgroups || []); allSubs().forEach(x => s.add(x)); s.add(v); await Store.set('meta', 'settings', {subgroups:[...s]}); await logAct('Add sub group', v); },
   profile:() => { if (me()?.role === 'Admin') profileModal(); }, myProfile:profileViewModal, logout:() => { if (SB){ Store.sb.auth.signOut().finally(() => location.reload()); return; } S.me = null; try { sessionStorage.removeItem('cof_me'); } catch(e){} closeDrawer(); render(); },
   ...Object.fromEntries(Object.entries(XACT).map(([k, f]) => [k, async t => { const l = t.textContent; t.textContent = 'Preparing…'; t.disabled = true; try { await f(); } finally { t.textContent = l; t.disabled = false; } }])),
@@ -1426,6 +1465,13 @@ document.addEventListener('paste', async ev => {
 document.addEventListener('keydown', ev => { if (ev.target.id === 'chtxt' && ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); ACT.chatSend(); return; }
   if (ev.key === 'Escape'){ if (document.getElementById('lb')) ACT.closeLb(); else if ($('#ov').classList.contains('show')) closeModal(); else if (S.drawer) closeDrawer(); } });
 document.addEventListener('input', ev => { const t = ev.target; if (t.dataset.f){ S.editRow = null; F[t.dataset.f] = t.value; F.page = 1; F.pgs = {}; const id = t.id, pos = t.selectionStart; render(); if (id){ const el = document.getElementById(id); if (el){ el.focus(); try { const n = (pos == null ? el.value.length : pos); el.setSelectionRange(n, n); } catch(e){} } } } });
+document.addEventListener('change', ev => {
+  if (!ev.target.classList || !ev.target.classList.contains('udep')) return;
+  const f = ev.target.closest('form'); if (!f) return;
+  const ds = [...f.querySelectorAll('.udep:checked')].map(x => x.value);
+  const sm = f.querySelector('#udsum'); if (sm) sm.textContent = ds.join(', ') || 'Select department';
+  const ar = f.querySelector('#uareas'); if (ar) ar.style.display = ds.includes('Sales') ? '' : 'none';
+});
 document.addEventListener('change', async ev => {
   const t = ev.target;
   if (t.dataset.f){ if (t.type === 'search' || t.type === 'text') return; S.editRow = null; F[t.dataset.f] = t.type === 'checkbox' ? t.checked : t.value; F.page = 1; render(); }
