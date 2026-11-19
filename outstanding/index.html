@@ -514,14 +514,25 @@ const waPeople = () => { const u = me(); if (!u || u.role === 'Executive') retur
   return (isTop() ? all : all.filter(x => x.role === 'Executive' && x.managerId === u.id)).sort((a, b) => (a.role === b.role ? 0 : a.role === 'Manager' ? -1 : 1) || (a.name || '').localeCompare(b.name || '')); };
 const waRows = u => [...D.entries.values()].filter(e => e.status !== 'Paid' && visibleFor(u, e));
 function waText(u){
-  const rows = waRows(u).sort((a, b) => (b.amount || 0) - (a.amount || 0)), miss = rows.filter(missed).sort((a, b) => a.expectedDate < b.expectedDate ? -1 : 1), MAX = 20;
-  const line = (e, i, d) => `${i + 1}. ${e.party || '—'}${e.ref ? ' | ' + e.ref : ''} | ${inr2(e.amount)} | ${d}${u.role === 'Manager' && uname(ownerOf(e)) ? ' | ' + uname(ownerOf(e)) : ''}`;
-  const more = (n) => n > MAX ? `\n…and ${n - MAX} more (see expertone.org)` : '';
-  let t = `Hi ${u.name}, Customer Outstanding update as of ${fmtD(TODAY)}.\n\n*Pending invoices: ${rows.length} | ${inr2(sum(rows))}*`;
-  if (rows.length) t += '\n' + rows.slice(0, MAX).map((e, i) => line(e, i, e.due ? 'due ' + fmtD(e.due) : 'no due date')).join('\n') + more(rows.length);
-  t += `\n\n*Expected date crossed: ${miss.length} | ${inr2(sum(miss))}*`;
-  t += miss.length ? '\n' + miss.slice(0, MAX).map((e, i) => line(e, i, 'expected ' + fmtD(e.expectedDate))).join('\n') + more(miss.length) : '\nNone. Good work!';
-  return t + '\n\nPlease follow up today and update the status in expertone.org.\n- Expert Corporate Solutions';
+  const rows = waRows(u), MAX = 25, mgr = u.role === 'Manager';
+  const who = list => { if (!mgr) return ''; const n = [...new Set(list.map(e => uname(ownerOf(e))).filter(Boolean))]; return n.length ? ' (' + n.join(', ') + ')' : ''; };
+  const byParty = list => { const m = new Map(); list.forEach(e => { const k = e.party || '—'; if (!m.has(k)) m.set(k, []); m.get(k).push(e); }); return [...m.entries()].map(([party, l]) => ({party, l, amt: sum(l)})).sort((x, y) => y.amt - x.amt); };
+  const cnt = l => l.length > 1 ? ` (${l.length} invoices)` : '';
+  // 1. due date crossed: one line per customer, total amount only
+  const due = rows.filter(e => e.due && e.due < TODAY), dp = byParty(due);
+  let t = `Hi ${u.name}, Customer Outstanding update as of ${fmtD(TODAY)}.`;
+  t += `\n\n*Outstanding due crossed: ${money(sum(due))}*`;
+  t += dp.length ? '\n' + dp.slice(0, MAX).map((g, i) => `${i + 1}. ${g.party} = ${money(g.amt)}${who(g.l)}`).join('\n') + (dp.length > MAX ? `\n…and ${dp.length - MAX} more customers (see expertone.org)` : '') : '\nNone.';
+  // 2. expected date crossed: grouped by the promised date, then customer
+  const miss = rows.filter(missed), dates = [...new Set(miss.map(e => e.expectedDate))].sort();
+  t += `\n\n*Expected date crossed: ${money(sum(miss))}*`;
+  if (!dates.length) t += '\nNone. Good work!';
+  dates.forEach(d => {
+    const g = byParty(miss.filter(e => e.expectedDate === d));
+    t += `\n\n*Expected: ${fmtD(d)}*\n` + g.map(x => `${x.party} = ${money(x.amt)}${cnt(x.l)}${who(x.l)}`).join('\n');
+    t += `\nYou said this payment would come on ${fmtD(d)}, but it has not come. Please check with the customer and update the status immediately.`;
+  });
+  return t + '\n\n- Expert Corporate Solutions (expertone.org)';
 }
 function waCardHTML(){
   const ppl = waPeople(); if (!ppl.length) return '';
