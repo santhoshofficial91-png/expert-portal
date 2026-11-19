@@ -457,12 +457,6 @@ async function renderAccess(){
     <div style="overflow:auto"><table><thead><tr><th>Person</th><th>Customer Outstanding</th><th>Payment Request</th><th>PR role</th><th>PR dept</th><th>PR manager</th><th>Active</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
   $('#addUser').onclick = () => addUserModal(mgrs);
 }
-// Choosing a PR role / dept / manager means the person needs Payment Request: tick it automatically.
-$('#page').addEventListener('change', ev => {
-  const t = ev.target; if (!t.matches || !t.matches('.pr-role, .pr-dept, .pr-mgr') || !t.value) return;
-  const tr = t.closest('tr'), cb = tr && tr.querySelector('.m-pay');
-  if (cb && !cb.checked){ cb.checked = true; toast('Payment Request ticked for this person. Press Save to keep it.'); }
-});
 $('#page').addEventListener('click', async ev => {
   const b = ev.target.closest('button[data-a]'); if (!b) return;
   const tr = b.closest('tr'), u = USERS.find(x => x.id === tr.dataset.id); if (!u) return;
@@ -478,7 +472,8 @@ $('#page').addEventListener('click', async ev => {
   const mods = [out && 'out', pay && 'pay'].filter(Boolean);
   const data = {...u}; delete data.id;
   data.mods = mods; data.active = act;
-  if (pay){ data.prRole = prRole; data.prDept = prDept; if (prMgr) data.prManagerId = prMgr; else delete data.prManagerId; }
+  // PR role / dept / manager are kept as chosen even when Payment Request is not ticked; they only take effect when it is ticked.
+  if (pay || prRole){ if (prRole) data.prRole = prRole; data.prDept = prDept; if (prMgr) data.prManagerId = prMgr; else delete data.prManagerId; }
   b.disabled = true;
   if (pay && prMgr && !(await ensurePrMgr(prMgr, prDept))){ b.disabled = false; return; }
   const {error} = await sb.from('docs').upsert({col: 'users', id: u.id, data});
