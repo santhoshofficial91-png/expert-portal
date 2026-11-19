@@ -529,11 +529,18 @@ function shortParty(p){
   return name;
 }
 // Two WhatsApp messages: kind 'out' = due-crossed outstanding without expected date, kind 'exp' = expected (commitment) date crossed
-function waText(u, kind){
-  const rows = waRows(u), MAX = 25, mgr = u.role === 'Manager';
+function waText(u, kind){ return waCompose(waRows(u), kind, {hi: u.name, mgr: u.role === 'Manager'}); }
+// Area group message: only that area's invoices, sent into the area's WhatsApp group
+function waAreaText(area, kind){
+  const ex = execs().filter(x => (x.subs || []).includes(area)).map(x => x.name).filter(Boolean);
+  return waCompose(waAreaRows(area), kind, {hi: area + ' Team' + (ex.length ? ' (' + ex.join(', ') + ')' : ''), area});
+}
+const waAreaRows = a => [...D.entries.values()].filter(e => e.status !== 'Paid' && e.sub === a);
+function waCompose(rows, kind, o){
+  const MAX = 25, mgr = !!o.mgr;
   const who = list => { if (!mgr) return ''; const n = [...new Set(list.map(e => uname(ownerOf(e))).filter(Boolean))]; return n.length ? ' (' + n.join(', ') + ')' : ''; };
   const group = (list, keyOf) => { const m = new Map(); list.forEach(e => { const k = keyOf(e); if (!m.has(k)) m.set(k, []); m.get(k).push(e); }); return [...m.entries()].map(([k, l]) => ({k, l, amt: sum(l)})); };
-  let t = `Hi ${u.name},\n*Need Customer Outstanding Update*`;
+  let t = `Hi ${o.hi},\n*Need Customer Outstanding Update${o.area ? ' - ' + o.area : ''}*`;
   if (kind === 'out'){
     const due = waNoExp(rows), dp = group(due, e => shortParty(e.party)).sort((x, y) => y.amt - x.amt);
     t += `\n\n*Outstanding due crossed (expected date not given): ${money(sum(due))}*\n`;
@@ -558,9 +565,17 @@ function viewWA(){
   const btn = (u, n, kind, has) => !has ? '<span class="mut">—</span>' : !n ? '<span class="mut">Add mobile</span>' : `<a class="btn sm wa" data-wa-uid="${u.id}" data-wa-kind="${kind}" target="_blank" rel="noopener" href="https://wa.me/${n}?text=${encodeURIComponent(waText(u, kind))}">WhatsApp</a>`;
   const rowsH = ppl.map(u => { const all = waRows(u), r = waNoExp(all), m = all.filter(missed), n = waNum(u.phone), mg = u.role === 'Manager';
     return `<tr class="${mg ? 'wamgr' : ''}"><td>${esc(u.name)}</td><td>${esc(u.role)}</td><td class="r num">${r.length}</td><td class="r num">${money(sum(r))}</td><td class="c">${btn(u, n, 'out', r.length > 0)}</td><td class="c">${last(u, 'out')}</td><td class="r num">${m.length ? `<span class="pill bad">${m.length}</span>` : '0'}</td><td class="r num">${money(sum(m))}</td><td class="c">${btn(u, n, 'exp', m.length > 0)}</td><td class="c">${last(u, 'exp')}</td></tr>`; }).join('');
+  const gbtn = (a, kind, has) => !has ? '<span class="mut">—</span>' : `<a class="btn sm wa" data-wa-uid="area:${esc(a)}" data-wa-kind="${kind}" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(waAreaText(a, kind))}">Send to group</a>`;
+  const glast = (a, kind) => last({id: 'area:' + a}, kind);
+  const areaRowsH = allSubs().map(a => { const all = waAreaRows(a), r = waNoExp(all), m = all.filter(missed); if (!r.length && !m.length) return '';
+    const ex = execs().filter(x => (x.subs || []).includes(a)).map(x => x.name).join(', ');
+    return `<tr><td>${esc(a)}</td><td>${esc(ex || '—')}</td><td class="r num">${r.length}</td><td class="r num">${money(sum(r))}</td><td class="c">${gbtn(a, 'out', r.length > 0)}</td><td class="c">${glast(a, 'out')}</td><td class="r num">${m.length ? `<span class="pill bad">${m.length}</span>` : '0'}</td><td class="r num">${money(sum(m))}</td><td class="c">${gbtn(a, 'exp', m.length > 0)}</td><td class="c">${glast(a, 'exp')}</td></tr>`; }).join('');
+  const areaCard = `<div class="card" style="margin-top:14px"><h2 style="margin:0 0 4px">Area-wise group alert</h2><p class="mut" style="margin:0 0 10px">Each message has only that area's invoices. Press Send to group, pick the area's WhatsApp group (for example OMR group), then press Send.</p>
+    <div style="overflow:auto"><table class="watab"><thead><tr><th rowspan="2">Area</th><th rowspan="2">Executive</th><th colspan="4" class="wagh">Outstanding notification<div class="mut">Due crossed, no expected date</div></th><th colspan="4" class="wagh">Expected date notification<div class="mut">Commitment date crossed</div></th></tr><tr><th class="r">Invoices</th><th class="r">Amount</th><th></th><th class="c">Last notification sent</th><th class="r">Invoices</th><th class="r">Amount</th><th></th><th class="c">Last notification sent</th></tr></thead><tbody>${areaRowsH || '<tr><td colspan="10" class="empty">No area has pending alerts.</td></tr>'}</tbody></table></div></div>`;
   return `<div class="head"><div><h1>Send WhatsApp Alert</h1><p class="sub">Only two things are sent: due-crossed invoices with no expected date yet, and expected (commitment) dates that have passed · ${ppl.length} people</p></div></div>
     <div class="card"><p class="mut" style="margin:0 0 10px">The WhatsApp button opens WhatsApp with the message ready. Check it and press Send.</p>
-    <div style="overflow:auto"><table class="watab"><thead><tr><th rowspan="2">Name</th><th rowspan="2">Role</th><th colspan="4" class="wagh">Outstanding notification<div class="mut">Due crossed, no expected date</div></th><th colspan="4" class="wagh">Expected date notification<div class="mut">Commitment date crossed</div></th></tr><tr><th class="r">Invoices</th><th class="r">Amount</th><th></th><th class="c">Last notification sent</th><th class="r">Invoices</th><th class="r">Amount</th><th></th><th class="c">Last notification sent</th></tr></thead><tbody>${rowsH}</tbody></table></div></div>`;
+    <div style="overflow:auto"><table class="watab"><thead><tr><th rowspan="2">Name</th><th rowspan="2">Role</th><th colspan="4" class="wagh">Outstanding notification<div class="mut">Due crossed, no expected date</div></th><th colspan="4" class="wagh">Expected date notification<div class="mut">Commitment date crossed</div></th></tr><tr><th class="r">Invoices</th><th class="r">Amount</th><th></th><th class="c">Last notification sent</th><th class="r">Invoices</th><th class="r">Amount</th><th></th><th class="c">Last notification sent</th></tr></thead><tbody>${rowsH}</tbody></table></div></div>
+    ${areaCard}`;
 }
 const active = rows => rows.filter(e => e.status !== 'Paid');
 const ownerOf = e => e.assignedTo || execs().find(x => (x.subs || []).includes(e.sub))?.id || '';
