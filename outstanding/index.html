@@ -59,6 +59,7 @@ input,select,textarea{background:var(--surface);border:1px solid var(--line);bor
 textarea{width:100%;resize:vertical}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink2);flex:1;min-width:140px} label.f input,label.f select,label.f textarea{font-size:14px;color:var(--ink)}
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.wacard summary{cursor:pointer;list-style:none}.wacard summary::-webkit-details-marker{display:none}.wacard summary::before{content:'▸ ';color:#25a244}.wacard[open] summary::before{content:'▾ '}.btn.wa{background:#25a244;color:#fff;text-decoration:none;white-space:nowrap}.btn.wa:hover{background:#1e8a39}
 .udd{border:1px solid var(--line);border-radius:12px;background:var(--surface)}.udd summary{list-style:none;cursor:pointer;padding:13px 14px;font-weight:600;display:flex;justify-content:space-between;align-items:center}.udd summary::-webkit-details-marker{display:none}.udd summary::after{content:'▾';opacity:.6}.udd[open] summary{border-bottom:1px solid var(--line)}.uddl{padding:8px 14px 10px}.uddl .chk{display:flex;align-items:center;gap:8px;margin:6px 0}
 .chip{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:16px;padding:5px 12px;cursor:pointer;white-space:nowrap}
 .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)} .chip small{opacity:.7;margin-left:4px;font-family:var(--mono)}
@@ -499,13 +500,37 @@ const uname = id => D.users.get(id)?.name || '';
 const teamExecs = m => [...D.users.values()].filter(x => x.role === 'Executive' && x.managerId === m);
 const mgrSubs = u => { const s = new Set(); teamExecs(u.id).forEach(x => (x.subs || []).forEach(v => s.add(v))); return s; };
 const execs = () => [...D.users.values()].filter(u => u.role === 'Executive' && u.active !== false);
-function visible(e){
-  const u = me(); if (!u) return false;
+function visible(e){ return visibleFor(me(), e); }
+function visibleFor(u, e){
+  if (!u) return false;
   if (u.role === 'Admin' || u.role === 'Sub Admin') return true;
   if (u.role === 'Manager') return mgrSubs(u).has(e.sub) || teamExecs(u.id).some(x => x.id === e.assignedTo);
   return e.assignedTo === u.id || (!e.assignedTo && (u.subs || []).includes(e.sub));
 }
 const scoped = () => [...D.entries.values()].filter(visible);
+/* ---------- WhatsApp alerts: opens WhatsApp with a ready message; the sender presses Send ---------- */
+const waNum = p => { let d = String(p || '').replace(/\D/g, ''); if (d.length === 11 && d[0] === '0') d = d.slice(1); if (d.length === 10) d = '91' + d; return d.length >= 11 && d.length <= 15 ? d : ''; };
+const waPeople = () => { const u = me(); if (!u || u.role === 'Executive') return []; const all = [...D.users.values()].filter(x => x.active !== false && (x.role === 'Executive' || x.role === 'Manager'));
+  return (isTop() ? all : all.filter(x => x.role === 'Executive' && x.managerId === u.id)).sort((a, b) => (a.role === b.role ? 0 : a.role === 'Manager' ? -1 : 1) || (a.name || '').localeCompare(b.name || '')); };
+const waRows = u => [...D.entries.values()].filter(e => e.status !== 'Paid' && visibleFor(u, e));
+function waText(u){
+  const rows = waRows(u).sort((a, b) => (b.amount || 0) - (a.amount || 0)), miss = rows.filter(missed).sort((a, b) => a.expectedDate < b.expectedDate ? -1 : 1), MAX = 20;
+  const line = (e, i, d) => `${i + 1}. ${e.party || '—'}${e.ref ? ' | ' + e.ref : ''} | ${inr2(e.amount)} | ${d}${u.role === 'Manager' && uname(ownerOf(e)) ? ' | ' + uname(ownerOf(e)) : ''}`;
+  const more = (n) => n > MAX ? `\n…and ${n - MAX} more (see expertone.org)` : '';
+  let t = `Hi ${u.name}, Customer Outstanding update as of ${fmtD(TODAY)}.\n\n*Pending invoices: ${rows.length} | ${inr2(sum(rows))}*`;
+  if (rows.length) t += '\n' + rows.slice(0, MAX).map((e, i) => line(e, i, e.due ? 'due ' + fmtD(e.due) : 'no due date')).join('\n') + more(rows.length);
+  t += `\n\n*Expected date crossed: ${miss.length} | ${inr2(sum(miss))}*`;
+  t += miss.length ? '\n' + miss.slice(0, MAX).map((e, i) => line(e, i, 'expected ' + fmtD(e.expectedDate))).join('\n') + more(miss.length) : '\nNone. Good work!';
+  return t + '\n\nPlease follow up today and update the status in expertone.org.\n- Expert Corporate Solutions';
+}
+function waCardHTML(){
+  const ppl = waPeople(); if (!ppl.length) return '';
+  const rowsH = ppl.map(u => { const r = waRows(u), m = r.filter(missed), n = waNum(u.phone);
+    return `<tr><td>${esc(u.name)}</td><td>${esc(u.role)}</td><td class="r num">${r.length}</td><td class="r num">${money(sum(r))}</td><td class="r num">${m.length ? `<span class="pill bad">${m.length}</span>` : '0'}</td><td class="r">${n ? `<a class="btn sm wa" target="_blank" rel="noopener" href="https://wa.me/${n}?text=${encodeURIComponent(waText(u))}">WhatsApp</a>` : '<span class="mut">Add mobile number in Create → Edit</span>'}</td></tr>`; }).join('');
+  return `<details class="card wacard"><summary><h2 style="display:inline">WhatsApp alerts</h2> <span class="mut">Send each executive and manager their pending invoices and crossed expected dates (${ppl.length} people)</span></summary>
+    <p class="mut" style="margin:8px 0 10px">The button opens WhatsApp with the message ready. Check it and press Send.</p>
+    <div style="overflow:auto"><table><thead><tr><th>Name</th><th>Role</th><th class="r">Pending</th><th class="r">Amount</th><th class="r">Expected date crossed</th><th></th></tr></thead><tbody>${rowsH}</tbody></table></div></details>`;
+}
 const active = rows => rows.filter(e => e.status !== 'Paid');
 const ownerOf = e => e.assignedTo || execs().find(x => (x.subs || []).includes(e.sub))?.id || '';
 function allSubs(){
@@ -608,6 +633,7 @@ function viewDashboard(){
   const missCard = ms.length ? `<div class="card mcard" role="alert"><h2>Expected date missed · ${ms.length} invoice${ms.length > 1 ? 's' : ''}</h2><p class="mut" style="margin:0 0 8px">Payment was promised by a date that has passed and the invoice is not Paid.</p><div class="tw"><table><thead><tr><th>Area</th><th>Party Name</th><th>Ref No</th><th class="r">Pending Amount</th><th>Expected Date</th><th>Late by</th><th></th></tr></thead><tbody>${MP.items.map(e => `<tr><td>${esc(e.sub)}</td><td class="wrap">${esc(e.party)}</td><td><span class="mono">${esc(e.ref || '—')}</span></td><td class="r"><span class="num">${money(e.amount)}</span></td><td>${fmtD(e.expectedDate)}</td><td><span class="pill bad">${dn(TODAY) - dn(e.expectedDate)} d</span></td><td><button class="btn sm" data-act="goSub" data-k="${esc(e.sub)}">Open area</button></td></tr>`).join('')}</tbody></table></div>${MP.html}</div>` : '';
   return `<div class="head"><div><h1>Dashboard</h1><p class="sub">${isTop() ? 'All areas' : isMgrUp() ? 'Your areas' : 'Your invoices'} · as of ${fmtD(TODAY)}</p></div></div>${annAdminHTML()}
   ${missCard}
+  ${waCardHTML()}
   <div class="grid kp4">
     <div class="hero"><div class="hflex"><div><div class="hk">Total outstanding${!isTop() && mySubs().length ? `<span class="har">${esc(mySubs().join(' / '))}</span>` : ''}</div><div class="hv">${compact(total)}</div><div class="hs">${rows.length} invoices · ${parties} parties</div></div><div class="hline" aria-hidden="true"></div>${billHeroHTML()}</div>
       <div><div class="hseg" role="img" aria-label="Not yet due ${compact(ndAmt)}, overdue ${compact(overAmt)}, no due date ${compact(noAmt)}"><i style="width:${pc(ndAmt)}%;background:#7dd3fc"></i><i style="width:${pc(overAmt)}%;background:#fb7185"></i><i style="width:${pc(noAmt)}%;background:rgba(255,255,255,.55)"></i></div>
