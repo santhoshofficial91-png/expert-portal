@@ -494,6 +494,7 @@ async function renderAccess(){
       <td><select class="pr-dept"><option value="">—</option>${PR_DEPTS.map(d => `<option ${u.prDept === d ? 'selected' : ''}>${d}</option>`).join('')}</select></td>
       <td><select class="pr-mgr"><option value="">—</option>${mgrs.filter(m => m.id !== u.id).map(m => `<option value="${m.id}" ${u.prManagerId === m.id ? 'selected' : ''}>${mgrLabel(m)}</option>`).join('')}</select></td>
       <td><label class="chk" style="margin:0" title="Sub Admin can edit Purchase requests and PO (never delete)"><input type="checkbox" class="pr-edit" ${u.prCanEdit === true ? 'checked' : ''} ${uiPrRole(u) === 'sub admin' ? '' : 'disabled'}> Edit</label><label class="chk" style="margin:4px 0 0" title="Sub Admin can add PO Master rows"><input type="checkbox" class="pr-poadd" ${u.prPoAdd === true ? 'checked' : ''} ${uiPrRole(u) === 'sub admin' ? '' : 'disabled'}> PO add</label></td>
+      <td><label class="chk" style="margin:0" title="Can open Inventory (stock items, brand, category, units, GST %)"><input type="checkbox" class="x-inv" ${u.canInv === true || u.role === 'Admin' ? 'checked' : ''} ${u.role === 'Admin' ? 'disabled' : ''}> Inventory</label><label class="chk" style="margin:4px 0 0" title="Sub Admin can use Send WhatsApp Alert and Send Payment Mail"><input type="checkbox" class="x-alert" ${u.canAlert === true || u.role === 'Admin' ? 'checked' : ''} ${u.role === 'Admin' ? 'disabled' : u.role === 'Sub Admin' ? '' : 'disabled'}> Send Alert</label></td>
       <td><label class="chk" style="margin:0"><input type="checkbox" class="act" ${u.active !== false ? 'checked' : ''} ${me ? 'disabled' : ''}></label></td>
       <td><div class="row-actions"><button class="btn sm" data-a="save">Save</button><button class="btn sm sec" data-a="pw">Password</button></div></td></tr>`;
   }).join('');
@@ -501,7 +502,7 @@ async function renderAccess(){
       <div><h2>Users &amp; Access</h2><div class="sub" style="margin:0">Tick which modules each person can open. Payment Request role, department and manager apply only when that module is ticked.</div></div>
       <button class="btn" id="addUser">+ Add user</button></div>
     <div class="note">Customer Outstanding role, areas and linked manager are edited inside Customer Outstanding → Users. Payment Request-only people appear here only.</div>
-    <div style="overflow:auto"><table><thead><tr><th>Person</th><th>Customer Outstanding</th><th>Payment Request</th><th>PR role</th><th>PR dept</th><th>PR manager</th><th>Sub Admin rights</th><th>Active</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    <div style="overflow:auto"><table><thead><tr><th>Person</th><th>Customer Outstanding</th><th>Payment Request</th><th>PR role</th><th>PR dept</th><th>PR manager</th><th>Sub Admin rights</th><th>Inventory / Alerts</th><th>Active</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
   $('#addUser').onclick = () => addUserModal(mgrs);
 }
 $('#page').addEventListener('change', ev => {
@@ -524,6 +525,7 @@ $('#page').addEventListener('click', async ev => {
   const data = {...u}; delete data.id;
   data.mods = mods; data.active = act;
   if (prDept === 'Sub Admin' && prRole){ data.prCanEdit = prEdit; data.prPoAdd = prPoAdd; } else { delete data.prCanEdit; delete data.prPoAdd; }
+  if (u.role !== 'Admin'){ data.canInv = tr.querySelector('.x-inv').checked; if (u.role === 'Sub Admin') data.canAlert = tr.querySelector('.x-alert').checked; else delete data.canAlert; }
   // PR role / dept / manager are kept as chosen even when Payment Request is not ticked; they only take effect when it is ticked.
   if (pay || prRole){ if (prRole) data.prRole = prRole; data.prDept = prDept; if (prMgr) data.prManagerId = prMgr; else delete data.prManagerId; }
   b.disabled = true;

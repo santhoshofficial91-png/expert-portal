@@ -200,6 +200,7 @@ html.embed #view .frow input,html.embed #view .frow select{min-width:72px}
 html.embed #view .tw{overflow-x:auto}
 html.embed #view .num{white-space:nowrap}
 </style>
+<style>.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px 14px}.sgrid .sfl{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:700}.sgrid .sfl.full{grid-column:span 2}@media(max-width:640px){.sgrid .sfl.full{grid-column:auto}}.sgrid input,.sgrid select{height:36px;font-weight:400}</style>
 <style>html.poexe tr.poadd,html.poexe .tbar label:has(> #xl),html.poexe [data-xs],html.poexe #view [data-pe],html.poexe #view [data-d],html.poexe #view .pact{display:none!important}html.nopoadd tr.poadd,html.nopoadd label:has(> #xl){display:none!important}html.sub [data-d],html.sub [data-dl],html.sub #upnbtn,html.sub #advimp,html.sub [data-prv],html.sub [data-erv]{display:none!important}html.ro [data-pe],html.ro [data-edt],html.ro [data-xe],html.ro [data-rt],html.ro [data-e],html.ro [data-ee],html.ro [data-eedt],html.ro [data-eue],html.ro [data-ue],html.ro label:has(> #xl),html.ro #pof{display:none!important}html.ro .ftab tbody input,html.ro .ftab tbody select,html.ro .ftab tbody textarea,html.ro .ftab tbody button:not(.link){pointer-events:none;opacity:.75}</style>
 </head>
 <body>
@@ -246,7 +247,7 @@ user:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 
 users:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2.5.6 4 2.6 4 5"/></svg>',
 doc:'<svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>',
 clock:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'};
-var MENU=[['dash','Dashboard','dash'],['prof','Admin Profile','user'],['mgr','Create Manager','user'],['exe','Create Executives','users'],['sub','Create Sub Admin','users'],['po','PO Master','doc'],['pay','Supplier Payment Request','doc'],['paid','Supplier Paid Request','doc'],['sent','Request Sent','doc'],['pod','PO Details','doc'],['exp','Expense Request','doc'],['expaid','Expense Paid Request','doc'],['esent','Request Sent','doc']];
+var MENU=[['csup','Create Supplier','users'],['dash','Dashboard','dash'],['prof','Admin Profile','user'],['mgr','Create Manager','user'],['exe','Create Executives','users'],['sub','Create Sub Admin','users'],['po','PO Master','doc'],['pay','Supplier Payment Request','doc'],['paid','Supplier Paid Request','doc'],['sent','Request Sent','doc'],['pod','PO Details','doc'],['exp','Expense Request','doc'],['expaid','Expense Paid Request','doc'],['esent','Request Sent','doc']];
 var PAY=[];
 var STATS=[['128','Total Requests','doc'],['24','Pending Approval','clock'],['6','Managers','users'],['18','Executives','user']];
 var $=function(id){return document.getElementById(id)};
@@ -581,6 +582,59 @@ function payPage(v,mine){
  if(ex&&PEDIT!==null&&PAY[PEDIT]){var er=PAY[PEDIT],mp={rn:1,enq:2,po:4,sup:5,cus:6,pur:7,dd:8,lt:9,ss:10,sl:11,amt:12,rm:14,pr:20};Object.keys(mp).forEach(function(k){var el=v.querySelector('.newrow [name="'+k+'"]');if(el)el.value=er[mp[k]]||''})}
  if(ex){var nr=v.querySelector('.newrow');if(nr&&nr.scrollIntoView)nr.scrollIntoView({block:'nearest'})}
 }
+
+/* ---------- Create Supplier ---------- */
+var SUP=[],SUPED=null,SUPQ='',SUPCH=null;
+var STATES=['Andaman and Nicobar Islands','Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chandigarh','Chhattisgarh','Dadra and Nagar Haveli and Daman and Diu','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jammu and Kashmir','Jharkhand','Karnataka','Kerala','Ladakh','Lakshadweep','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Puducherry','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal'];
+var GSTST={'35':'Andaman and Nicobar Islands','37':'Andhra Pradesh','12':'Arunachal Pradesh','18':'Assam','10':'Bihar','04':'Chandigarh','22':'Chhattisgarh','26':'Dadra and Nagar Haveli and Daman and Diu','07':'Delhi','30':'Goa','24':'Gujarat','06':'Haryana','02':'Himachal Pradesh','01':'Jammu and Kashmir','20':'Jharkhand','29':'Karnataka','32':'Kerala','38':'Ladakh','31':'Lakshadweep','23':'Madhya Pradesh','27':'Maharashtra','14':'Manipur','17':'Meghalaya','15':'Mizoram','13':'Nagaland','21':'Odisha','34':'Puducherry','03':'Punjab','08':'Rajasthan','11':'Sikkim','33':'Tamil Nadu','36':'Telangana','16':'Tripura','09':'Uttar Pradesh','05':'Uttarakhand','19':'West Bengal'};
+async function loadSup(){try{var r=await SB.from('pr_suppliers').select('*').order('name',{ascending:true});if(!r.error){SUP=r.data||[];if(CUR==='csup'&&!document.querySelector('#supf :focus'))render('csup')}}catch(e){}
+ if(!SUPCH){try{SUPCH=SB.channel('pr-sup').on('postgres_changes',{event:'*',schema:'public',table:'pr_suppliers'},function(){clearTimeout(loadSup.t);loadSup.t=setTimeout(loadSup,400)}).subscribe()}catch(e){}}}
+function supCanEdit(){return ME.role==='admin'&&!ME.sub||ME.role==='mgr'||(ME.sub&&ME.canEdit)}
+function supPage(v){
+ if(!supPage.loaded){supPage.loaded=1;loadSup()}
+ var e=SUPED?SUP.filter(function(x){return x.id===SUPED})[0]:null,val=function(f){return esc(e&&e[f]!=null?e[f]:'')};
+ var exes=LIST.exe.slice().sort(function(a,b){return a[0].localeCompare(b[0])}),mgrs=LIST.mgr.slice().sort(function(a,b){return a[0].localeCompare(b[0])});
+ var o=function(list,cur,emp){return '<option value="">'+emp+'</option>'+list.map(function(x){return '<option value="'+esc(x[6])+'"'+(cur===x[6]?' selected':'')+'>'+esc(x[0])+'</option>'}).join('')};
+ var L=function(t,h,full){return '<label class="sfl'+(full?' full':'')+'"><span>'+t+'</span>'+h+'</label>'};
+ var form=supCanEdit()?'<form id="supf" class="panel" style="margin-top:14px" novalidate><h3 style="margin:0 0 10px">'+(e?'Edit supplier':'Create supplier')+'</h3><div class="sgrid">'+
+  L('Supplier name *','<input name="name" value="'+val('name')+'" autocomplete="off">')+
+  L('Under *','<select name="under"><option>Sundry Creditors</option></select>')+
+  L('Executive *','<select name="exec" id="supexe">'+o(exes,e?e.exec_id:'','Select executive')+'</select>')+
+  L('Manager *','<select name="mgr" id="supmgr">'+o(mgrs,e?e.mgr_id:'','Select manager')+'</select>')+
+  L('Address line 1 *','<input name="addr1" value="'+val('addr1')+'" autocomplete="off">',1)+
+  L('Address line 2','<input name="addr2" value="'+val('addr2')+'" autocomplete="off">',1)+
+  L('Address line 3','<input name="addr3" value="'+val('addr3')+'" autocomplete="off">',1)+
+  L('State *','<select name="state"><option value="">Select state</option>'+STATES.map(function(x){return '<option'+(e&&e.state===x?' selected':'')+'>'+x+'</option>'}).join('')+'</select>')+
+  L('Pincode *','<input name="pincode" inputmode="numeric" maxlength="6" value="'+val('pincode')+'" autocomplete="off">')+
+  L('Mobile number *','<input name="mobile" inputmode="tel" maxlength="10" value="'+val('mobile')+'" autocomplete="off">')+
+  L('Mail ID','<input name="email" type="email" value="'+val('email')+'" autocomplete="off">')+
+  L('GST number *','<input name="gstin" maxlength="15" style="text-transform:uppercase" value="'+val('gstin')+'" autocomplete="off">')+
+  '</div><div class="derr" id="superr" role="alert"></div><div class="row" style="justify-content:flex-start;gap:8px"><button class="add" type="submit">'+(e?'Save changes':'Create supplier')+'</button>'+(e?'<button class="link" type="button" id="supcan">Cancel</button>':'')+'</div><p style="margin:6px 0 0;color:var(--mute);font-size:12px">Picking the executive fills in their manager. You can change the manager.</p></form>':'';
+ var q=SUPQ.trim().toLowerCase(),list=SUP.filter(function(x){return !q||[x.name,x.exec_name,x.mgr_name,x.state,x.gstin,x.mobile].join(' ').toLowerCase().indexOf(q)>=0});
+ var rows=list.map(function(x){return '<tr><td><b>'+esc(x.name)+'</b><div style="color:var(--mute);font-size:12px">'+esc(x.under)+'</div></td><td>'+esc(x.exec_name||'')+'</td><td>'+esc(x.mgr_name||'')+'</td><td style="white-space:normal;max-width:260px">'+esc([x.addr1,x.addr2,x.addr3].filter(Boolean).join(', '))+'</td><td>'+esc(x.state||'')+'</td><td>'+esc(x.pincode||'')+'</td><td>'+esc(x.mobile||'')+'</td><td>'+esc(x.email||'')+'</td><td class="mono">'+esc(x.gstin||'')+'</td><td class="pact">'+(supCanEdit()?'<button class="link" type="button" data-supe="'+esc(x.id)+'">Edit</button>':'')+(ME.role==='admin'&&!ME.sub?'<button class="link" type="button" data-supd="'+esc(x.id)+'">Delete</button>':'')+'</td></tr>'}).join('')||'<tr><td colspan="10">'+(SUP.length?'No supplier matches.':'No suppliers yet.')+'</td></tr>';
+ v.innerHTML='<div class="top"><div><h1>Create Supplier</h1><p>'+SUP.length+' supplier'+(SUP.length===1?'':'s')+' · Under Sundry Creditors</p></div></div>'+form+
+  '<div class="panel" style="margin-top:14px"><div class="ph"><h3>Suppliers</h3><input id="supq" type="search" placeholder="Search name, executive, GST…" value="'+esc(SUPQ)+'" aria-label="Search suppliers" style="max-width:280px"></div><div class="tw"><table class="entry" style="min-width:1500px"><thead><tr><th>Supplier</th><th>Executive</th><th>Manager</th><th>Address</th><th>State</th><th>Pincode</th><th>Mobile</th><th>Mail ID</th><th>GST number</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+ var sq=v.querySelector('#supq');if(sq)sq.oninput=function(){SUPQ=sq.value;var p=sq.selectionStart;render('csup');var n=document.getElementById('supq');if(n){n.focus();n.setSelectionRange(p,p)}};
+ var se=v.querySelector('#supexe'),sm=v.querySelector('#supmgr');if(se)se.onchange=function(){var x=LIST.exe.filter(function(y){return y[6]===se.value})[0];if(x){var m=LIST.mgr.filter(function(y){return y[0]===x[5]})[0];sm.value=m?m[6]:''}};
+ var g=v.querySelector('[name=gstin]'),st=v.querySelector('[name=state]');if(g)g.oninput=function(){var c=g.value.trim().slice(0,2);if(GSTST[c]&&!st.value)st.value=GSTST[c]};
+ var cn=v.querySelector('#supcan');if(cn)cn.onclick=function(){SUPED=null;render('csup')};
+ v.querySelectorAll('[data-supe]').forEach(function(b){b.onclick=function(){SUPED=b.dataset.supe;render('csup');window.scrollTo(0,0)}});
+ v.querySelectorAll('[data-supd]').forEach(function(b){b.onclick=async function(){var x=SUP.filter(function(y){return y.id===b.dataset.supd})[0];if(!x||!confirm('Delete supplier '+x.name+'?'))return;var r=await SB.from('pr_suppliers').delete().eq('id',x.id);if(r.error){alert('Could not delete: '+r.error.message);return}loadSup()}});
+ var f=v.querySelector('#supf');if(f)f.onsubmit=async function(ev){ev.preventDefault();var q=new FormData(f),g2=function(k){return String(q.get(k)||'').trim()},er=v.querySelector('#superr');er.textContent='';
+  var d={name:g2('name'),under:g2('under')||'Sundry Creditors',exec_id:g2('exec'),mgr_id:g2('mgr'),addr1:g2('addr1'),addr2:g2('addr2'),addr3:g2('addr3'),state:g2('state'),pincode:g2('pincode'),mobile:g2('mobile').replace(/\D/g,''),email:g2('email'),gstin:g2('gstin').toUpperCase()};
+  var miss=[['name','Supplier name'],['exec_id','Executive'],['mgr_id','Manager'],['addr1','Address line 1'],['state','State'],['pincode','Pincode'],['mobile','Mobile number'],['gstin','GST number']].filter(function(x){return !d[x[0]]}).map(function(x){return x[1]});
+  if(miss.length){er.textContent='Fill in: '+miss.join(', ')+'.';return}
+  if(!/^\d{6}$/.test(d.pincode)){er.textContent='Pincode must be 6 digits.';return}
+  if(!/^[6-9]\d{9}$/.test(d.mobile)){er.textContent='Mobile number must be 10 digits.';return}
+  if(d.email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)){er.textContent='Mail ID is not valid.';return}
+  if(!/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(d.gstin)){er.textContent='GST number is not valid. It has 15 characters, like 36AAQCA9871J1ZV.';return}
+  if(SUP.some(function(x){return x.id!==SUPED&&x.name.trim().toLowerCase()===d.name.toLowerCase()})){er.textContent='A supplier with this name already exists.';return}
+  var ex=LIST.exe.filter(function(y){return y[6]===d.exec_id})[0],mg=LIST.mgr.filter(function(y){return y[6]===d.mgr_id})[0];d.exec_name=ex?ex[0]:'';d.mgr_name=mg?mg[0]:'';d.updated_at=new Date().toISOString();
+  var btn=f.querySelector('button[type=submit]');btn.disabled=true;
+  var r=SUPED?await SB.from('pr_suppliers').update(d).eq('id',SUPED):await SB.from('pr_suppliers').insert(d);
+  btn.disabled=false;if(r.error){er.textContent=/duplicate|unique/i.test(r.error.message)?'A supplier with this name already exists.':'Could not save: '+r.error.message;return}
+  var was=!!SUPED;SUPED=null;await loadSup();render('csup');var ok=document.createElement('div');ok.className='ok';ok.setAttribute('role','status');ok.textContent=d.name+(was?' was updated.':' was created.');var vv=$('view').querySelector('.top');if(vv)vv.after(ok)};
+}
 function podPage(v){
  var list=myPOs();
  var bal=list.reduce(function(a,r){return a+r[6]},0);
@@ -627,6 +681,8 @@ drawNav(k);
     paidPage(v);
   }else if(k==='pod'){
     podPage(v);
+  }else if(k==='csup'){
+    supPage(v);
   }else if(k==='esent'){esentPage(v)
   }else if(k==='sent'){
     sentPage(v);
@@ -655,7 +711,7 @@ async function boot(){
  document.documentElement.classList.toggle('sub',isSub);document.documentElement.classList.toggle('ro',isSub&&!canEd);
  start({role:role,name:p.name,label:lab,id:p.id,username:p.username,dept:p.department||'',sub:isSub,canEdit:canEd});
  await loadAll(true);subRT();show(true);render(location.hash.slice(1)||'dash');return true}
-function menu(){if(ME&&ME.sub)return MENU.filter(function(x){return ['dash','po','pay','paid'].indexOf(x[0])>=0});var A={admin:['dash','po','pay','paid','exp','expaid'],mgr:['po','pay','paid','sent','exp','expaid','esent'],exe:['po','pay','paid','sent','exp','expaid','esent']}[ME.role]||['dash'];if(ME.role!=='admin'&&ME.dept==='HR')A=['exp','expaid','esent'];if(ME.role==='exe'&&ME.dept==='Sub Admin')A=['po'];if(ME.role!=='admin'&&ME.dept==='HR')return A.map(function(k){return MENU.filter(function(x){return x[0]===k})[0]});return MENU.filter(function(x){return A.indexOf(x[0])>=0})}
+function menu(){if(ME&&ME.sub)return MENU.filter(function(x){return (ME.canEdit?['csup']:[]).concat(['dash','po','pay','paid']).indexOf(x[0])>=0});var A={admin:['csup','dash','po','pay','paid','exp','expaid'],mgr:['csup','po','pay','paid','sent','exp','expaid','esent'],exe:['po','pay','paid','sent','exp','expaid','esent']}[ME.role]||['dash'];if(ME.role!=='admin'&&ME.dept==='HR')A=['exp','expaid','esent'];if(ME.role==='exe'&&ME.dept==='Sub Admin')A=['po'];if(ME.role!=='admin'&&ME.dept==='HR')return A.map(function(k){return MENU.filter(function(x){return x[0]===k})[0]});return MENU.filter(function(x){return A.indexOf(x[0])>=0})}
 
 $('lf').addEventListener('submit',async function(e){
   e.preventDefault();var u=$('u').value.trim().toLowerCase(),btn=$('lf').querySelector('button[type=submit],button');$('err').textContent='';if(btn)btn.disabled=true;
