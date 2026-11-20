@@ -34,15 +34,16 @@ const schema = {
 const PURCHASE = `This is an Indian GST purchase invoice. ${OUR}
 Extract the whole invoice:
 - inv_no: the invoice number. inv_date: the invoice date as YYYY-MM-DD.
-- supplier_name and supplier_gstin: the SELLER who issued the invoice (never our own companies).
-- lines: one entry per product row of the goods table, in order. For each: name (description as printed), hsn (HSN/SAC code digits), qty (number), unit (e.g. NOS, PCS), rate (price per unit before tax, number), taxable (taxable value / amount of that row before tax, number), gst (GST rate % of that row, e.g. 18 or 5; if only CGST and SGST rates are printed, add them).
+- supplier_name and supplier_gstin: the SELLER who issued the invoice (never our own companies). supplier_addr1, supplier_addr2, supplier_addr3: the seller's address in up to 3 short lines without name, GSTIN, phone or email (city and pincode in the last used line). supplier_pincode (6 digits), supplier_mobile (10 digits or ""), supplier_email (or "").
+- lines: one entry per product row of the goods table, in order. For each: name (description as printed), hsn (HSN/SAC code digits), qty (number), unit (e.g. NOS, PCS), rate (price per unit before tax, number), taxable (taxable value / amount of that row before tax, number), gst (GST rate % of that row, e.g. 18 or 5; if only CGST and SGST rates are printed, add them). Also suggest, from the product description, brand (the maker or brand name if it is written, else ""), category (a short general product group such as Drinkware, Bags, Stationery, Apparel, Electronics, Gifts) and sub_category (a narrower group such as Bottles, Backpacks, Pens, T-Shirts).
 - cgst, sgst, igst: total tax amounts printed on the invoice (0 if not printed). total: the grand total of the invoice.
 Numbers must be plain numbers without commas or currency signs. Skip rows that are only totals, freight notes or blank. Return only JSON.`;
 const PURCHASE_SCHEMA = {
   type: 'OBJECT',
   properties: {
     inv_no: { type: 'STRING' }, inv_date: { type: 'STRING' }, supplier_name: { type: 'STRING' }, supplier_gstin: { type: 'STRING' },
-    lines: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, hsn: { type: 'STRING' }, qty: { type: 'NUMBER' }, unit: { type: 'STRING' }, rate: { type: 'NUMBER' }, taxable: { type: 'NUMBER' }, gst: { type: 'NUMBER' } }, required: ['name', 'hsn', 'qty', 'unit', 'rate', 'taxable', 'gst'] } },
+    supplier_addr1: { type: 'STRING' }, supplier_addr2: { type: 'STRING' }, supplier_addr3: { type: 'STRING' }, supplier_pincode: { type: 'STRING' }, supplier_mobile: { type: 'STRING' }, supplier_email: { type: 'STRING' },
+    lines: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, hsn: { type: 'STRING' }, qty: { type: 'NUMBER' }, unit: { type: 'STRING' }, rate: { type: 'NUMBER' }, taxable: { type: 'NUMBER' }, gst: { type: 'NUMBER' }, brand: { type: 'STRING' }, category: { type: 'STRING' }, sub_category: { type: 'STRING' } }, required: ['name', 'hsn', 'qty', 'unit', 'rate', 'taxable', 'gst', 'brand', 'category', 'sub_category'] } },
     cgst: { type: 'NUMBER' }, sgst: { type: 'NUMBER' }, igst: { type: 'NUMBER' }, total: { type: 'NUMBER' },
   },
   required: ['inv_no', 'inv_date', 'supplier_name', 'supplier_gstin', 'lines', 'cgst', 'sgst', 'igst', 'total'],
