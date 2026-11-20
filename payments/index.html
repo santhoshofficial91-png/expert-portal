@@ -678,7 +678,7 @@ function fileB64(file){return new Promise(function(ok,no){
  if(file.type==='application/pdf'||/\.pdf$/i.test(file.name)){var fr=new FileReader();fr.onload=function(){ok({mime:'application/pdf',data:String(fr.result).split(',')[1]})};fr.onerror=no;fr.readAsDataURL(file);return}
  var im=new Image();im.onload=function(){var k=Math.min(1,2000/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);ok({mime:'image/jpeg',data:c.toDataURL('image/jpeg',0.88).split(',')[1]})};im.onerror=function(){no(new Error('Could not open this picture'))};im.src=URL.createObjectURL(file)})}
 async function aiRead(file){var ss=(await SB.auth.getSession()).data.session;if(!ss)return null;var b=await fileB64(file);
- var r=await fetch(URLB+'/functions/v1/read-invoice',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+ss.access_token,'apikey':KEYB},body:JSON.stringify(b)});
+ var ac=new AbortController(),tm=setTimeout(function(){ac.abort()},40000);var r;try{r=await fetch(URLB+'/functions/v1/read-invoice',{signal:ac.signal,method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+ss.access_token,'apikey':KEYB},body:JSON.stringify(b)})}catch(e){return null}finally{clearTimeout(tm)}
  var j={};try{j=await r.json()}catch(e){}if(!r.ok||!j.result)return null;var x=j.result,t=function(v){return String(v||'').replace(/\s+/g,' ').trim()};
  var g=t(x.gstin).toUpperCase().replace(/[^0-9A-Z]/g,'');if(!gstOk(g)){var f=gstFix(g);g=f||g}if(OURGST.indexOf(g)>=0)g='';
  var pin=(t(x.pincode).match(/\d{6}/)||[''])[0];if(OURPIN.indexOf(pin)>=0)pin='';var mob=t(x.mobile).replace(/\D/g,'').slice(-10);
@@ -726,7 +726,7 @@ function supPage(v){
  var last=null;v.querySelectorAll('#supf input,#supf select').forEach(function(x){x.addEventListener('focus',function(){if(x.type!=='file')last=x})});
  v.querySelectorAll('.ocrl').forEach(function(b){b.onmousedown=function(ev){ev.preventDefault()};b.onclick=function(){var t=last||v.querySelector('[name=name]');if(t&&t.tagName==='INPUT'){t.value=SUPOCR.lines[+b.dataset.l];t.classList.add('ocrf');t.focus()}}});
  var fi=v.querySelector('#supocr'),fs=v.querySelector('#supocrs');if(fi)fi.onchange=async function(){var file=fi.files[0];if(!file)return;var st2=function(m){fs.textContent=m};
-  try{st2('Reading the invoice with AI…');var r=null;try{r=await aiRead(file)}catch(e){r=null}
+  try{var t0=Date.now(),tick=setInterval(function(){st2('Reading the invoice with AI… '+Math.round((Date.now()-t0)/1000)+' s')},1000);st2('Reading the invoice with AI…');var r=null;try{r=await aiRead(file)}catch(e){r=null}clearInterval(tick);
    if(!r||!r.gstin){st2('Reading the invoice…');var text=file.type==='application/pdf'||/\.pdf$/i.test(file.name)?await pdfText(file,st2):await ocrImage(await shrinkImg(file),st2);var r2=parseInvoice(text);if(!r||!r.gstin)r=r2}SUPOCR=r;var f=v.querySelector('#supf'),put=function(n,val){var el=f.querySelector('[name='+n+']');if(el&&val){el.value=val;el.classList.add('ocrf')}};
    put('gstin',r.gstin);put('pan',r.pan);put('name',r.name);put('addr1',r.addr[0]);put('addr2',r.addr[1]);put('addr3',r.addr[2]);put('pincode',r.pincode);put('mobile',r.mobile);put('email',r.email);if(r.stateCode&&GSTST[r.stateCode])put('state',GSTST[r.stateCode]);
    var keep={};f.querySelectorAll('input[name],select[name]').forEach(function(x){keep[x.name]=x.value});var filled=[].slice.call(f.querySelectorAll('.ocrf')).map(function(x){return x.name});
