@@ -329,12 +329,13 @@ const GICON = {
   edits:'<svg class="gi" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/></svg>',
   expenses:'<svg class="gi" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/></svg>',
   mat_in:'<svg class="gi" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M12 8v7m-3-3 3 3 3-3"/></svg>',
-  mat_out:'<svg class="gi" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M12 15V8m-3 3 3-3 3 3"/></svg>',
+  mat_rn:'<svg class="gi" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M15 11H9m2-2-2 2 2 2"/></svg>',
+  mat_dc:'<svg class="gi" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M12 15V8m-3 3 3-3 3 3"/></svg>',
   activity:'<svg class="gi" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>',
   other:'<svg class="gi" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>'
 };
 const OUT_BASE = [{k:'dashboard',label:'Dashboard'},{k:'outstanding',label:'Outstanding'},{k:'billing',label:'Billing'},{k:'collection',label:'Collection'},{k:'chat',label:'Chat'},{k:'edits',label:'Edit History'},{k:'activity',label:'Activity log'}];
-const OUT_INV = [{k:'inv_stock',label:'Stock List'},{k:'inv_item',label:'Create Stock Item'},{k:'inv_brand',label:'Brand'},{k:'inv_cat',label:'Category'},{k:'inv_sub',label:'Sub Category'},{k:'inv_unit',label:'Units'},{k:'inv_gst',label:'GST Percentage'},{k:'mat_in',label:'Material In'},{k:'mat_out',label:'Material Out'}];
+const OUT_INV = [{k:'inv_stock',label:'Stock List'},{k:'inv_item',label:'Create Stock Item'},{k:'inv_brand',label:'Brand'},{k:'inv_cat',label:'Category'},{k:'inv_sub',label:'Sub Category'},{k:'inv_unit',label:'Units'},{k:'inv_gst',label:'GST Percentage'},{k:'mat_in',label:'GRN'},{k:'mat_dc',label:'Delivery Challan'},{k:'mat_rn',label:'Receipt Note'}];
 // menu shown before the Sales module has loaded once (it then sends its exact menu)
 const outFallback = () => { const adm = P && P.role === 'Admin', items = OUT_BASE.slice(); if (adm || (P && P.role === 'Sub Admin' && P.canAlert)) items.splice(1, 0, {k:'mail', label:'Send Payment Mail'}); if (adm || (P && P.canInv)) items.push(...OUT_INV); return items; };
 const RENAME = {outstanding:{outstanding:'Customer Outstanding'}};  // Purchase labels are set by the module (they depend on the role)
@@ -404,8 +405,8 @@ function buildNav(){
       if (exp.length) h += groupHTML('expenses', 'Expenses', exp.map(it => subBtn('payments', it, false)).join(''), act(exp));
     }
   }
-  // Material In / Material Out: their own items, right under Expenses
-  ['mat_in', 'mat_out'].forEach(k => { const it = get(k); if (it) h += topBtn('outstanding', it); });
+  // GRN / Delivery Challan / Receipt Note: their own items, right under Expenses
+  ['mat_in', 'mat_dc', 'mat_rn'].forEach(k => { const it = get(k); if (it) h += topBtn('outstanding', it); });
   ['chat', 'edits', 'activity'].forEach(k => { const it = get(k); if (it) h += topBtn('outstanding', it); });
   oi.filter(it => !used.has(it.k)).forEach(it => { h += it.children ? itemHTML('outstanding', it) : topBtn('outstanding', it); });
   $('#nav').innerHTML = h;
