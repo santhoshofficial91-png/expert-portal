@@ -331,11 +331,15 @@ const GICON = {
   activity:'<svg class="gi" viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>',
   other:'<svg class="gi" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>'
 };
-const OUT_FALLBACK = [{k:'dashboard',label:'Dashboard'},{k:'outstanding',label:'Outstanding'},{k:'billing',label:'Billing'},{k:'collection',label:'Collection'},{k:'chat',label:'Chat'},{k:'edits',label:'Edit History'},{k:'activity',label:'Activity log'}];
+const OUT_BASE = [{k:'dashboard',label:'Dashboard'},{k:'outstanding',label:'Outstanding'},{k:'billing',label:'Billing'},{k:'collection',label:'Collection'},{k:'chat',label:'Chat'},{k:'edits',label:'Edit History'},{k:'activity',label:'Activity log'}];
+const OUT_INV = [{k:'inv_item',label:'Create Stock Item'},{k:'inv_brand',label:'Brand'},{k:'inv_cat',label:'Category'},{k:'inv_sub',label:'Sub Category'},{k:'inv_unit',label:'Units'},{k:'inv_gst',label:'GST Percentage'}];
+// menu shown before the Sales module has loaded once (it then sends its exact menu)
+const outFallback = () => { const adm = P && P.role === 'Admin', items = OUT_BASE.slice(); if (adm || (P && P.role === 'Sub Admin' && P.canAlert)) items.splice(1, 0, {k:'mail', label:'Send Payment Mail'}); if (adm || (P && P.canInv)) items.push(...OUT_INV); return items; };
 const RENAME = {outstanding:{outstanding:'Customer Outstanding'}};  // Purchase labels are set by the module (they depend on the role)
 const MOD_NAV = {};          // module key -> {items, view, role}
 let openG = {}, subOpen = {}, frameMod = null, frameReady = false, pendingGo = null;
-const cacheKey = k => 'portal_nav_' + (P && P.id) + '_' + k;
+// the menu cache is tied to the app version and to the access ticks, so a new tick or a new version shows at once
+const cacheKey = k => 'portal_nav_' + (P && P.id) + '_' + k + '_' + BUILD + '_' + (P ? [P.role, P.prRole, P.prDept, P.canInv ? 'i' : '', P.canAlert ? 'a' : ''].join('.') : '');
 function loadNavCache(){ MOD_NAV_RESET(); myMods().forEach(m => { const k = MODULES[m].key; try { const c = JSON.parse(localStorage.getItem(cacheKey(k)) || 'null'); if (c && Array.isArray(c.items)) MOD_NAV[k] = {items: c.items, view: null, role: null, cached: true}; } catch(e){} }); }
 function MOD_NAV_RESET(){ Object.keys(MOD_NAV).forEach(k => delete MOD_NAV[k]); }
 function cleanItems(a){ return (Array.isArray(a) ? a : []).slice(0, 40).map(it => ({k: String(it.k || ''), label: String(it.label || ''), role: it.role ? String(it.role) : '', badge: Number(it.badge) || 0, children: it.children ? cleanItems(it.children) : null})); }
@@ -361,7 +365,7 @@ function groupHTML(id, title, inner, active){
 }
 function buildNav(){
   const mods = myMods(), hasOut = mods.includes('out'), hasPay = mods.includes('pay');
-  const oi = !hasOut ? [] : (MOD_NAV.outstanding && MOD_NAV.outstanding.items.length ? MOD_NAV.outstanding.items : OUT_FALLBACK);
+  const oi = !hasOut ? [] : (MOD_NAV.outstanding && MOD_NAV.outstanding.items.length ? MOD_NAV.outstanding.items : outFallback());
   const used = new Set(), get = k => { const it = oi.find(i => i.k === k); if (it) used.add(k); return it; };
   const on = (m, it) => it && (isOn(m, it) || (it.children || []).some(c => isOn(m, c)));
   let h = '';
