@@ -1896,9 +1896,9 @@ function annTick(){
   const st = annState();
   let bar = document.getElementById('annbar');
   const hideBox = () => { if (box.style.display !== 'none'){ box.style.display = 'none'; box.innerHTML = ''; box.dataset.k = ''; } };
-  if (!me() || isAdm() || !st || st.phase === 'done'){ hideBox(); if (bar) bar.remove(); return; }
+  if (!me() || isAdm() || !st || st.phase === 'done' || document.documentElement.classList.contains('embed')){ hideBox(); if (bar) bar.remove(); return; }
   const warn = st.phase === 'warn', left = mmss((warn ? ANN_WARN : ANN_END) - st.t);
-  if (warn && annAcked(st)){
+  if (false && warn && annAcked(st)){
     hideBox();
     if (!bar){ bar = document.createElement('div'); bar.id = 'annbar'; bar.setAttribute('role', 'status'); document.body.appendChild(bar); }
     bar.textContent = 'Update starts in ' + left + ' — please do not start anything new.'; return;
@@ -1909,12 +1909,13 @@ function annTick(){
     <div class="annt">${left}</div>
     <p>${warn ? 'We are going to update the app in 1 minute. For the next 5 minutes, please do not submit any request or fill in any details. Press OK and we will save what you have typed.' : 'Please do not submit any request or fill in any details. You can use the app again when the timer ends or when the admin confirms the update is done.'}</p>
     <p class="ann2">${warn ? '1 நிமிடத்தில் அப்டேட் தொடங்குகிறது. அடுத்த 5 நிமிடங்களுக்கு எந்த ரிக்வெஸ்ட்டும் கொடுக்காதீர்கள், எந்த விவரத்தையும் நிரப்பாதீர்கள். OK அழுத்தினால் நீங்கள் டைப் செய்தது சேமிக்கப்படும்.' : 'அப்டேட் நடைபெறுகிறது. எதையும் நிரப்ப வேண்டாம். நேரம் முடிந்ததும் மீண்டும் பயன்படுத்தலாம்.'}</p>
-    ${warn ? '<button class="updok" data-act="annOk" id="annok">OK</button>' : ''}</div>`;
-  const k = warn ? 'w' : 'k';
+    ${warn ? (annAcked(st) ? '<p><b>Saved ✓</b></p>' : '<button class="updok" data-act="annOk" id="annok">OK</button>') : ''}</div>`;
+  const k = (warn ? 'w' : 'k') + (warn && annAcked(st) ? 's' : '');
   if (box.dataset.k !== k || box.style.display === 'none'){ box.dataset.k = k; box.innerHTML = html; box.style.display = 'grid'; const ok = document.getElementById('annok'); if (ok) ok.focus(); }
   else { const t = box.querySelector('.annt'); if (t) t.textContent = left; }
 }
 setInterval(annTick, 1000);
+window.addEventListener('message', ev => { if (ev.origin === location.origin && ev.data && ev.data.type === 'portal-save') ACT.annOk(); });
 render(); Store.init();
 
 /* ---------- portal embed: when opened inside the portal, hide own sidebar and let the portal drive the menu ---------- */

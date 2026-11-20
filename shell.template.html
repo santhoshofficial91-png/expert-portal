@@ -169,10 +169,25 @@ textarea{width:100%;padding:10px 12px;border:1px solid #cbd2dc;border-radius:8px
   .au-form{padding:30px 24px 40px;justify-content:flex-start}
   .au-logo{font-size:36px}.au h1{margin-top:26px}
 }
+
+/* update lock screen (all users except Admin) */
+#annlock{position:fixed;inset:0;z-index:2000;display:grid;place-items:center;padding:24px;background:rgba(14,10,60,.86);backdrop-filter:blur(6px)}
+#annlock.hide{display:none}
+#annlock .ab{background:#fff;color:#14163a;border-radius:20px;max-width:640px;width:100%;padding:32px 30px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.35)}
+#annlock .ai{width:64px;height:64px;border-radius:50%;margin:0 auto 12px;display:grid;place-items:center;background:#fff4e0;color:#b45309}
+#annlock h2{margin:0 0 6px;font-size:26px}
+#annlock .at{font-size:84px;line-height:1.05;font-weight:800;letter-spacing:-.02em;margin:6px 0 14px;font-variant-numeric:tabular-nums;color:#14163a}
+#annlock p{margin:0 0 10px;font-size:16px;line-height:1.5;color:#3d4066}
+#annlock .a2{color:#6a6d94}
+#annlock button{margin-top:8px;font:inherit;font-weight:700;font-size:17px;padding:12px 34px;border-radius:12px;border:0;background:#0c7d70;color:#fff;cursor:pointer}
+#annlock button:focus-visible{outline:3px solid #f59e0b;outline-offset:3px}
+@media (max-width:520px){#annlock .at{font-size:60px}#annlock .ab{padding:24px 18px}}
+@media (prefers-reduced-motion:reduce){#annlock{backdrop-filter:none}}
 </style>
 </head>
 <body>
 <div id="toast"></div>
+<div id="annlock" class="hide" role="alertdialog" aria-modal="true" aria-live="assertive" aria-label="Update in progress"></div>
 <div id="npanel" class="hide"></div>
 <div id="npop" class="hide"></div>
 <button id="sbell" class="nbell hide" title="Notifications" aria-label="Notifications"></button>
@@ -258,6 +273,7 @@ async function boot(){
 }
 function showLogin(msg){
   try { stopNotes(); } catch(e){}
+  ANN = {active:false, at:0, skew:0}; $('#annlock').classList.add('hide'); $('#app').inert = false;
   P = null; current = null; frameMod = null; frameReady = false; pendingGo = null; openG = {}; subOpen = {}; MOD_NAV_RESET();
   $('#frame').src = 'about:blank'; $('#frame').classList.add('hide'); $('#page').classList.add('hide');
   $('#lerr').textContent = msg || ''; $('#lp').value = ''; $('#lbtn').disabled = false;
@@ -271,7 +287,7 @@ async function enter(){
   if (!myMods().length){ await sb.auth.signOut(); showLogin('No module access has been given to this account. Ask the Admin.'); return; }
   $('#meName').textContent = P.name || P.username;
   $('#meRole').textContent = '@' + P.username;
-  loadNavCache(); buildNav(); show('app'); startNotes();
+  loadNavCache(); buildNav(); show('app'); startNotes(); annPoll();
   const want = (location.hash || '').replace('#', '') || localStorage.getItem('portal_last') || '';
   openView(viewAllowed(want) ? want : defaultView());
 }
@@ -664,6 +680,37 @@ function stopNotes(){
   $('#npop').classList.add('hide'); $('#npop').innerHTML = ''; $('#npanel').classList.add('hide'); $('#sbell').classList.add('hide');
 }
 
+
+/* ---------- update lock screen ----------
+   Admin presses "Announce update" (Customer Outstanding dashboard). Every other user gets a full-screen timer:
+   1 minute warning, then 5 minutes locked. It goes away only when the timer ends or the Admin closes the announcement. */
+const ANN_W = 60e3, ANN_E = 360e3;
+let ANN = {active:false, at:0, skew:0}, annSaved = 0, annKey = '';
+async function annPoll(){
+  if (!P) return;
+  try { const {data} = await sb.rpc('portal_announce'); if (data) ANN = {active:!!data.active, at:+data.at || 0, skew:(+data.now || Date.now()) - Date.now()}; } catch(e){}
+  annDraw();
+}
+function annDraw(){
+  const box = $('#annlock'), app = $('#app');
+  const t = Date.now() + ANN.skew - ANN.at, on = !!P && P.role !== 'Admin' && ANN.active && ANN.at && t < ANN_E;
+  if (!on){ if (!box.classList.contains('hide')){ box.classList.add('hide'); box.innerHTML = ''; annKey = ''; } app.inert = false; return; }
+  app.inert = true;
+  const warn = t < ANN_W, x = Math.max(0, Math.ceil(((warn ? ANN_W : ANN_E) - t) / 1000)), left = Math.floor(x / 60) + ':' + String(x % 60).padStart(2, '0');
+  const k = (warn ? 'w' : 'k') + ANN.at + (annSaved === ANN.at ? 's' : '');
+  if (annKey !== k){
+    annKey = k;
+    box.innerHTML = `<div class="ab"><div class="ai" aria-hidden="true"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
+      <h2>${warn ? 'Update starts in 1 minute' : 'Update in progress'}</h2><div class="at" role="timer" id="annt">${left}</div>
+      <p>${warn ? 'Please stop now and do not fill in any details. Press OK to save what you have typed. The app is locked until the update is finished.' : 'The app is locked. Please do not fill in any details. It opens again when the timer ends or when the Admin confirms the update is finished.'}</p>
+      <p class="a2">${warn ? '1 நிமிடத்தில் அப்டேட் தொடங்குகிறது. இப்போதே நிறுத்துங்கள். நீங்கள் டைப் செய்ததைச் சேமிக்க OK அழுத்துங்கள். அப்டேட் முடியும் வரை app பூட்டப்பட்டிருக்கும்.' : 'அப்டேட் நடைபெறுகிறது. எதையும் நிரப்ப வேண்டாம். நேரம் முடிந்ததும் அல்லது Admin உறுதிசெய்ததும் app மீண்டும் திறக்கும்.'}</p>
+      ${warn ? (annSaved === ANN.at ? '<p><b>Saved ✓</b></p>' : '<button id="annok" type="button">OK</button>') : ''}</div>`;
+    box.classList.remove('hide');
+    const ok = $('#annok'); if (ok){ ok.onclick = () => { try { $('#frame').contentWindow.postMessage({type:'portal-save'}, location.origin); } catch(e){} annSaved = ANN.at; annDraw(); }; ok.focus(); }
+  } else { const el = $('#annt'); if (el) el.textContent = left; }
+}
+setInterval(() => { if (P) annDraw(); }, 1000);
+setInterval(annPoll, 5000);
 /* sign-in page helpers */
 (function(){
   const h = +new Intl.DateTimeFormat('en-GB', {timeZone: 'Asia/Kolkata', hour: 'numeric', hourCycle: 'h23'}).format(new Date());
