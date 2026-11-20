@@ -689,7 +689,7 @@ function stopNotes(){
    Admin presses "Announce update" (Customer Outstanding dashboard). Every other user gets a full-screen timer:
    1 minute warning, then 5 minutes locked. It goes away only when the timer ends or the Admin closes the announcement. */
 const ANN_W = 60e3, ANN_E = 360e3;
-let ANN = {active:false, at:0, skew:0}, annSaved = 0, annKey = '';
+let ANN = {active:false, at:0, skew:0}, annSaved = 0, annKey = '', annSeen = 0;
 async function annPoll(){
   if (!P) return;
   try { const {data} = await sb.rpc('portal_announce'); if (data) ANN = {active:!!data.active, at:+data.at || 0, skew:(+data.now || Date.now()) - Date.now()}; } catch(e){}
@@ -699,7 +699,12 @@ function annDraw(){
   const box = $('#annlock'), app = $('#app'), badge = $('#annbadge');
   const t = Date.now() + ANN.skew - ANN.at, on = !!P && P.role !== 'Admin' && ANN.active && ANN.at && t < ANN_E;
   const off = () => { if (!box.classList.contains('hide')){ box.classList.add('hide'); box.innerHTML = ''; annKey = ''; } };
-  if (!on){ off(); badge.classList.add('hide'); app.inert = false; return; }
+  if (!on){
+    // the update is over (timer ended or Admin closed it): reload once so everyone gets the new version
+    if (annSeen && annSeen === ANN.at || annSeen && !ANN.active){ const k = 'ann_reload_' + annSeen; annSeen = 0; try { if (!sessionStorage.getItem(k)){ sessionStorage.setItem(k, '1'); location.reload(); return; } } catch(e){ location.reload(); return; } }
+    off(); badge.classList.add('hide'); app.inert = false; return;
+  }
+  annSeen = ANN.at;
   const warn = t < ANN_W, x = Math.max(0, Math.ceil(((warn ? ANN_W : ANN_E) - t) / 1000)), left = Math.floor(x / 60) + ':' + String(x % 60).padStart(2, '0');
   // 1-minute warning, after OK: work normally, big timer at the top
   if (warn && annSaved === ANN.at){
