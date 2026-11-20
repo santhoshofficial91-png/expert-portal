@@ -875,7 +875,7 @@ const newTag = ok => ok ? '' : ' <span class="ntag">new</span>';
 function niRow(i, l){
   const n = l.ni || {}, c = findM('inv_cats', 'name', n.cat);
   const fld = (k, lab, list, ok) => `<label class="f">${lab}${newTag(ok)}<input class="mdi" id="mi_l${i}_ni_${k}" data-m="mi" data-l="${i}" data-k="ni.${k}" value="${esc(n[k] || '')}" ${list ? `list="${list}"` : ''} autocomplete="off"></label>`;
-  return `<tr class="nirow"><td colspan="9"><div class="nibox"><b>New stock item</b> <span class="mut">· part number ${'is given when you save'} · company ${esc(F.mi.comp || 'Branditude')}</span>
+  return `<tr class="nirow"><td colspan="9"><div class="nibox"><b>New stock item</b> <span class="mut">· created when you save the GRN · part number ${nextPart()} onwards · company ${esc(F.mi.comp || 'Branditude')}</span>
     <div class="igrid" style="margin-top:6px">${fld('name', 'Stock name *', '', true)}${fld('brand', 'Brand *', 'mi_brs', !n.brand || findM('inv_brands', 'name', n.brand))}${fld('cat', 'Category *', 'mi_cats', !n.cat || c)}${fld('sub', 'Sub category *', 'mi_subs', !n.sub || findSub(c && c.id, n.sub))}${fld('unit', 'Unit *', 'mi_units', !n.unit || findUnit(n.unit))}</div>
     <p class="mut" style="margin:4px 0 0;font-size:12px">HSN and GST % come from this row. Brand, category, sub category and unit that are not in the lists yet are created too.</p></div></td></tr>`;
 }
@@ -903,7 +903,7 @@ function miFormHTML(){
     <datalist id="mi_brs">${invList('inv_brands').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="mi_cats">${invList('inv_cats').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="mi_subs">${[...new Set(invList('inv_subs').map(x => x.name))].map(x => `<option value="${esc(x)}">`).join('')}</datalist><datalist id="mi_units">${invList('inv_units').map(x => `<option value="${esc(x.unit)}">${esc(x.name)}</option>`).join('')}</datalist>
     <div class="tw" style="margin-top:10px"><table class="mtab"><thead><tr><th>Product (as on invoice)</th><th>Stock item *</th><th>HSN</th><th class="r">Qty *</th><th>Unit</th><th class="r">Rate / piece</th><th class="r">Taxable value *</th><th>GST %</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-top:8px"><button class="btn" data-act="matAddL" data-m="mi">+ Add product</button><div id="mi_sum" style="margin-left:auto;min-width:300px">${miSumHTML(d)}</div></div>
-    <div class="err" id="mi_err"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="matSave" data-m="mi">${d.id ? 'Save changes' : 'Save GRN'}</button><button class="btn" data-act="matCancel" data-m="mi">Cancel</button></div>
+    <div class="err" id="mi_err"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="matSave" data-m="mi">${d.lines.some(l => l.item === '__new') || nsBox(d) && (d.ns || {}).on !== false && (PRDIR || []).some(x => x.role === 'executive') ? 'Create new items and save GRN' : d.id ? 'Save changes' : 'Save GRN'}</button><button class="btn" data-act="matCancel" data-m="mi">Cancel</button></div>
     <p class="mut" style="margin:6px 0 0">Pick our stock item for each product once, or choose + New stock item; the app remembers it for the next invoice.</p></div>`;
 }
 function viewMatIn(){
@@ -1030,7 +1030,7 @@ async function matFile(t){
     if (m === 'mi'){
       let g = String(x.supplier_gstin || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); if (OUR_GSTS.includes(g)) g = '';
       const s = (SUPL || []).find(y => y.gstin && y.gstin === g);
-      const lines = (x.lines || []).filter(l => l && (l.name || l.taxable)).map(l => { const it = guessItem(l.name, l.hsn); return {name:String(l.name || '').trim(), item:it || '__new', ni:it ? undefined : {name:String(l.name || '').trim(), brand:String(l.brand || '').trim(), cat:String(l.category || '').trim(), sub:String(l.sub_category || '').trim(), unit:String(l.unit || '').toUpperCase().trim()}, hsn:String(l.hsn || '').replace(/\D/g, ''), qty:r2(l.qty) || '', unit:String(l.unit || '').toUpperCase(), rate:r2(l.rate) || (l.qty ? r2(l.taxable / l.qty) : ''), taxable:r2(l.taxable) || r2((+l.qty || 0) * (+l.rate || 0)), gst:GSTR.includes(+l.gst) ? +l.gst : (+l.gst || 18), rateTyped:1, gstTouched:1}; });
+      const lines = (x.lines || []).filter(l => l && String(l.name || '').trim() && (+l.taxable > 0 || +l.qty > 0)).map(l => { const it = guessItem(l.name, l.hsn); return {name:String(l.name || '').trim(), item:it || '__new', ni:it ? undefined : {name:String(l.name || '').trim(), brand:String(l.brand || '').trim(), cat:String(l.category || '').trim(), sub:String(l.sub_category || '').trim(), unit:String(l.unit || '').toUpperCase().trim()}, hsn:String(l.hsn || '').replace(/\D/g, ''), qty:r2(l.qty) || '', unit:String(l.unit || '').toUpperCase(), rate:r2(l.rate) || (l.qty ? r2(l.taxable / l.qty) : ''), taxable:r2(l.taxable) || r2((+l.qty || 0) * (+l.rate || 0)), gst:GSTR.includes(+l.gst) ? +l.gst : (+l.gst || 18), rateTyped:1, gstTouched:1}; });
       const dup = [...D.mat_in.values()].find(d => normName(d.invNo) === normName(x.inv_no) && (normName(d.supName) === normName(s ? s.name : x.supplier_name) || (g && d.supGst === g)));
       F.mi = {invNo:String(x.inv_no || '').trim(), invDate:ymdOk(x.inv_date), supName:s ? s.name : String(x.supplier_name || '').trim(), supGst:g, comp:'Branditude', lines:lines.length ? lines : [blankLine('mi')], aiTotal:r2(x.total) || 0, ns:{on:true, addr1:String(x.supplier_addr1 || '').trim(), addr2:String(x.supplier_addr2 || '').trim(), addr3:String(x.supplier_addr3 || '').trim(), pincode:String(x.supplier_pincode || '').replace(/\D/g, '').slice(0, 6), mobile:String(x.supplier_mobile || '').replace(/\D/g, '').slice(-10), email:String(x.supplier_email || '').trim()}};
       const miss = lines.filter(l => l.item === '__new').length;
@@ -1056,9 +1056,10 @@ const MATACT = {
     if (m === 'dc' && [...D.mat_rn.values()].some(r => r.dc === d.id)){ toast('Delete its Receipt Notes first.'); return; }
     if (!confirm(`Delete ${m === 'mi' ? 'GRN ' + d.invNo : d.no}? Stock changes back.`)) return;
     await Store.del(col, d.id); await logAct('Inventory', `${m === 'mi' ? 'GRN' : m === 'dc' ? 'Delivery Challan' : 'Receipt Note'} deleted: ${m === 'mi' ? d.invNo + ' · ' + d.supName : d.no + ' · ' + d.party}`); forceRender = true; render(); },
-  matSave:async t => {
-    const m = t.dataset.m, d = F[m], col = MATCOL[m], err = document.getElementById(m + '_err'), bad = s => { err.textContent = s; return false; };
-    const lines = d.lines.filter(l => l.item || +l.qty || (m === 'mi' && (l.name || +l.taxable)));
+  matSave:async t => { try { return await MATACT.matSave2(t); } catch(e){ t.disabled = false; console.error(e); toast('Could not save: ' + (e.message || e)); } },
+  matSave2:async t => {
+    const m = t.dataset.m, d = F[m], col = MATCOL[m], err = document.getElementById(m + '_err'), bad = s => { err.textContent = s; toast(s); try { err.scrollIntoView({block:'center'}); } catch(e){} return false; };
+    const lines = d.lines.filter(l => m === 'mi' ? (l.item || +l.taxable > 0 || String(l.name || '').trim()) : (l.item || +l.qty));
     if (m === 'mi'){
       d.invNo = String(d.invNo || '').trim(); d.supName = String(d.supName || '').trim(); d.supGst = String(d.supGst || '').toUpperCase().trim();
       if (!d.invNo || !d.invDate || !d.supName) return bad('Fill in the invoice number, invoice date and supplier.');
