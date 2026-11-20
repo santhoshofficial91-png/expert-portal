@@ -200,7 +200,7 @@ html.embed #view .frow input,html.embed #view .frow select{min-width:72px}
 html.embed #view .tw{overflow-x:auto}
 html.embed #view .num{white-space:nowrap}
 </style>
-<style>.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px 14px}.sgrid .sfl{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:700}.sgrid .sfl.full{grid-column:span 2}@media(max-width:640px){.sgrid .sfl.full{grid-column:auto}}.sgrid input,.sgrid select{height:36px;font-weight:400}</style>
+<style>.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px 14px}.sgrid .sfl{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:700}.sgrid .sfl.full{grid-column:span 2}@media(max-width:640px){.sgrid .sfl.full{grid-column:auto}}.sgrid input,.sgrid select{height:36px;font-weight:400}.ocrbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px}.sgrid .ocrf{background:#fff7d6;border-color:#e0a800}.ocrraw{margin:0 0 12px;font-size:13px}.ocrraw summary{cursor:pointer;color:var(--mute)}.ocrraw div{display:flex;flex-direction:column;gap:2px;max-height:220px;overflow:auto;margin-top:6px}.ocrl{text-align:left;border:1px solid var(--line,#e4e4f0);background:#fff;border-radius:6px;padding:4px 8px;font:inherit;cursor:pointer}.ocrl:hover,.ocrl:focus-visible{background:#eef2ff}</style>
 <style>html.poexe tr.poadd,html.poexe .tbar label:has(> #xl),html.poexe [data-xs],html.poexe #view [data-pe],html.poexe #view [data-d],html.poexe #view .pact{display:none!important}html.nopoadd tr.poadd,html.nopoadd label:has(> #xl){display:none!important}html.sub [data-d],html.sub [data-dl],html.sub #upnbtn,html.sub #advimp,html.sub [data-prv],html.sub [data-erv]{display:none!important}html.ro [data-pe],html.ro [data-edt],html.ro [data-xe],html.ro [data-rt],html.ro [data-e],html.ro [data-ee],html.ro [data-eedt],html.ro [data-eue],html.ro [data-ue],html.ro label:has(> #xl),html.ro #pof{display:none!important}html.ro .ftab tbody input,html.ro .ftab tbody select,html.ro .ftab tbody textarea,html.ro .ftab tbody button:not(.link){pointer-events:none;opacity:.75}</style>
 </head>
 <body>
@@ -583,6 +583,66 @@ function payPage(v,mine){
  if(ex){var nr=v.querySelector('.newrow');if(nr&&nr.scrollIntoView)nr.scrollIntoView({block:'nearest'})}
 }
 
+
+/* ---------- read supplier details from an invoice photo / PDF (free, runs in the browser; nothing is uploaded) ---------- */
+// Supplier details from invoice text (OCR or PDF text). Format-independent rules.
+var OURGST=['33AAHCB4086D1ZX','33AAEFE2799Q1ZS'];
+var OURNAME=/branditude|expert\s*corporate|excoso/i;
+var GCH='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+function gstOk(g){if(!/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(g))return false;var s=0;for(var i=0;i<14;i++){var p=GCH.indexOf(g[i])*(i%2?2:1);s+=Math.floor(p/36)+p%36}return GCH[(36-s%36)%36]===g[14]}
+function gstFix(raw){ // OCR confuses O/0, I/1, S/5, B/8, Z/2 — fix by position, keep only checksum-valid results
+  var D={O:'0',Q:'0',D:'0',I:'1',L:'1',S:'5',B:'8',Z:'2',G:'6',T:'7'},A={'0':'O','1':'I','5':'S','8':'B','2':'Z','6':'G','7':'T','4':'A'};
+  var dig=[0,1,7,8,9,10],let_=[2,3,4,5,6,11];
+  var g=raw.split('').map(function(c,i){if(dig.indexOf(i)>=0)return D[c]||c;if(let_.indexOf(i)>=0)return A[c]||c;if(i===13)return 'Z';return c}).join('');
+  return gstOk(g)?g:(gstOk(raw)?raw:null)}
+function findGst(text){var out=[],seen={};var flat=text.toUpperCase().replace(/[^A-Z0-9\n]/g,'');
+  var cands=(flat.match(/[0-9OQDILSBZ]{2}[A-Z0-9]{5}[0-9OQDILSBZGT]{4}[A-Z0-9]{2}[Z2][A-Z0-9]/g)||[]);
+  cands.forEach(function(c){var g=gstFix(c);if(g&&!seen[g]){seen[g]=1;out.push(g)}});return out}
+var SUFX=/\b(pvt|private|ltd|limited|llp|enterprises?|traders?|trading|industries|agenc(y|ies)|corporation|company|exports?|impex|solutions|garments|textiles?|tex|fabrics|creations|international|associates|stores|mart|works|products|marketing|distributors?|& co|and co|co\.)\b/i;
+var BUYER=/\b(bill(ed)?\s*to|ship(ped)?\s*to|buyer|consignee|customer\s*(name|details)?\s*[:\-]|sold\s*to|deliver(y)?\s*to|party\s*details)\b/i;
+var SELLER=/\b(seller|supplier|consignor|from|sold\s*by|billed\s*by|issued\s*by)\b/i;
+var OURPIN=['600077'];
+var JUNK=/^(tax\s*invoice|invoice|original|duplicate|triplicate|e-?invoice|irn|ack|page|gst\s*invoice|bill\s*of\s*supply|for\s+recipient|copy)\b/i;
+function clean(l){return l.replace(/^(m\/s\.?|name|address|addr|supplier|seller|from|company)\s*[:\-.]?\s*/i,'').replace(/\s{2,}/g,' ').replace(/[|_]+/g,' ').trim()}
+function parseInvoice(text){
+  var lines=text.split(/\r?\n/).map(function(l){return l.replace(/\s+/g,' ').trim()}).filter(function(l){return l.length>1});
+  var gsts=findGst(text),sup=gsts.filter(function(g){return OURGST.indexOf(g)<0})[0]||'';
+  var r={gstin:sup,pan:sup?sup.slice(2,12):'',stateCode:sup?sup.slice(0,2):'',name:'',addr:[],pincode:'',mobile:'',email:'',ours:gsts.filter(function(g){return OURGST.indexOf(g)>=0}),lines:lines};
+  // where is the buyer block? supplier details are normally before it
+  var bIdx=lines.findIndex(function(l){return BUYER.test(l)});
+  var gIdx=sup?lines.findIndex(function(l){return l.toUpperCase().replace(/[^A-Z0-9]/g,'').indexOf(sup.slice(2,12))>=0}):-1;
+  var isOurs=function(l){return OURNAME.test(l)||OURGST.some(function(g){return l.toUpperCase().replace(/[^A-Z0-9]/g,'').indexOf(g.slice(2,12))>=0})};
+  // supplier block: from top to buyer marker; if supplier GST is after the buyer marker, use the block around the GST line
+  var s=0,e=bIdx>0?bIdx:Math.min(lines.length,18);
+  if(gIdx>=0&&bIdx>=0&&gIdx>bIdx){s=Math.max(0,gIdx-7);e=gIdx+1}
+  var skip={};lines.forEach(function(l,i){if(BUYER.test(l)){for(var j=i;j<lines.length&&j<i+5;j++){if(j>i&&SELLER.test(lines[j]))break;skip[j]=1}}});
+  var block=lines.slice(s,e).filter(function(l,k){return !isOurs(l)&&!skip[s+k]});
+  if(!block.length||(bIdx===0&&e===Math.min(lines.length,18)))block=lines.filter(function(l,k){return !isOurs(l)&&!skip[k]});
+  var ni=block.findIndex(function(l){return SUFX.test(l)&&!JUNK.test(l)&&!/gst|pan|phone|mobile|email|invoice\s*no|date/i.test(l)});
+  if(ni<0)ni=block.findIndex(function(l){return !JUNK.test(l)&&/[A-Za-z]{3}/.test(l)&&!/gst|pan|phone|mobile|email|invoice|date|state|code/i.test(l)});
+  if(ni>=0){r.name=clean(block[ni]).replace(/\s*(gstin|gst)\b.*$/i,'').slice(0,120);
+    for(var i=ni+1;i<block.length&&r.addr.length<3;i++){var l=block[i];if(/gst|pan\s*no|phone|mobile|ph\s*[:.]|\btel\b|e-?mail|@|\bcin\b|invoice|state\s*(name|code)|place of supply|\bdate\b/i.test(l)){if(r.addr.length)break;else continue}
+      if(/[A-Za-z0-9]/.test(l))r.addr.push(clean(l).slice(0,120))}}
+  var near=block.join('\n'),pins=function(t){return (t.match(/\b[1-8]\d{2}\s?\d{3}\b/g)||[]).map(function(x){return x.replace(/\s/,'')}).filter(function(x){return OURPIN.indexOf(x)<0})};
+  var pin=pins(r.addr.join('\n'))[0]||pins(near)[0];if(pin)r.pincode=pin;
+  var mob=(near.replace(/[\s\-]/g,' ').match(/(?:\+?91[\s-]?)?\b[6-9]\d{4}\s?\d{5}\b/g)||[])[0];if(mob)r.mobile=mob.replace(/\D/g,'').slice(-10);
+  var em=(near.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g)||[]).filter(function(x){return !/expertcorporatesolutions|branditude|excoso/i.test(x)})[0];if(em)r.email=em;
+  return r}
+
+function loadJs(src){return new Promise(function(ok,no){var x=document.createElement('script');x.src=src;x.onload=ok;x.onerror=function(){no(new Error('Could not load '+src))};document.head.appendChild(x)})}
+async function pdfText(file,status){
+ if(!window.pdfjsLib){await loadJs('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js');pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js'}
+ var doc=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise,out='';
+ for(var p=1;p<=Math.min(doc.numPages,2);p++){var pg=await doc.getPage(p),tc=await pg.getTextContent(),rows={};
+  tc.items.forEach(function(it){var y=Math.round(it.transform[5]/3);(rows[y]=rows[y]||[]).push(it)});
+  out+=Object.keys(rows).map(Number).sort(function(a,b){return b-a}).map(function(y){return rows[y].sort(function(a,b){return a.transform[4]-b.transform[4]}).map(function(i){return i.str}).join(' ')}).join('\n')+'\n'}
+ if(out.replace(/\s/g,'').length>60)return out;
+ status('Scanned PDF — reading the page as a picture…');var pg1=await doc.getPage(1),vp=pg1.getViewport({scale:2}),c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;await pg1.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;return ocrImage(c,status)}
+async function ocrImage(src,status){
+ if(!window.Tesseract)await loadJs('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+ var r=await Tesseract.recognize(src,'eng',{logger:function(m){if(m.status==='recognizing text')status('Reading the invoice… '+Math.round(m.progress*100)+'%');else if(/loading/.test(m.status))status('Getting the reader ready (first time only)…')}});return r.data.text}
+function shrinkImg(file){return new Promise(function(ok){var im=new Image();im.onload=function(){var k=Math.min(1,2200/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;var x=c.getContext('2d');x.drawImage(im,0,0,c.width,c.height);ok(c)};im.onerror=function(){ok(file)};im.src=URL.createObjectURL(file)})}
+var SUPOCR=null;
 /* ---------- Create Supplier ---------- */
 var SUP=[],SUPED=null,SUPQ='',SUPCH=null;
 var STATES=['Andaman and Nicobar Islands','Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chandigarh','Chhattisgarh','Dadra and Nagar Haveli and Daman and Diu','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jammu and Kashmir','Jharkhand','Karnataka','Kerala','Ladakh','Lakshadweep','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Puducherry','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal'];
@@ -596,7 +656,8 @@ function supPage(v){
  var exes=LIST.exe.slice().sort(function(a,b){return a[0].localeCompare(b[0])}),mgrs=LIST.mgr.slice().sort(function(a,b){return a[0].localeCompare(b[0])});
  var o=function(list,cur,emp){return '<option value="">'+emp+'</option>'+list.map(function(x){return '<option value="'+esc(x[6])+'"'+(cur===x[6]?' selected':'')+'>'+esc(x[0])+'</option>'}).join('')};
  var L=function(t,h,full){return '<label class="sfl'+(full?' full':'')+'"><span>'+t+'</span>'+h+'</label>'};
- var form=supCanEdit()?'<form id="supf" class="panel" style="margin-top:14px" novalidate><h3 style="margin:0 0 10px">'+(e?'Edit supplier':'Create supplier')+'</h3><div class="sgrid">'+
+ var ocrBar=e?'':'<div class="ocrbar"><label class="add" for="supocr" style="cursor:pointer">\ud83d\udcf7 Read from invoice (photo / PDF)</label><input id="supocr" type="file" accept="image/*,application/pdf" style="position:absolute;opacity:0;width:1px;height:1px"><span id="supocrs" role="status" aria-live="polite" style="color:var(--mute);font-size:13px">Fills GST, PAN, name, address, state, pincode. Check the yellow fields, pick the executive and manager, then save. The photo is not saved.</span></div>'+(SUPOCR&&SUPOCR.lines.length?'<details class="ocrraw"><summary>Text read from the invoice — click a box above, then click a line to put it there</summary><div>'+SUPOCR.lines.map(function(l,i){return '<button type="button" class="ocrl" data-l="'+i+'">'+esc(l)+'</button>'}).join('')+'</div></details>':'');
+ var form=supCanEdit()?'<form id="supf" class="panel" style="margin-top:14px" novalidate><h3 style="margin:0 0 10px">'+(e?'Edit supplier':'Create supplier')+'</h3>'+ocrBar+'<div class="sgrid">'+
   L('Supplier name *','<input name="name" value="'+val('name')+'" autocomplete="off">')+
   L('Under *','<select name="under"><option>Sundry Creditors</option></select>')+
   L('Executive *','<select name="exec" id="supexe">'+o(exes,e?e.exec_id:'','Select executive')+'</select>')+
@@ -609,31 +670,47 @@ function supPage(v){
   L('Mobile number *','<input name="mobile" inputmode="tel" maxlength="10" value="'+val('mobile')+'" autocomplete="off">')+
   L('Mail ID','<input name="email" type="email" value="'+val('email')+'" autocomplete="off">')+
   L('GST number *','<input name="gstin" maxlength="15" style="text-transform:uppercase" value="'+val('gstin')+'" autocomplete="off">')+
+  L('PAN','<input name="pan" maxlength="10" style="text-transform:uppercase" value="'+val('pan')+'" autocomplete="off" title="Filled from the GST number">')+
   '</div><div class="derr" id="superr" role="alert"></div><div class="row" style="justify-content:flex-start;gap:8px"><button class="add" type="submit">'+(e?'Save changes':'Create supplier')+'</button>'+(e?'<button class="link" type="button" id="supcan">Cancel</button>':'')+'</div><p style="margin:6px 0 0;color:var(--mute);font-size:12px">Picking the executive fills in their manager. You can change the manager.</p></form>':'';
  var q=SUPQ.trim().toLowerCase(),list=SUP.filter(function(x){return !q||[x.name,x.exec_name,x.mgr_name,x.state,x.gstin,x.mobile].join(' ').toLowerCase().indexOf(q)>=0});
- var rows=list.map(function(x){return '<tr><td><b>'+esc(x.name)+'</b><div style="color:var(--mute);font-size:12px">'+esc(x.under)+'</div></td><td>'+esc(x.exec_name||'')+'</td><td>'+esc(x.mgr_name||'')+'</td><td style="white-space:normal;max-width:260px">'+esc([x.addr1,x.addr2,x.addr3].filter(Boolean).join(', '))+'</td><td>'+esc(x.state||'')+'</td><td>'+esc(x.pincode||'')+'</td><td>'+esc(x.mobile||'')+'</td><td>'+esc(x.email||'')+'</td><td class="mono">'+esc(x.gstin||'')+'</td><td class="pact">'+(supCanEdit()?'<button class="link" type="button" data-supe="'+esc(x.id)+'">Edit</button>':'')+(ME.role==='admin'&&!ME.sub?'<button class="link" type="button" data-supd="'+esc(x.id)+'">Delete</button>':'')+'</td></tr>'}).join('')||'<tr><td colspan="10">'+(SUP.length?'No supplier matches.':'No suppliers yet.')+'</td></tr>';
+ var rows=list.map(function(x){return '<tr><td><b>'+esc(x.name)+'</b><div style="color:var(--mute);font-size:12px">'+esc(x.under)+'</div></td><td>'+esc(x.exec_name||'')+'</td><td>'+esc(x.mgr_name||'')+'</td><td style="white-space:normal;max-width:260px">'+esc([x.addr1,x.addr2,x.addr3].filter(Boolean).join(', '))+'</td><td>'+esc(x.state||'')+'</td><td>'+esc(x.pincode||'')+'</td><td>'+esc(x.mobile||'')+'</td><td>'+esc(x.email||'')+'</td><td class="mono">'+esc(x.gstin||'')+'</td><td class="mono">'+esc(x.pan||'')+'</td><td class="pact">'+(supCanEdit()?'<button class="link" type="button" data-supe="'+esc(x.id)+'">Edit</button>':'')+(ME.role==='admin'&&!ME.sub?'<button class="link" type="button" data-supd="'+esc(x.id)+'">Delete</button>':'')+'</td></tr>'}).join('')||'<tr><td colspan="11">'+(SUP.length?'No supplier matches.':'No suppliers yet.')+'</td></tr>';
  v.innerHTML='<div class="top"><div><h1>Create Supplier</h1><p>'+SUP.length+' supplier'+(SUP.length===1?'':'s')+' · Under Sundry Creditors</p></div></div>'+form+
-  '<div class="panel" style="margin-top:14px"><div class="ph"><h3>Suppliers</h3><input id="supq" type="search" placeholder="Search name, executive, GST…" value="'+esc(SUPQ)+'" aria-label="Search suppliers" style="max-width:280px"></div><div class="tw"><table class="entry" style="min-width:1500px"><thead><tr><th>Supplier</th><th>Executive</th><th>Manager</th><th>Address</th><th>State</th><th>Pincode</th><th>Mobile</th><th>Mail ID</th><th>GST number</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  '<div class="panel" style="margin-top:14px"><div class="ph"><h3>Suppliers</h3><input id="supq" type="search" placeholder="Search name, executive, GST…" value="'+esc(SUPQ)+'" aria-label="Search suppliers" style="max-width:280px"></div><div class="tw"><table class="entry" style="min-width:1500px"><thead><tr><th>Supplier</th><th>Executive</th><th>Manager</th><th>Address</th><th>State</th><th>Pincode</th><th>Mobile</th><th>Mail ID</th><th>GST number</th><th>PAN</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
  var sq=v.querySelector('#supq');if(sq)sq.oninput=function(){SUPQ=sq.value;var p=sq.selectionStart;render('csup');var n=document.getElementById('supq');if(n){n.focus();n.setSelectionRange(p,p)}};
  var se=v.querySelector('#supexe'),sm=v.querySelector('#supmgr');if(se)se.onchange=function(){var x=LIST.exe.filter(function(y){return y[6]===se.value})[0];if(x){var m=LIST.mgr.filter(function(y){return y[0]===x[5]})[0];sm.value=m?m[6]:''}};
- var g=v.querySelector('[name=gstin]'),st=v.querySelector('[name=state]');if(g)g.oninput=function(){var c=g.value.trim().slice(0,2);if(GSTST[c]&&!st.value)st.value=GSTST[c]};
- var cn=v.querySelector('#supcan');if(cn)cn.onclick=function(){SUPED=null;render('csup')};
+ var g=v.querySelector('[name=gstin]'),st=v.querySelector('[name=state]');var pn=v.querySelector('[name=pan]');if(g)g.oninput=function(){var gv=g.value.trim().toUpperCase(),c=gv.slice(0,2);if(GSTST[c]&&!st.value)st.value=GSTST[c];if(gv.length===15&&pn&&!pn.value)pn.value=gv.slice(2,12)};
+ var cn=v.querySelector('#supcan');if(cn)cn.onclick=function(){SUPED=null;SUPOCR=null;render('csup')};
+ var last=null;v.querySelectorAll('#supf input,#supf select').forEach(function(x){x.addEventListener('focus',function(){if(x.type!=='file')last=x})});
+ v.querySelectorAll('.ocrl').forEach(function(b){b.onmousedown=function(ev){ev.preventDefault()};b.onclick=function(){var t=last||v.querySelector('[name=name]');if(t&&t.tagName==='INPUT'){t.value=SUPOCR.lines[+b.dataset.l];t.classList.add('ocrf');t.focus()}}});
+ var fi=v.querySelector('#supocr'),fs=v.querySelector('#supocrs');if(fi)fi.onchange=async function(){var file=fi.files[0];if(!file)return;var st2=function(m){fs.textContent=m};
+  try{st2('Reading the invoice…');var text=file.type==='application/pdf'||/\.pdf$/i.test(file.name)?await pdfText(file,st2):await ocrImage(await shrinkImg(file),st2);
+   var r=parseInvoice(text);SUPOCR=r;var f=v.querySelector('#supf'),put=function(n,val){var el=f.querySelector('[name='+n+']');if(el&&val){el.value=val;el.classList.add('ocrf')}};
+   put('gstin',r.gstin);put('pan',r.pan);put('name',r.name);put('addr1',r.addr[0]);put('addr2',r.addr[1]);put('addr3',r.addr[2]);put('pincode',r.pincode);put('mobile',r.mobile);put('email',r.email);if(r.stateCode&&GSTST[r.stateCode])put('state',GSTST[r.stateCode]);
+   var keep={};f.querySelectorAll('input[name],select[name]').forEach(function(x){keep[x.name]=x.value});var filled=[].slice.call(f.querySelectorAll('.ocrf')).map(function(x){return x.name});
+   render('csup');var f2=$('view').querySelector('#supf');Object.keys(keep).forEach(function(n){var el=f2.querySelector('[name='+n+']');if(el){el.value=keep[n];if(filled.indexOf(n)>=0)el.classList.add('ocrf')}});
+   var dup=r.gstin&&SUP.filter(function(x){return x.gstin===r.gstin})[0],msg=$('view').querySelector('#supocrs');
+   msg.textContent=!r.gstin?'Could not find the supplier GST number. Fill it in, or try a clearer photo.':dup?'This supplier already exists: '+dup.name+'. You do not need to create it again.':'Done. Check the yellow fields, pick the executive and manager, then press Create supplier.';
+   msg.style.color=!r.gstin||dup?'#b42318':'';
+  }catch(err){st2('Could not read this file: '+(err.message||err)+'. Try a clearer photo or fill the details by hand.')}fi.value=''};
  v.querySelectorAll('[data-supe]').forEach(function(b){b.onclick=function(){SUPED=b.dataset.supe;render('csup');window.scrollTo(0,0)}});
  v.querySelectorAll('[data-supd]').forEach(function(b){b.onclick=async function(){var x=SUP.filter(function(y){return y.id===b.dataset.supd})[0];if(!x||!confirm('Delete supplier '+x.name+'?'))return;var r=await SB.from('pr_suppliers').delete().eq('id',x.id);if(r.error){alert('Could not delete: '+r.error.message);return}loadSup()}});
  var f=v.querySelector('#supf');if(f)f.onsubmit=async function(ev){ev.preventDefault();var q=new FormData(f),g2=function(k){return String(q.get(k)||'').trim()},er=v.querySelector('#superr');er.textContent='';
-  var d={name:g2('name'),under:g2('under')||'Sundry Creditors',exec_id:g2('exec'),mgr_id:g2('mgr'),addr1:g2('addr1'),addr2:g2('addr2'),addr3:g2('addr3'),state:g2('state'),pincode:g2('pincode'),mobile:g2('mobile').replace(/\D/g,''),email:g2('email'),gstin:g2('gstin').toUpperCase()};
+  var d={name:g2('name'),under:g2('under')||'Sundry Creditors',exec_id:g2('exec'),mgr_id:g2('mgr'),addr1:g2('addr1'),addr2:g2('addr2'),addr3:g2('addr3'),state:g2('state'),pincode:g2('pincode'),mobile:g2('mobile').replace(/\D/g,''),email:g2('email'),gstin:g2('gstin').toUpperCase(),pan:g2('pan').toUpperCase()};if(!d.pan&&d.gstin.length===15)d.pan=d.gstin.slice(2,12);
   var miss=[['name','Supplier name'],['exec_id','Executive'],['mgr_id','Manager'],['addr1','Address line 1'],['state','State'],['pincode','Pincode'],['mobile','Mobile number'],['gstin','GST number']].filter(function(x){return !d[x[0]]}).map(function(x){return x[1]});
   if(miss.length){er.textContent='Fill in: '+miss.join(', ')+'.';return}
   if(!/^\d{6}$/.test(d.pincode)){er.textContent='Pincode must be 6 digits.';return}
   if(!/^[6-9]\d{9}$/.test(d.mobile)){er.textContent='Mobile number must be 10 digits.';return}
   if(d.email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)){er.textContent='Mail ID is not valid.';return}
-  if(!/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(d.gstin)){er.textContent='GST number is not valid. It has 15 characters, like 36AAQCA9871J1ZV.';return}
+  if(!gstOk(d.gstin)){er.textContent='GST number is not valid. Check each character (it has 15, like 36AAQCA9871J1ZV).';return}
+  if(d.pan&&!/^[A-Z]{5}\d{4}[A-Z]$/.test(d.pan)){er.textContent='PAN is not valid. It has 10 characters, like AAQCA9871J.';return}
+  if(OURGST.indexOf(d.gstin)>=0){er.textContent='This is our own GST number (Expert / Branditude), not the supplier\'s.';return}
+  if(SUP.some(function(x){return x.id!==SUPED&&x.gstin===d.gstin})){er.textContent='A supplier with this GST number already exists.';return}
   if(SUP.some(function(x){return x.id!==SUPED&&x.name.trim().toLowerCase()===d.name.toLowerCase()})){er.textContent='A supplier with this name already exists.';return}
   var ex=LIST.exe.filter(function(y){return y[6]===d.exec_id})[0],mg=LIST.mgr.filter(function(y){return y[6]===d.mgr_id})[0];d.exec_name=ex?ex[0]:'';d.mgr_name=mg?mg[0]:'';d.updated_at=new Date().toISOString();
   var btn=f.querySelector('button[type=submit]');btn.disabled=true;
   var r=SUPED?await SB.from('pr_suppliers').update(d).eq('id',SUPED):await SB.from('pr_suppliers').insert(d);
   btn.disabled=false;if(r.error){er.textContent=/duplicate|unique/i.test(r.error.message)?'A supplier with this name already exists.':'Could not save: '+r.error.message;return}
-  var was=!!SUPED;SUPED=null;await loadSup();render('csup');var ok=document.createElement('div');ok.className='ok';ok.setAttribute('role','status');ok.textContent=d.name+(was?' was updated.':' was created.');var vv=$('view').querySelector('.top');if(vv)vv.after(ok)};
+  var was=!!SUPED;SUPED=null;SUPOCR=null;await loadSup();render('csup');var ok=document.createElement('div');ok.className='ok';ok.setAttribute('role','status');ok.textContent=d.name+(was?' was updated.':' was created.');var vv=$('view').querySelector('.top');if(vv)vv.after(ok)};
 }
 function podPage(v){
  var list=myPOs();
