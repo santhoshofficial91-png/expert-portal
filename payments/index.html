@@ -184,6 +184,22 @@ header .me{gap:14px}.so{display:inline-flex;align-items:center;gap:8px;height:40
 #tg{display:inline-flex;align-items:center;gap:8px;width:auto!important;padding-left:12px;padding-right:14px}#tg .tgt{font-weight:700;font-size:14px}
 </style>
 <script>try{if(window.parent!==window&&/[?&]embed=1/.test(location.search))document.documentElement.classList.add("embed")}catch(e){}</script><style>html.embed #login:not(.noacc){display:none!important}html.embed body{background:#f6f5fb}</style>
+<style>
+/* compact tables inside the portal: fit on one screen where possible, scroll only the very wide ones */
+html.embed .pad{padding:16px 14px}
+html.embed #view .entry th,html.embed #view .entry td{padding:5px 6px;font-size:12.5px}
+html.embed #view .entry input:not(.pick):not(.pk),html.embed #view .entry select{min-width:0;width:100%;height:32px;padding:0 6px;font-size:12.5px}
+html.embed #view .entry input[type=date]{min-width:0}
+html.embed #view .frow input,html.embed #view .frow select{min-width:0;height:30px;font-size:12px}
+html.embed #view .frow td{padding:5px 4px}
+html.embed #view table[style*="min-width:1500px"],html.embed #view table[style*="min-width:900px"],html.embed #view table.ftab:not([style*="min-width"]){min-width:0!important;width:100%;table-layout:auto}
+html.embed #view table[style*="min-width:1800px"]{min-width:1250px!important}
+html.embed #view table[style*="min-width:2600px"],html.embed #view table[style*="min-width:2700px"],html.embed #view table[style*="min-width:2900px"]{min-width:2150px!important}
+html.embed #view .entry select[data-s],html.embed #view .entry select[data-es]{min-width:112px!important}
+html.embed #view .frow input,html.embed #view .frow select{min-width:72px}
+html.embed #view .tw{overflow-x:auto}
+html.embed #view .num{white-space:nowrap}
+</style>
 <style>html.poexe tr.poadd,html.poexe .tbar label:has(> #xl),html.poexe [data-xs],html.poexe #view [data-pe],html.poexe #view [data-d],html.poexe #view .pact{display:none!important}html.nopoadd tr.poadd,html.nopoadd label:has(> #xl){display:none!important}html.sub [data-d],html.sub [data-dl],html.sub #upnbtn,html.sub #advimp,html.sub [data-prv],html.sub [data-erv]{display:none!important}html.ro [data-pe],html.ro [data-edt],html.ro [data-xe],html.ro [data-rt],html.ro [data-e],html.ro [data-ee],html.ro [data-eedt],html.ro [data-eue],html.ro [data-ue],html.ro label:has(> #xl),html.ro #pof{display:none!important}html.ro .ftab tbody input,html.ro .ftab tbody select,html.ro .ftab tbody textarea,html.ro .ftab tbody button:not(.link){pointer-events:none;opacity:.75}</style>
 </head>
 <body>
