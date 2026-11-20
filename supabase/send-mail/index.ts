@@ -198,7 +198,7 @@ Deno.serve(async (req) => {
     if (!user) return json({ error: 'Not signed in' }, 401);
     const me = await getDoc('users', user.id);
     const role = me?.active === false ? null : me?.role;
-    if (role !== 'Admin' && role !== 'Sub Admin') return json({ error: 'Only Admin and Sub Admin can send payment mails' }, 403);
+    if (role !== 'Admin' && !(role === 'Sub Admin' && me?.canAlert === true)) return json({ error: 'Only the Admin and Sub Admins with alert access can send payment mails' }, 403);
     const body = await req.json();
 
     if (body.action === 'status') return json({ ready: !!MAIL_PASS, from: MAIL_USER });
