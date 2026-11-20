@@ -160,6 +160,7 @@ async function runCron() {
   const stale = ths.filter(({ t }) => !t.repliedAt && (!t.lastCheck || nowMs - new Date(t.lastCheck).getTime() > 20 * 60000));
   const toCheck = [...new Map([...due, ...stale].map((x) => [x.id, x])).values()];
   let replied = 0, sent = 0; const errs: string[] = [], skipped: string[] = [];
+  const defCc = emails((await getDoc('meta', 'mailcc'))?.cc ?? '');
   try { replied = await checkReplies(toCheck); } catch (e) { errs.push('reply check: ' + (e as Error).message); }
   for (const { id } of due) {
     const t = await getDoc('mailthread', id);
@@ -171,7 +172,7 @@ async function runCron() {
     const dd = rows.filter((e: any) => e.due).map((e: any) => dn(e.due) - dn(today)), dmin = dd.length ? Math.min(...dd) : null;
     const k = nextKind(t, rows, today);
     if (k.kind === 'fu' && (dmin == null || dmin > 7)) continue;          // follow-ups start 7 days before the due date
-    const to = emails(t.to), cc = emails(t.cc);
+    const to = emails(t.to), cc = [...new Map([...emails(t.cc), ...defCc].map((x) => [x.toLowerCase(), x])).values()];
     if (!to.length) { skipped.push(t.party + ' (no mail ID)'); continue; }
     try {
       const amt = rows.reduce((a: number, e: any) => a + (e.amount || 0), 0);

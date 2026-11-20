@@ -664,7 +664,7 @@ function viewMail(){
   return `<div class="head"><div><h1>Send Payment Mail</h1><p class="sub">From expertcorporatesolutions2023@gmail.com · ${th ? 'Subject: ' + esc('Re: ' + th.subject) : 'New mail thread'}</p></div><div class="bar" style="margin:0"><button class="btn" data-act="mailBack">← All customers</button></div></div>${warn}
   <div class="bar sfb">${pick}</div>${th ? replyNote(th) : ''}${hist}
   <div class="card"><h2 style="margin:0 0 8px">1. Tick the invoices</h2><div class="tw"><table><thead><tr><th><input type="checkbox" id="mall" ${allOn ? 'checked' : ''} ${rows.length ? '' : 'disabled'} aria-label="Tick all invoices" title="Tick / untick all"></th><th>Date</th><th>Inv Num</th><th>Area</th><th class="r">Pending Amt</th><th>Due Date</th><th class="r">Overdue</th><th>Expected</th></tr></thead><tbody>${list || '<tr><td colspan="8" class="empty">No open invoices.</td></tr>'}</tbody></table></div></div>
-  <div class="card" style="margin-top:12px"><h2 style="margin:0 0 8px">2. Mail IDs</h2>${personPick(P, th)}<div class="frow"><label class="f">To (customer mail IDs, separate with comma)<input id="mto" value="${esc(F.mto ?? curContact(P, th).to ?? '')}" placeholder="accounts@customer.com"></label></div><div class="frow"><label class="f">CC<input id="mcc" value="${esc(F.mcc ?? curContact(P, th).cc ?? '')}" placeholder="optional"></label></div><p class="mut" style="margin:4px 0 0">Saved to Customer Contacts (for the chosen person) after sending.</p></div>
+  <div class="card" style="margin-top:12px"><h2 style="margin:0 0 8px">2. Mail IDs</h2>${personPick(P, th)}<div class="frow"><label class="f">To (customer mail IDs, separate with comma)<input id="mto" value="${esc(F.mto ?? curContact(P, th).to ?? '')}" placeholder="accounts@customer.com"></label></div><div class="frow"><label class="f">CC<input id="mcc" value="${esc(F.mcc ?? mergeCc(defCc(), curContact(P, th).cc || ''))}" placeholder="optional"></label></div><p class="mut" style="margin:4px 0 0">CC already has the default CC IDs (set on the Send Payment Mail page). Add or remove IDs here if needed. Saved to Customer Contacts (for the chosen person) after sending.</p></div>
   <div class="card" style="margin-top:12px"><h2 style="margin:0 0 8px">3. Check the mail and send</h2>${mailStep3(P, th, rows, picked)}</div>${th ? autoCard(th, rows) : ''}`;
 }
 
@@ -712,7 +712,8 @@ const DN0 = s => dn(s);
 function autoGlobalHTML(){
   const A = D.meta.get('mailauto') || {}, on = A.on !== false, time = A.time || '10:00';
   return `<div class="card" style="margin-bottom:12px"><h2 style="margin:0 0 6px">Automatic mails (all customers)</h2><p class="mut" style="margin:0 0 8px">Every day at the time below, each open mail thread gets one mail: a follow-up from 7 days before the due date, then Reminder 1, 2, 3… after the due date. Stops when the customer replies or the invoices are Paid. Pause single customers in Customer Contacts.</p>
-    <div class="frow" style="align-items:flex-end;flex-wrap:wrap"><label class="f" style="max-width:170px">Daily time<input type="time" id="agtime" value="${esc(time)}"></label><div style="display:flex;gap:8px;padding-bottom:2px"><button class="btn pri" data-act="autoGlobal" data-on="1">${on ? 'Save time' : 'Switch ON'}</button>${on ? '<button class="btn dng" data-act="autoGlobal" data-on="0">Switch OFF for all</button>' : ''}</div><span class="pill" style="margin-bottom:6px;${on ? 'background:#e7f6ec;color:#0b5d22' : 'background:#fde8e8;color:#b42318'}">${on ? 'ON · ' + tm12(time) + ' daily' : 'OFF'}</span></div></div>`;
+    <div class="frow" style="align-items:flex-end;flex-wrap:wrap"><label class="f" style="max-width:170px">Daily time<input type="time" id="agtime" value="${esc(time)}"></label><div style="display:flex;gap:8px;padding-bottom:2px"><button class="btn pri" data-act="autoGlobal" data-on="1">${on ? 'Save time' : 'Switch ON'}</button>${on ? '<button class="btn dng" data-act="autoGlobal" data-on="0">Switch OFF for all</button>' : ''}</div><span class="pill" style="margin-bottom:6px;${on ? 'background:#e7f6ec;color:#0b5d22' : 'background:#fde8e8;color:#b42318'}">${on ? 'ON · ' + tm12(time) + ' daily' : 'OFF'}</span></div>
+    <div class="frow" style="align-items:flex-end;margin-top:10px"><label class="f">Default CC for every payment mail (separate with comma)<input id="defcc" value="${esc(defCc())}" placeholder="accounts@expertcorporatesolutions.com"></label><div style="padding-bottom:2px"><button class="btn pri" data-act="defCcSave">Save CC</button></div></div></div>`;
 }
 const fsz = b => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
 function attachHTML(){
@@ -721,6 +722,8 @@ function attachHTML(){
   ${fs.length ? `<ul style="margin:8px 0 0;padding-left:18px">${fs.map((f, i) => `<li>${esc(f.name)} <span class="mut">(${fsz(f.size)})</span> <button class="btn sm" data-act="attDel" data-k="${i}" aria-label="Remove ${esc(f.name)}">Remove</button></li>`).join('')}</ul><div class="${tot > 15 * 1048576 ? 'err' : 'mut'}" style="margin-top:4px">Total ${fsz(tot)}</div>` : ''}</div>`;
 }
 
+const defCc = () => String((D.meta.get('mailcc') || {}).cc || '');
+const mergeCc = (...xs) => { const seen = new Set(), out = []; xs.join(',').split(/[,;\s]+/).map(x => x.trim()).filter(Boolean).forEach(x => { const k = x.toLowerCase(); if (!seen.has(k)){ seen.add(k); out.push(x); } }); return out.join(', '); };
 const curPid = (P, th) => F.mperson != null ? F.mperson : (th && th.contactId) || '';
 function curContact(P, th){ const c = contactOf(P), pid = curPid(P, th); if (!pid) return {to:c.to, cc:c.cc, name:'Main contact'}; const x = (c.people || []).find(y => y.id === pid); return x ? {to:x.to, cc:x.cc, name:x.name} : {to:c.to, cc:c.cc, name:'Main contact'}; }
 function personPick(P, th){
@@ -1102,7 +1105,7 @@ function render(){
   if (!me() || me().active === false){ S.me = null; app.innerHTML = loginHTML(); return; }
   if (!forceRender && S.view === 'create' && document.querySelector('#main form[data-form]') && [...document.querySelectorAll('#main form[data-form] input')].some(i => i.type !== 'checkbox' && i.value)) return;
   if (!forceRender && S.editRow && document.querySelector('#main tr.editing')) return;
-  if (!forceRender && S.view === 'mail' && document.activeElement && document.activeElement.matches && document.activeElement.matches('#agtime,#mto,#mcc')) return;
+  if (!forceRender && S.view === 'mail' && document.activeElement && document.activeElement.matches && document.activeElement.matches('#agtime,#defcc,#mto,#mcc')) return;
   if (!forceRender && S.view === 'contacts' && document.activeElement && document.activeElement.matches && document.activeElement.matches('.ctto,.ctcc,.ctpn,.ctpto,.ctpcc')) return;
   if (S.view !== 'chat'){ S.chatWith = null; S.chatTab = 'all'; S.chatImg = null; }
   if (!forceRender && S.view === 'chat' && document.getElementById('chatpane')){ updateChat(); return; }
@@ -1636,6 +1639,8 @@ const ACT = {
   toggleSide:() => { S.sideHidden = !S.sideHidden; try { localStorage.setItem('cof_side', S.sideHidden ? '1' : '0'); } catch(e){} forceRender = true; render(); },
   attDel:t => { (F.matt || []).splice(+t.dataset.k, 1); forceRender = true; render(); },
   mailCheck:async t => { t.disabled = true; t.textContent = 'Checking…'; const r = await mailAutoCheck(true); if (r && r.error) toast(r.error); else toastOk(r && r.replied ? r.replied + ' new customer repl' + (r.replied > 1 ? 'ies' : 'y') + ' found' : 'No new customer replies'); forceRender = true; render(); },
+  defCcSave:async () => { const v = mergeCc(val('defcc')); if (!mailOk(v)){ toast('A mail ID is not valid. Separate more than one with a comma.'); return; }
+    await Store.set('meta', 'mailcc', {cc:v, by:S.me, at:nowISO()}); await logAct('Payment mail', 'Default CC: ' + (v || 'none')); toastOk('Default CC saved'); forceRender = true; render(); },
   mtype:t => { F.mtype = t.dataset.k; forceRender = true; render(); },
   custPause:async t => { const P = t.dataset.k, k = pkey(P), on = t.dataset.on === '1';
     await Store.set('contacts', k, {...contactOf(P), party:P, autoPaused:on, pausedAt:on ? nowISO() : null}); await logAct('Payment mail automatic', `${P} · ${on ? 'paused' : 'resumed'}`); toastOk(on ? 'Automatic mails paused for ' + P : 'Automatic mails resumed for ' + P); forceRender = true; render(); },
