@@ -604,6 +604,17 @@ var SELLER=/\b(seller|supplier|consignor|from|sold\s*by|billed\s*by|issued\s*by)
 var OURPIN=['600077'];
 var JUNK=/^(tax\s*invoice|invoice|original|duplicate|triplicate|e-?invoice|irn|ack|page|gst\s*invoice|bill\s*of\s*supply|for\s+recipient|copy)\b/i;
 function clean(l){return l.replace(/^(m\/s\.?|name|address|addr|supplier|seller|from|company)\s*[:\-.]?\s*/i,'').replace(/\s{2,}/g,' ').replace(/[|_]+/g,' ').trim()}
+
+var ADDR=/\d{6}|\b(floor|flr|street|st\.?|road|rd\.?|nagar|plot|door|no\.?\s*\d|new\s*no|old\s*no|main|cross|layout|colony|lane|avenue|complex|building|bldg|block|sector|phase|village|post|taluk|district|dist\.?|near|opp|opposite|behind|above|abave|chennai|mumbai|delhi|bangalore|bengaluru|hyderabad|tiruppur|coimbatore|madurai|kolkata|pune|ahmedabad|surat|jaipur|tamil\s*nadu|tamilnadu|karnataka|kerala|maharashtra|gujarat|telangana|andhra|india)\b/i;
+var SKIPL=/(invoice\s*(no|mo|number)|buyer'?s?\s*order|dated|whatsapp|e-?way|delivery\s*note|mode\/terms|reference|dispatch|^\s*[\d\/\-.]+\s*$|tax\s*invoice|original|duplicate)/i;
+function leftCol(l){return l.split(/\s\|\s|\s{3,}|\|/)[0].replace(/\s+(invoice\s*(no|mo)|dated|buyer'?s?\s*order).*$/i,'').trim()}
+function lev(a,b){a=a.toLowerCase();b=b.toLowerCase();var m=[],i,j;for(i=0;i<=a.length;i++){m[i]=[i]}for(j=0;j<=b.length;j++)m[0][j]=j;for(i=1;i<=a.length;i++)for(j=1;j<=b.length;j++)m[i][j]=Math.min(m[i-1][j]+1,m[i][j-1]+1,m[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return m[a.length][b.length]}
+function nameClean(l){var w=leftCol(clean(l)).split(' ').filter(Boolean);
+  // logo + name on one line ("GOGIETZ GoGiftz"): drop the logo word
+  if(w.length>=2&&w[0].length>=4&&(w[0].match(/[A-Z0-9]/g)||[]).length>=w[0].length*0.7&&/[a-z]/.test(w[1])&&lev(w[0],w[1])<=3)w.shift();
+  return w.join(' ').replace(/^[^A-Za-z0-9&(]+/,'').replace(/\s*(gstin|gst)\b.*$/i,'').trim()}
+function addrClean(l){var t=leftCol(clean(l));var m=t.match(/(\b\d|\b1st|\bfirst\b|\bfloor\b|\bno\.?\s*\d|\bplot\b|\bdoor\b|\bnew\s*no)/i);
+  if(m&&m.index>0){var pre=t.slice(0,m.index);if(!/[,\d]/.test(pre)&&pre.trim().split(' ').length>=2)t=t.slice(m.index)}return t.replace(/^[^A-Za-z0-9]+/,'').trim()}
 function parseInvoice(text){
   var lines=text.split(/\r?\n/).map(function(l){return l.replace(/\s+/g,' ').trim()}).filter(function(l){return l.length>1});
   var gsts=findGst(text),sup=gsts.filter(function(g){return OURGST.indexOf(g)<0})[0]||'';
@@ -613,6 +624,16 @@ function parseInvoice(text){
   var gIdx=sup?lines.findIndex(function(l){return l.toUpperCase().replace(/[^A-Z0-9]/g,'').indexOf(sup.slice(2,12))>=0}):-1;
   var isOurs=function(l){return OURNAME.test(l)||OURGST.some(function(g){return l.toUpperCase().replace(/[^A-Z0-9]/g,'').indexOf(g.slice(2,12))>=0})};
   // supplier block: from top to buyer marker; if supplier GST is after the buyer marker, use the block around the GST line
+  // 1) anchor on the supplier GST line: address lines are just above it, the name just above the address
+  if(gIdx>=0){var adr=[],i=gIdx-1;
+    while(i>=0&&adr.length<4){var L0=lines[i];if(SKIPL.test(leftCol(L0))&&!ADDR.test(leftCol(L0))){i--;continue}if((ADDR.test(L0)||(/,/.test(L0)&&!SUFX.test(L0)))&&!isOurs(L0)){adr.unshift(L0);i--}else break}
+    var nm='';while(i>=0){var L1=lines[i];if(!SKIPL.test(leftCol(L1))&&!isOurs(L1)&&/[A-Za-z]{3}/.test(L1)){nm=L1;break}i--}
+    if(adr.length&&nm){r.name=nameClean(nm).slice(0,120);r.addr=adr.slice(-3).map(function(x,k){return k===0?addrClean(x):leftCol(clean(x)).replace(/^[^A-Za-z0-9]+/,'').trim()}).filter(Boolean).map(function(x){return x.slice(0,120)});
+      if(adr.length>3)r.addr[0]=addrClean(adr[adr.length-4])+', '+r.addr[0];
+      var tail=lines.slice(Math.max(0,i),gIdx+4).join('\n');var pinA=(r.addr.join(' ').match(/\b[1-8]\d{2}\s?\d{3}\b/g)||[]).map(function(x){return x.replace(/\s/,'')}).filter(function(x){return OURPIN.indexOf(x)<0});if(pinA[0])r.pincode=pinA[0];
+      var mob0=(tail.replace(/[\s\-]/g,' ').match(/\b[6-9]\d{4}\s?\d{5}\b/g)||[]).map(function(x){return x.replace(/\D/g,'')}).filter(function(x){return x.length===10})[0];if(mob0)r.mobile=mob0;
+      var em0=(tail.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g)||[]).filter(function(x){return !/expertcorporatesolutions|branditude|excoso/i.test(x)})[0];if(em0)r.email=em0;
+      return r}}
   var s=0,e=bIdx>0?bIdx:Math.min(lines.length,18);
   if(gIdx>=0&&bIdx>=0&&gIdx>bIdx){s=Math.max(0,gIdx-7);e=gIdx+1}
   var skip={};lines.forEach(function(l,i){if(BUYER.test(l)){for(var j=i;j<lines.length&&j<i+5;j++){if(j>i&&SELLER.test(lines[j]))break;skip[j]=1}}});
@@ -628,7 +649,6 @@ function parseInvoice(text){
   var mob=(near.replace(/[\s\-]/g,' ').match(/(?:\+?91[\s-]?)?\b[6-9]\d{4}\s?\d{5}\b/g)||[])[0];if(mob)r.mobile=mob.replace(/\D/g,'').slice(-10);
   var em=(near.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g)||[]).filter(function(x){return !/expertcorporatesolutions|branditude|excoso/i.test(x)})[0];if(em)r.email=em;
   return r}
-
 function loadJs(src){return new Promise(function(ok,no){var x=document.createElement('script');x.src=src;x.onload=ok;x.onerror=function(){no(new Error('Could not load '+src))};document.head.appendChild(x)})}
 async function pdfText(file,status){
  if(!window.pdfjsLib){await loadJs('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js');pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js'}
@@ -640,8 +660,18 @@ async function pdfText(file,status){
  status('Scanned PDF — reading the page as a picture…');var pg1=await doc.getPage(1),vp=pg1.getViewport({scale:2}),c=document.createElement('canvas');c.width=vp.width;c.height=vp.height;await pg1.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;return ocrImage(c,status)}
 async function ocrImage(src,status){
  if(!window.Tesseract)await loadJs('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
- var r=await Tesseract.recognize(src,'eng',{logger:function(m){if(m.status==='recognizing text')status('Reading the invoice… '+Math.round(m.progress*100)+'%');else if(/loading/.test(m.status))status('Getting the reader ready (first time only)…')}});return r.data.text}
-function shrinkImg(file){return new Promise(function(ok){var im=new Image();im.onload=function(){var k=Math.min(1,2200/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;var x=c.getContext('2d');x.drawImage(im,0,0,c.width,c.height);ok(c)};im.onerror=function(){ok(file)};im.src=URL.createObjectURL(file)})}
+ var w=await Tesseract.createWorker('eng',1,{logger:function(m){if(m.status==='recognizing text')status('Reading the invoice… '+Math.round(m.progress*100)+'%');else if(/loading|initializ/.test(m.status))status('Getting the reader ready (first time only)…')}});
+ try{await w.setParameters({tessedit_pageseg_mode:'4'});var t=(await w.recognize(src)).data.text;
+  if(!parseInvoice(t).gstin){status('Reading again in another way…');await w.setParameters({tessedit_pageseg_mode:'3'});var t2=(await w.recognize(src)).data.text;if(parseInvoice(t2).gstin)t=t2}
+  return t}finally{try{await w.terminate()}catch(e){}}}
+// photos of screens or paper: grey, stretch the contrast, remove the dot pattern (3x3 median) before reading
+function cleanImg(c){var x=c.getContext('2d'),W=c.width,H=c.height,d=x.getImageData(0,0,W,H),p=d.data,g=new Uint8Array(W*H),h=new Uint32Array(256),i;
+ for(i=0;i<W*H;i++){var v=(p[i*4]*299+p[i*4+1]*587+p[i*4+2]*114)/1000|0;g[i]=v;h[v]++}
+ var cut=W*H*0.02,lo=0,hi=255,acc=0;for(lo=0;lo<255&&(acc+=h[lo])<cut;lo++);acc=0;for(hi=255;hi>0&&(acc+=h[hi])<cut;hi--);var sc=255/Math.max(1,hi-lo);
+ var o=new Uint8Array(W*H),win=new Uint8Array(9);
+ for(var y=0;y<H;y++)for(var X=0;X<W;X++){var k=0;for(var dy=-1;dy<=1;dy++)for(var dx=-1;dx<=1;dx++){var yy=Math.min(H-1,Math.max(0,y+dy)),xx=Math.min(W-1,Math.max(0,X+dx));win[k++]=g[yy*W+xx]}win.sort();o[y*W+X]=win[4]}
+ for(i=0;i<W*H;i++){var q=Math.max(0,Math.min(255,(o[i]-lo)*sc));p[i*4]=p[i*4+1]=p[i*4+2]=q;p[i*4+3]=255}x.putImageData(d,0,0);return c}
+function shrinkImg(file){return new Promise(function(ok){var im=new Image();im.onload=function(){var k=Math.min(1,2200/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;var x=c.getContext('2d');x.drawImage(im,0,0,c.width,c.height);ok(cleanImg(c))};im.onerror=function(){ok(file)};im.src=URL.createObjectURL(file)})}
 var SUPOCR=null;
 /* ---------- Create Supplier ---------- */
 var SUP=[],SUPED=null,SUPQ='',SUPCH=null;
@@ -667,7 +697,7 @@ function supPage(v){
   L('Address line 3','<input name="addr3" value="'+val('addr3')+'" autocomplete="off">',1)+
   L('State *','<select name="state"><option value="">Select state</option>'+STATES.map(function(x){return '<option'+(e&&e.state===x?' selected':'')+'>'+x+'</option>'}).join('')+'</select>')+
   L('Pincode *','<input name="pincode" inputmode="numeric" maxlength="6" value="'+val('pincode')+'" autocomplete="off">')+
-  L('Mobile number *','<input name="mobile" inputmode="tel" maxlength="10" value="'+val('mobile')+'" autocomplete="off">')+
+  L('Mobile number','<input name="mobile" inputmode="tel" maxlength="10" value="'+val('mobile')+'" autocomplete="off">')+
   L('Mail ID','<input name="email" type="email" value="'+val('email')+'" autocomplete="off">')+
   L('GST number *','<input name="gstin" maxlength="15" style="text-transform:uppercase" value="'+val('gstin')+'" autocomplete="off">')+
   L('PAN','<input name="pan" maxlength="10" style="text-transform:uppercase" value="'+val('pan')+'" autocomplete="off" title="Filled from the GST number">')+
@@ -696,10 +726,10 @@ function supPage(v){
  v.querySelectorAll('[data-supd]').forEach(function(b){b.onclick=async function(){var x=SUP.filter(function(y){return y.id===b.dataset.supd})[0];if(!x||!confirm('Delete supplier '+x.name+'?'))return;var r=await SB.from('pr_suppliers').delete().eq('id',x.id);if(r.error){alert('Could not delete: '+r.error.message);return}loadSup()}});
  var f=v.querySelector('#supf');if(f)f.onsubmit=async function(ev){ev.preventDefault();var q=new FormData(f),g2=function(k){return String(q.get(k)||'').trim()},er=v.querySelector('#superr');er.textContent='';
   var d={name:g2('name'),under:g2('under')||'Sundry Creditors',exec_id:g2('exec'),mgr_id:g2('mgr'),addr1:g2('addr1'),addr2:g2('addr2'),addr3:g2('addr3'),state:g2('state'),pincode:g2('pincode'),mobile:g2('mobile').replace(/\D/g,''),email:g2('email'),gstin:g2('gstin').toUpperCase(),pan:g2('pan').toUpperCase()};if(!d.pan&&d.gstin.length===15)d.pan=d.gstin.slice(2,12);
-  var miss=[['name','Supplier name'],['exec_id','Executive'],['mgr_id','Manager'],['addr1','Address line 1'],['state','State'],['pincode','Pincode'],['mobile','Mobile number'],['gstin','GST number']].filter(function(x){return !d[x[0]]}).map(function(x){return x[1]});
+  var miss=[['name','Supplier name'],['exec_id','Executive'],['mgr_id','Manager'],['addr1','Address line 1'],['state','State'],['pincode','Pincode'],['gstin','GST number']].filter(function(x){return !d[x[0]]}).map(function(x){return x[1]});
   if(miss.length){er.textContent='Fill in: '+miss.join(', ')+'.';return}
   if(!/^\d{6}$/.test(d.pincode)){er.textContent='Pincode must be 6 digits.';return}
-  if(!/^[6-9]\d{9}$/.test(d.mobile)){er.textContent='Mobile number must be 10 digits.';return}
+  if(d.mobile&&!/^[6-9]\d{9}$/.test(d.mobile)){er.textContent='Mobile number must be 10 digits.';return}
   if(d.email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)){er.textContent='Mail ID is not valid.';return}
   if(!gstOk(d.gstin)){er.textContent='GST number is not valid. Check each character (it has 15, like 36AAQCA9871J1ZV).';return}
   if(d.pan&&!/^[A-Z]{5}\d{4}[A-Z]$/.test(d.pan)){er.textContent='PAN is not valid. It has 10 characters, like AAQCA9871J.';return}
