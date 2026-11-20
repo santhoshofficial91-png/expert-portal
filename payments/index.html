@@ -673,8 +673,19 @@ function cleanImg(c){var x=c.getContext('2d'),W=c.width,H=c.height,d=x.getImageD
  for(i=0;i<W*H;i++){var q=Math.max(0,Math.min(255,(o[i]-lo)*sc));p[i*4]=p[i*4+1]=p[i*4+2]=q;p[i*4+3]=255}x.putImageData(d,0,0);return c}
 function shrinkImg(file){return new Promise(function(ok){var im=new Image();im.onload=function(){var k=Math.min(1,2200/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;var x=c.getContext('2d');x.drawImage(im,0,0,c.width,c.height);ok(cleanImg(c))};im.onerror=function(){ok(file)};im.src=URL.createObjectURL(file)})}
 var SUPOCR=null;
+// AI reader (Gemini, through our read-invoice function). Falls back to the in-browser reader.
+function fileB64(file){return new Promise(function(ok,no){
+ if(file.type==='application/pdf'||/\.pdf$/i.test(file.name)){var fr=new FileReader();fr.onload=function(){ok({mime:'application/pdf',data:String(fr.result).split(',')[1]})};fr.onerror=no;fr.readAsDataURL(file);return}
+ var im=new Image();im.onload=function(){var k=Math.min(1,2000/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);ok({mime:'image/jpeg',data:c.toDataURL('image/jpeg',0.88).split(',')[1]})};im.onerror=function(){no(new Error('Could not open this picture'))};im.src=URL.createObjectURL(file)})}
+async function aiRead(file){var ss=(await SB.auth.getSession()).data.session;if(!ss)return null;var b=await fileB64(file);
+ var r=await fetch(URLB+'/functions/v1/read-invoice',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+ss.access_token,'apikey':KEYB},body:JSON.stringify(b)});
+ var j={};try{j=await r.json()}catch(e){}if(!r.ok||!j.result)return null;var x=j.result,t=function(v){return String(v||'').replace(/\s+/g,' ').trim()};
+ var g=t(x.gstin).toUpperCase().replace(/[^0-9A-Z]/g,'');if(!gstOk(g)){var f=gstFix(g);g=f||g}if(OURGST.indexOf(g)>=0)g='';
+ var pin=(t(x.pincode).match(/\d{6}/)||[''])[0];if(OURPIN.indexOf(pin)>=0)pin='';var mob=t(x.mobile).replace(/\D/g,'').slice(-10);
+ var em=t(x.email);if(/expertcorporatesolutions|branditude|excoso/i.test(em))em='';
+ return {gstin:g,pan:g.length===15?g.slice(2,12):'',stateCode:g.slice(0,2),name:t(x.name).slice(0,120),addr:[x.addr1,x.addr2,x.addr3].map(t).filter(Boolean).map(function(a){return a.slice(0,120)}),pincode:pin,mobile:mob.length===10?mob:'',email:/@/.test(em)?em:'',ours:[],lines:[],ai:1}}
 /* ---------- Create Supplier ---------- */
-var SUP=[],SUPED=null,SUPQ='',SUPCH=null;
+var SUP=[],SUPED=null,SUPQ='',SUPCH=null,SUPDR=null; // SUPDR: unsaved form values, kept across list refreshes
 var STATES=['Andaman and Nicobar Islands','Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chandigarh','Chhattisgarh','Dadra and Nagar Haveli and Daman and Diu','Delhi','Goa','Gujarat','Haryana','Himachal Pradesh','Jammu and Kashmir','Jharkhand','Karnataka','Kerala','Ladakh','Lakshadweep','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Puducherry','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal'];
 var GSTST={'35':'Andaman and Nicobar Islands','37':'Andhra Pradesh','12':'Arunachal Pradesh','18':'Assam','10':'Bihar','04':'Chandigarh','22':'Chhattisgarh','26':'Dadra and Nagar Haveli and Daman and Diu','07':'Delhi','30':'Goa','24':'Gujarat','06':'Haryana','02':'Himachal Pradesh','01':'Jammu and Kashmir','20':'Jharkhand','29':'Karnataka','32':'Kerala','38':'Ladakh','31':'Lakshadweep','23':'Madhya Pradesh','27':'Maharashtra','14':'Manipur','17':'Meghalaya','15':'Mizoram','13':'Nagaland','21':'Odisha','34':'Puducherry','03':'Punjab','08':'Rajasthan','11':'Sikkim','33':'Tamil Nadu','36':'Telangana','16':'Tripura','09':'Uttar Pradesh','05':'Uttarakhand','19':'West Bengal'};
 async function loadSup(){try{var r=await SB.from('pr_suppliers').select('*').order('name',{ascending:true});if(!r.error){SUP=r.data||[];if(CUR==='csup'&&!document.querySelector('#supf :focus'))render('csup')}}catch(e){}
@@ -709,20 +720,22 @@ function supPage(v){
  var sq=v.querySelector('#supq');if(sq)sq.oninput=function(){SUPQ=sq.value;var p=sq.selectionStart;render('csup');var n=document.getElementById('supq');if(n){n.focus();n.setSelectionRange(p,p)}};
  var se=v.querySelector('#supexe'),sm=v.querySelector('#supmgr');if(se)se.onchange=function(){var x=LIST.exe.filter(function(y){return y[6]===se.value})[0];if(x){var m=LIST.mgr.filter(function(y){return y[0]===x[5]})[0];sm.value=m?m[6]:''}};
  var g=v.querySelector('[name=gstin]'),st=v.querySelector('[name=state]');var pn=v.querySelector('[name=pan]');if(g)g.oninput=function(){var gv=g.value.trim().toUpperCase(),c=gv.slice(0,2);if(GSTST[c]&&!st.value)st.value=GSTST[c];if(gv.length===15&&pn&&!pn.value)pn.value=gv.slice(2,12)};
- var cn=v.querySelector('#supcan');if(cn)cn.onclick=function(){SUPED=null;SUPOCR=null;render('csup')};
+ var sf=v.querySelector('#supf');if(sf){if(SUPDR&&SUPDR.ed===SUPED)Object.keys(SUPDR.v).forEach(function(n){var el=sf.querySelector('[name='+n+']');if(el&&el.type!=='file'){el.value=SUPDR.v[n];if(SUPDR.f.indexOf(n)>=0)el.classList.add('ocrf')}});
+  var keepDr=function(ev){if(ev&&ev.target&&ev.target.type==='file')return;var o={};sf.querySelectorAll('input[name],select[name]').forEach(function(x){if(x.type!=='file')o[x.name]=x.value});SUPDR={ed:SUPED,v:o,f:[].slice.call(sf.querySelectorAll('.ocrf')).map(function(x){return x.name})}};sf.addEventListener('input',keepDr);sf.addEventListener('change',keepDr);supPage.keep=keepDr}
+ var cn=v.querySelector('#supcan');if(cn)cn.onclick=function(){SUPED=null;SUPOCR=null;SUPDR=null;render('csup')};
  var last=null;v.querySelectorAll('#supf input,#supf select').forEach(function(x){x.addEventListener('focus',function(){if(x.type!=='file')last=x})});
  v.querySelectorAll('.ocrl').forEach(function(b){b.onmousedown=function(ev){ev.preventDefault()};b.onclick=function(){var t=last||v.querySelector('[name=name]');if(t&&t.tagName==='INPUT'){t.value=SUPOCR.lines[+b.dataset.l];t.classList.add('ocrf');t.focus()}}});
  var fi=v.querySelector('#supocr'),fs=v.querySelector('#supocrs');if(fi)fi.onchange=async function(){var file=fi.files[0];if(!file)return;var st2=function(m){fs.textContent=m};
-  try{st2('Reading the invoice…');var text=file.type==='application/pdf'||/\.pdf$/i.test(file.name)?await pdfText(file,st2):await ocrImage(await shrinkImg(file),st2);
-   var r=parseInvoice(text);SUPOCR=r;var f=v.querySelector('#supf'),put=function(n,val){var el=f.querySelector('[name='+n+']');if(el&&val){el.value=val;el.classList.add('ocrf')}};
+  try{st2('Reading the invoice with AI…');var r=null;try{r=await aiRead(file)}catch(e){r=null}
+   if(!r||!r.gstin){st2('Reading the invoice…');var text=file.type==='application/pdf'||/\.pdf$/i.test(file.name)?await pdfText(file,st2):await ocrImage(await shrinkImg(file),st2);var r2=parseInvoice(text);if(!r||!r.gstin)r=r2}SUPOCR=r;var f=v.querySelector('#supf'),put=function(n,val){var el=f.querySelector('[name='+n+']');if(el&&val){el.value=val;el.classList.add('ocrf')}};
    put('gstin',r.gstin);put('pan',r.pan);put('name',r.name);put('addr1',r.addr[0]);put('addr2',r.addr[1]);put('addr3',r.addr[2]);put('pincode',r.pincode);put('mobile',r.mobile);put('email',r.email);if(r.stateCode&&GSTST[r.stateCode])put('state',GSTST[r.stateCode]);
    var keep={};f.querySelectorAll('input[name],select[name]').forEach(function(x){keep[x.name]=x.value});var filled=[].slice.call(f.querySelectorAll('.ocrf')).map(function(x){return x.name});
-   render('csup');var f2=$('view').querySelector('#supf');Object.keys(keep).forEach(function(n){var el=f2.querySelector('[name='+n+']');if(el){el.value=keep[n];if(filled.indexOf(n)>=0)el.classList.add('ocrf')}});
+   SUPDR={ed:SUPED,v:keep,f:filled};render('csup');var f2=$('view').querySelector('#supf');Object.keys(keep).forEach(function(n){var el=f2.querySelector('[name='+n+']');if(el){el.value=keep[n];if(filled.indexOf(n)>=0)el.classList.add('ocrf')}});
    var dup=r.gstin&&SUP.filter(function(x){return x.gstin===r.gstin})[0],msg=$('view').querySelector('#supocrs');
    msg.textContent=!r.gstin?'Could not find the supplier GST number. Fill it in, or try a clearer photo.':dup?'This supplier already exists: '+dup.name+'. You do not need to create it again.':'Done. Check the yellow fields, pick the executive and manager, then press Create supplier.';
    msg.style.color=!r.gstin||dup?'#b42318':'';
   }catch(err){st2('Could not read this file: '+(err.message||err)+'. Try a clearer photo or fill the details by hand.')}fi.value=''};
- v.querySelectorAll('[data-supe]').forEach(function(b){b.onclick=function(){SUPED=b.dataset.supe;render('csup');window.scrollTo(0,0)}});
+ v.querySelectorAll('[data-supe]').forEach(function(b){b.onclick=function(){SUPED=b.dataset.supe;SUPDR=null;render('csup');window.scrollTo(0,0)}});
  v.querySelectorAll('[data-supd]').forEach(function(b){b.onclick=async function(){var x=SUP.filter(function(y){return y.id===b.dataset.supd})[0];if(!x||!confirm('Delete supplier '+x.name+'?'))return;var r=await SB.from('pr_suppliers').delete().eq('id',x.id);if(r.error){alert('Could not delete: '+r.error.message);return}loadSup()}});
  var f=v.querySelector('#supf');if(f)f.onsubmit=async function(ev){ev.preventDefault();var q=new FormData(f),g2=function(k){return String(q.get(k)||'').trim()},er=v.querySelector('#superr');er.textContent='';
   var d={name:g2('name'),under:g2('under')||'Sundry Creditors',exec_id:g2('exec'),mgr_id:g2('mgr'),addr1:g2('addr1'),addr2:g2('addr2'),addr3:g2('addr3'),state:g2('state'),pincode:g2('pincode'),mobile:g2('mobile').replace(/\D/g,''),email:g2('email'),gstin:g2('gstin').toUpperCase(),pan:g2('pan').toUpperCase()};if(!d.pan&&d.gstin.length===15)d.pan=d.gstin.slice(2,12);
@@ -740,7 +753,7 @@ function supPage(v){
   var btn=f.querySelector('button[type=submit]');btn.disabled=true;
   var r=SUPED?await SB.from('pr_suppliers').update(d).eq('id',SUPED):await SB.from('pr_suppliers').insert(d);
   btn.disabled=false;if(r.error){er.textContent=/duplicate|unique/i.test(r.error.message)?'A supplier with this name already exists.':'Could not save: '+r.error.message;return}
-  var was=!!SUPED;SUPED=null;SUPOCR=null;await loadSup();render('csup');var ok=document.createElement('div');ok.className='ok';ok.setAttribute('role','status');ok.textContent=d.name+(was?' was updated.':' was created.');var vv=$('view').querySelector('.top');if(vv)vv.after(ok)};
+  var was=!!SUPED;SUPED=null;SUPOCR=null;SUPDR=null;await loadSup();render('csup');var ok=document.createElement('div');ok.className='ok';ok.setAttribute('role','status');ok.textContent=d.name+(was?' was updated.':' was created.');var vv=$('view').querySelector('.top');if(vv)vv.after(ok)};
 }
 function podPage(v){
  var list=myPOs();
