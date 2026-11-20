@@ -15,7 +15,7 @@ const pkey = (p: string) => String(p || '').trim().toLowerCase().replace(/[^a-z0
 const emails = (v: unknown) => (Array.isArray(v) ? v : String(v ?? '').split(/[,;\s]+/)).map((x) => String(x).trim()).filter((x) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
 const esc = (s: string) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 
-const MAIL_USER = Deno.env.get('GMAIL_USER') || 'expertcorporatesolutions2023@gmail.com';
+const MAIL_USER = Deno.env.get('GMAIL_USER') || 'finance@expertcorporatesolutions.com';
 const MAIL_PASS = (Deno.env.get('GMAIL_APP_PASSWORD') || '').replace(/\s+/g, '');
 const IST = 330 * 60000;
 const istNow = () => new Date(Date.now() + IST);           // shifted clock: read with getUTC*
