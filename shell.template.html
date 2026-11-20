@@ -719,8 +719,8 @@ function annDraw(){
     annKey = k;
     box.innerHTML = `<div class="ab"><div class="ai" aria-hidden="true"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
       <h2>${warn ? 'Update starts in 1 minute' : 'Update in progress'}</h2><div class="at" role="timer" id="annt">${left}</div>
-      <p>${warn ? 'Save your details within 1 minute. After the timer ends the app is locked for 5 minutes, and anything not saved will be lost.' : 'The app is locked. Please wait. It opens again when the timer ends or when the Admin confirms the update is finished.'}</p>
-      <p class="a2">${warn ? '1 நிமிடத்துக்குள் உங்கள் விவரங்களைச் சேமியுங்கள். நேரம் முடிந்ததும் 5 நிமிடம் app பூட்டப்படும். சேமிக்காதது இழக்கப்படும்.' : 'அப்டேட் நடைபெறுகிறது. காத்திருங்கள். நேரம் முடிந்ததும் அல்லது Admin உறுதிசெய்ததும் app மீண்டும் திறக்கும்.'}</p>
+      <p>${warn ? 'You have 1 minute to save your details. Press OK, then go and save your details. After the timer ends the app is locked for 5 minutes, and anything not saved will be lost.' : 'The app is locked. Please wait. It opens again when the timer ends or when the Admin confirms the update is finished.'}</p>
+      <p class="a2">${warn ? 'உங்கள் விவரங்களைச் சேமிக்க 1 நிமிடம் உள்ளது. OK அழுத்திவிட்டு உடனே சேமியுங்கள். நேரம் முடிந்ததும் 5 நிமிடம் app பூட்டப்படும். சேமிக்காதது இழக்கப்படும்.' : 'அப்டேட் நடைபெறுகிறது. காத்திருங்கள். நேரம் முடிந்ததும் அல்லது Admin உறுதிசெய்ததும் app மீண்டும் திறக்கும்.'}</p>
       ${warn ? '<button id="annok" type="button">OK</button>' : ''}</div>`;
     box.classList.remove('hide');
     const ok = $('#annok'); if (ok){ ok.onclick = () => { annSaved = ANN.at; annDraw(); }; ok.focus(); }
