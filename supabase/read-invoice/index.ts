@@ -31,14 +31,42 @@ const schema = {
   required: ['name', 'addr1', 'addr2', 'addr3', 'gstin', 'pincode', 'mobile', 'email'],
 };
 
-async function ask(model: string, mime: string, data: string, ms: number) {
+const PURCHASE = `This is an Indian GST purchase invoice. ${OUR}
+Extract the whole invoice:
+- inv_no: the invoice number. inv_date: the invoice date as YYYY-MM-DD.
+- supplier_name and supplier_gstin: the SELLER who issued the invoice (never our own companies).
+- lines: one entry per product row of the goods table, in order. For each: name (description as printed), hsn (HSN/SAC code digits), qty (number), unit (e.g. NOS, PCS), rate (price per unit before tax, number), taxable (taxable value / amount of that row before tax, number), gst (GST rate % of that row, e.g. 18 or 5; if only CGST and SGST rates are printed, add them).
+- cgst, sgst, igst: total tax amounts printed on the invoice (0 if not printed). total: the grand total of the invoice.
+Numbers must be plain numbers without commas or currency signs. Skip rows that are only totals, freight notes or blank. Return only JSON.`;
+const PURCHASE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    inv_no: { type: 'STRING' }, inv_date: { type: 'STRING' }, supplier_name: { type: 'STRING' }, supplier_gstin: { type: 'STRING' },
+    lines: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, hsn: { type: 'STRING' }, qty: { type: 'NUMBER' }, unit: { type: 'STRING' }, rate: { type: 'NUMBER' }, taxable: { type: 'NUMBER' }, gst: { type: 'NUMBER' } }, required: ['name', 'hsn', 'qty', 'unit', 'rate', 'taxable', 'gst'] } },
+    cgst: { type: 'NUMBER' }, sgst: { type: 'NUMBER' }, igst: { type: 'NUMBER' }, total: { type: 'NUMBER' },
+  },
+  required: ['inv_no', 'inv_date', 'supplier_name', 'supplier_gstin', 'lines', 'cgst', 'sgst', 'igst', 'total'],
+};
+const DC = `This is a delivery challan, sample DC or receipt note for goods (samples) given to or returned by a customer. ${OUR}
+Extract: doc_no (the challan / note number), doc_date (YYYY-MM-DD), party (the customer name, never our own companies), lines: one entry per product row with name, qty (number) and value (row value in rupees, number, 0 if not printed). Return only JSON.`;
+const DC_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    doc_no: { type: 'STRING' }, doc_date: { type: 'STRING' }, party: { type: 'STRING' },
+    lines: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, qty: { type: 'NUMBER' }, value: { type: 'NUMBER' } }, required: ['name', 'qty', 'value'] } },
+  },
+  required: ['doc_no', 'doc_date', 'party', 'lines'],
+};
+const KINDS: Record<string, [string, unknown]> = { supplier: [PROMPT, schema], purchase: [PURCHASE, PURCHASE_SCHEMA], dc: [DC, DC_SCHEMA] };
+
+async function ask(model: string, mime: string, data: string, ms: number, prompt = PROMPT, sch: unknown = schema) {
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': KEY },
     signal: AbortSignal.timeout(ms),
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ inline_data: { mime_type: mime, data } }, { text: PROMPT }] }],
-      generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: schema },
+      contents: [{ role: 'user', parts: [{ inline_data: { mime_type: mime, data } }, { text: prompt }] }],
+      generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: sch },
     }),
   });
   const j = await r.json().catch(() => ({}));
@@ -69,13 +97,14 @@ Deno.serve(async (req) => {
     const data = String(body.data || '');
     if (!/^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/.test(mime)) return json({ error: 'Send a photo or a PDF.' }, 400);
     if (!data || data.length > 14_000_000) return json({ error: 'The file is too large (max about 10 MB).' }, 400);
+    const kind = KINDS[String(body.kind || 'supplier')] || KINDS.supplier;
     // whole request must finish well inside the app's 40 s wait
     const t0 = Date.now();
     let last: Error | null = null;
     for (const m of MODELS) {
-      const left = 34_000 - (Date.now() - t0);
+      const left = 38_000 - (Date.now() - t0);
       if (left < 4_000) break;
-      try { return json({ ok: true, model: m, ms: Date.now() - t0, result: await ask(m, mime, data, left) }); }
+      try { return json({ ok: true, model: m, ms: Date.now() - t0, result: await ask(m, mime, data, left, kind[0], kind[1]) }); }
       catch (e) { last = e as Error; console.log('gemini', m, last.name, last.message); if ((e as { status?: number }).status === 400 && !/model/i.test(last.message)) break; }
     }
     return json({ error: last?.message || 'Could not read the invoice.' }, 502);
