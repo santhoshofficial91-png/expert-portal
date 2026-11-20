@@ -643,14 +643,14 @@ async function mailCall(body){
   if (error && error.context && error.context.json){ try { msg = (await error.context.json()).error || msg; } catch(e){} }
   return msg ? {error:msg} : data;
 }
-let MAILREADY = null;
+let MAILREADY = null, MAILFROM = 'finance@expertcorporatesolutions.com';
 function viewMail(){
   mailAutoCheck();
-  if (MAILREADY === null && SB){ MAILREADY = 'checking'; mailCall({action:'status'}).then(r => { MAILREADY = r && r.ready ? 'yes' : 'no'; forceRender = true; render(); }); }
+  if (MAILREADY === null && SB){ MAILREADY = 'checking'; mailCall({action:'status'}).then(r => { MAILREADY = r && r.ready ? 'yes' : 'no'; if (r && r.from) MAILFROM = r.from; forceRender = true; render(); }); }
   const parties = custParties(), P = F.mparty && parties.includes(F.mparty) ? F.mparty : '';
   const pick = `<label class="sf" style="min-width:320px"><span>Customer</span><input list="mplist" id="mparty" value="${esc(P || F.mpq || '')}" placeholder="Type the customer name" autocomplete="off"></label><datalist id="mplist">${parties.map(x => `<option value="${esc(x)}">`).join('')}</datalist>`;
-  const warn = MAILREADY === 'no' ? `<div class="note bad" style="margin-bottom:10px">Mail is not connected yet. The Gmail app password for expertcorporatesolutions2023@gmail.com must be added once (see the setup steps from Claude).</div>` : '';
-  if (!P) return `<div class="head"><div><h1>Send Payment Mail</h1><p class="sub">Mails go from expertcorporatesolutions2023@gmail.com. Every next mail of a thread goes in the same mail thread (Reply All).</p></div></div>${warn}${autoGlobalHTML()}<div class="bar sfb">${pick}</div>${mailThreadsHTML()}`;
+  const warn = MAILREADY === 'no' ? `<div class="note bad" style="margin-bottom:10px">Mail is not connected yet. The Gmail app password for ${esc(MAILFROM)} must be added once (see the setup steps from Claude).</div>` : '';
+  if (!P) return `<div class="head"><div><h1>Send Payment Mail</h1><p class="sub">Mails go from ${esc(MAILFROM)}. Every next mail of a thread goes in the same mail thread (Reply All).</p></div></div>${warn}${autoGlobalHTML()}<div class="bar sfb">${pick}</div>${mailThreadsHTML()}`;
   const th = threadOf(F.mthread && D.mailthread.get(F.mthread) && (D.mailthread.get(F.mthread).party || '').trim() === P ? F.mthread : ''), n = th ? th.count : 0, c = contactOf(P);
   const AUTO = D.meta.get('mailauto') || {}, paused = !!contactOf(P).autoPaused;
   const rows = (th ? threadRows(th).filter(e => e.status !== 'Paid') : [...D.entries.values()].filter(e => e.status !== 'Paid' && (e.party || '').trim() === P)).sort((a, b) => (a.due || '') < (b.due || '') ? -1 : 1);
@@ -661,7 +661,7 @@ function viewMail(){
   const others = th ? [] : partyThreads(P);
   const hist = th ? `<div class="note info" style="margin:0 0 10px">Mails sent in this thread: <b>${th.count}</b> · last on <b>${fmtD(th.lastAt.slice(0, 10))} ${new Date(th.lastAt).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', hour12:true})}</b> by ${esc((th.log || []).slice(-1)[0]?.byName || '')}. Only the invoices of this thread are shown${paidN ? ` (${paidN} already Paid)` : ''}. The next mail goes in the same thread. <button class="btn sm" data-act="mailReset" style="margin-left:6px">Customer replied – close this thread</button></div>`
     : `<div class="note info" style="margin:0 0 10px">New mail: tick the invoices, choose Invoice mail or Outstanding mail, and send. It starts a new mail thread.${others.length ? `<br>This customer already has ${others.length} open thread${others.length > 1 ? 's' : ''}: ${others.map(t => `<button class="btn sm" data-act="mailOpen" data-k="${esc(t.party)}" data-t="${esc(t.id)}" style="margin:4px 4px 0 0">${esc((t.invs || []).slice(0, 2).join(', '))}${(t.invs || []).length > 2 ? ' +' + ((t.invs || []).length - 2) : ''} · ${t.count} sent</button>`).join('')}` : ''}</div>`;
-  return `<div class="head"><div><h1>Send Payment Mail</h1><p class="sub">From expertcorporatesolutions2023@gmail.com · ${th ? 'Subject: ' + esc('Re: ' + th.subject) : 'New mail thread'}</p></div><div class="bar" style="margin:0"><button class="btn" data-act="mailBack">← All customers</button></div></div>${warn}
+  return `<div class="head"><div><h1>Send Payment Mail</h1><p class="sub">From ${esc(MAILFROM)} · ${th ? 'Subject: ' + esc('Re: ' + th.subject) : 'New mail thread'}</p></div><div class="bar" style="margin:0"><button class="btn" data-act="mailBack">← All customers</button></div></div>${warn}
   <div class="bar sfb">${pick}</div>${th ? replyNote(th) : ''}${hist}
   <div class="card"><h2 style="margin:0 0 8px">1. Tick the invoices</h2><div class="tw"><table><thead><tr><th><input type="checkbox" id="mall" ${allOn ? 'checked' : ''} ${rows.length ? '' : 'disabled'} aria-label="Tick all invoices" title="Tick / untick all"></th><th>Date</th><th>Inv Num</th><th>Area</th><th class="r">Pending Amt</th><th>Due Date</th><th class="r">Overdue</th><th>Expected</th></tr></thead><tbody>${list || '<tr><td colspan="8" class="empty">No open invoices.</td></tr>'}</tbody></table></div></div>
   <div class="card" style="margin-top:12px"><h2 style="margin:0 0 8px">2. Mail IDs</h2>${personPick(P, th)}<div class="frow"><label class="f">To (customer mail IDs, separate with comma)<input id="mto" value="${esc(F.mto ?? curContact(P, th).to ?? '')}" placeholder="accounts@customer.com"></label></div><div class="frow"><label class="f">CC<input id="mcc" value="${esc(F.mcc ?? mergeCc(defCc(), curContact(P, th).cc || ''))}" placeholder="optional"></label></div><p class="mut" style="margin:4px 0 0">CC already has the default CC IDs (set on the Send Payment Mail page). Add or remove IDs here if needed. Saved to Customer Contacts (for the chosen person) after sending.</p></div>
@@ -670,7 +670,7 @@ function viewMail(){
 
 const tm12 = x => { const [h, m] = x.split(':').map(Number); return ((h % 12) || 12) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' am' : ' pm'); };
 const atTxt = iso => iso ? fmtD(new Date(new Date(iso).getTime() + 330 * 60000).toISOString().slice(0, 10)) + ' ' + new Date(iso).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', hour12:true, timeZone:'Asia/Kolkata'}) : '';
-const gmailLink = th => th.gmThread ? 'https://mail.google.com/mail/u/?authuser=expertcorporatesolutions2023@gmail.com#all/' + BigInt(th.gmThread).toString(16) : 'https://mail.google.com/mail/u/?authuser=expertcorporatesolutions2023@gmail.com';
+const gmailLink = th => th.gmThread ? 'https://mail.google.com/mail/u/?authuser=' + encodeURIComponent(MAILFROM) + '#all/' + BigInt(th.gmThread).toString(16) : 'https://mail.google.com/mail/u/?authuser=' + encodeURIComponent(MAILFROM);
 let MAILCHK = 0;
 function mailAutoCheck(force){ if (!SB || (!force && Date.now() - MAILCHK < 5 * 60000)) return Promise.resolve(); MAILCHK = Date.now(); return mailCall({action:'check'}); }
 function replyNote(th){
