@@ -1898,7 +1898,7 @@ function annTick(){
   const hideBox = () => { if (box.style.display !== 'none'){ box.style.display = 'none'; box.innerHTML = ''; box.dataset.k = ''; } };
   if (!me() || isAdm() || !st || st.phase === 'done' || document.documentElement.classList.contains('embed')){ hideBox(); if (bar) bar.remove(); return; }
   const warn = st.phase === 'warn', left = mmss((warn ? ANN_WARN : ANN_END) - st.t);
-  if (false && warn && annAcked(st)){
+  if (warn && annAcked(st)){
     hideBox();
     if (!bar){ bar = document.createElement('div'); bar.id = 'annbar'; bar.setAttribute('role', 'status'); document.body.appendChild(bar); }
     bar.textContent = 'Update starts in ' + left + ' — please do not start anything new.'; return;
