@@ -1061,7 +1061,7 @@ function dcFormHTML(){
   const d = F.dc, st = stockMap(d.id), k = dcKind(d);
   const only = new Set([...st.entries()].filter(([, s]) => s.q > 0).map(([x]) => x));
   const rows = d.lines.map((l, i) => { const s = st.get(l.item);
-    return `<tr><td><select class="mdi" id="dc_l${i}_item" data-m="dc" data-l="${i}" data-k="item" aria-label="Stock item">${itemOpts(l.item, only)}</select></td><td class="mut">${l.item ? qtyF(s ? s.q : 0) + ' in stock' : ''}</td><td>${lInp('dc', i, 'qty', l.qty, {num:1, al:'Quantity'})}</td><td>${lInp('dc', i, 'rate', l.rate, {num:1, al:'Rate'})}</td><td>${lInp('dc', i, 'value', l.value, {num:1, al:'Value'})}</td><td><button class="btn sm dng" data-act="matDelL" data-m="dc" data-i="${i}" aria-label="Remove row ${i + 1}">✕</button></td></tr>`; }).join('');
+    return `<tr><td><select class="mdi" id="dc_l${i}_item" data-m="dc" data-l="${i}" data-k="item" aria-label="Stock item">${itemOpts(l.item, only)}</select></td><td class="mut">${l.item ? qtyF(s ? s.q : 0) + ' in stock' : ''}</td><td>${lInp('dc', i, 'qty', l.qty, {num:1, al:'Quantity'})}</td><td>${lInp('dc', i, 'rate', l.rate, {num:1, al:'Rate'})}</td><td>${lInp('dc', i, 'value', l.value, {num:1, al:'Value'})}</td><td>${lInp('dc', i, 'note', l.note, {al:'Item note'})}</td><td><button class="btn sm dng" data-act="matDelL" data-m="dc" data-i="${i}" aria-label="Remove row ${i + 1}">✕</button></td></tr>`; }).join('');
   const tot = d.lines.reduce((a, l) => a + (+l.value || 0), 0), team = d.party ? partyTeam(d.party) : {};
   const exs = execs().sort((a, b) => a.name.localeCompare(b.name)), mgs = managers();
   return `<div class="card" id="mform">
@@ -1078,12 +1078,13 @@ function dcFormHTML(){
     <div class="igrid" style="margin-top:6px">
       <label class="f">Address line 1${mInp('dc', 'addr1', d.addr1)}</label><label class="f">Address line 2${mInp('dc', 'addr2', d.addr2)}</label><label class="f">Address line 3${mInp('dc', 'addr3', d.addr3)}</label>
       <label class="f">Customer GSTIN${mInp('dc', 'gstin', d.gstin)}</label><label class="f">Contact${mInp('dc', 'contact', d.contact)}</label>
-      <label class="f">Reference no${mInp('dc', 'refNo', d.refNo)}</label><label class="f">Buyer's order no${mInp('dc', 'orderNo', d.orderNo)}</label>
-      <label class="f">Dispatched through${mInp('dc', 'dispatch', d.dispatch)}</label><label class="f">Destination${mInp('dc', 'dest', d.dest)}</label>
+      <label class="f">Mode / Terms of payment${mInp('dc', 'terms', d.terms)}</label><label class="f">Reference no &amp; date${mInp('dc', 'refNo', d.refNo)}</label><label class="f">Other references${mInp('dc', 'otherRef', d.otherRef)}</label>
+      <label class="f">Buyer's order no${mInp('dc', 'orderNo', d.orderNo)}</label><label class="f">Order dated${mInp('dc', 'orderDate', d.orderDate, {type:'date'})}</label><label class="f">Dispatch doc no${mInp('dc', 'dispDoc', d.dispDoc)}</label>
+      <label class="f">Dispatched through${mInp('dc', 'dispatch', d.dispatch)}</label><label class="f">Destination${mInp('dc', 'dest', d.dest)}</label><label class="f">Terms of delivery${mInp('dc', 'tod', d.tod)}</label>
       <label class="f">Remarks${mInp('dc', 'remarks', d.remarks)}</label>
     </div></details>
     <datalist id="mat_parties">${matParties().map(s => `<option value="${esc(s)}">`).join('')}</datalist>
-    <div class="tw" style="margin-top:10px"><table class="mtab"><thead><tr><th>Stock item *</th><th>Available</th><th class="r">Qty *</th><th class="r">Rate</th><th class="r">Value</th><th></th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="4" class="r"><b>Total value</b></td><td class="r num" id="dc_tot"><b>${inr(tot)}</b></td><td></td></tr></tfoot></table></div>
+    <div class="tw" style="margin-top:10px"><table class="mtab"><thead><tr><th>Stock item *</th><th>Available</th><th class="r">Qty *</th><th class="r">Rate</th><th class="r">Value</th><th>Item note (printed)</th><th></th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="4" class="r"><b>Total value</b></td><td class="r num" id="dc_tot"><b>${inr(tot)}</b></td><td colspan="2"></td></tr></tfoot></table></div>
     <button class="btn" data-act="matAddL" data-m="dc" style="margin-top:8px">+ Add item</button>
     <div class="err" id="dc_err"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="matSave" data-m="dc">${d.id ? 'Save changes' : 'Save ' + DCT[k]}</button><button class="btn" data-act="matCancel" data-m="dc">Cancel</button></div>
     <p class="mut" style="margin:6px 0 0">The rate is the value the item came in at; you can change it. Stock goes down when you save${k === 'rdc' ? '; it comes back with a Receipt Note' : ''}.</p></div>`;
@@ -1135,76 +1136,92 @@ const pn = n => r2(n).toLocaleString('en-IN', {minimumFractionDigits:2, maximumF
 const pq = n => r2(n).toLocaleString('en-IN');
 const fd = s => { const d = new Date(s); return isNaN(d) ? '' : d.getDate() + '-' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + '-' + String(d.getFullYear()).slice(2); };
 const unitOf = id => { const x = D.inv_items.get(id); return (x && D.inv_units.get(x.unit)?.unit || 'NOS').toLowerCase(); };
-function docModel(m, d){
-  const co = COINFO[compOf(d.comp)] || COINFO.Excoso, it = id => D.inv_items.get(id) || {};
-  const coBlock = {title:co.name, lines:[...co.lines, co.mob ? 'Mob : ' + co.mob : '', 'GSTIN/UIN : ' + co.gstin, `State Name : ${co.state}, Code : ${co.code}`, co.cin ? 'CIN : ' + co.cin : '', co.email ? 'E-Mail : ' + co.email : ''].filter(Boolean)};
-  const ourParty = (lab) => ({label:lab, title:co.name, lines:[...co.lines, 'GSTIN/UIN : ' + co.gstin, `State Name : ${co.state}, Code : ${co.code}`]});
-  const stName = g => { const c = String(g || '').slice(0, 2); return STCODE[c] ? `${STCODE[c]}, Code : ${c}` : ''; };
-  if (m === 'mi'){
-    const s = (SUPL || []).find(x => (d.supGst && x.gstin === d.supGst) || normName(x.name) === normName(d.supName)) || {}, a = d.supAddr || s;
-    const sup = {label:'Supplier (Bill from)', title:d.supName, lines:[a.addr1, a.addr2, a.addr3, d.supGst ? 'GSTIN/UIN : ' + d.supGst : '', stName(d.supGst) ? 'State Name : ' + stName(d.supGst) : ''].filter(Boolean)};
-    return {title:'GOODS RECEIPT NOTE', tag:'GRN', co:coBlock, parties:[ourParty('Consignee (Ship to)'), sup], inter:isInter(d.supGst),
-      meta:[['GRN No.', d.grnNo || '—'], ['Dated', fd(d.at || d.invDate)], ['Supplier Invoice No.', d.invNo], ['Invoice Dated', fd(d.invDate)], ['Received by', ''], ['Remarks', d.remarks || '']],
-      lines:(d.lines || []).map(l => ({name:it(l.item).name || l.name, sub:[it(l.item).part ? 'Part No. ' + it(l.item).part : '', l.name && it(l.item).name && normName(l.name) !== normName(it(l.item).name) ? 'Invoice: ' + l.name : ''].filter(Boolean).join(' · '), hsn:l.hsn || it(l.item).hsn || '', qty:+l.qty || 0, unit:(l.unit || unitOf(l.item)).toLowerCase(), rate:+l.rate || 0, amt:+l.taxable || 0, gst:+l.gst || 0})),
-      foot:{left:'Received in good condition', right:'Authorised Signatory', pan:co.pan}};
-  }
-  const isRn = m === 'rn', dc = isRn ? D.mat_dc.get(d.dc) || {} : d, g = dc.gstin || '';
-  const cust = {title:d.party, lines:[dc.addr1, dc.addr2, dc.addr3, g ? 'GSTIN/UIN : ' + g : '', stName(g) ? 'State Name : ' + stName(g) : '', dc.contact ? 'Contact : ' + dc.contact : ''].filter(Boolean)};
-  const ex = D.users.get(dc.exec)?.name || '', mg = D.users.get(dc.mgr)?.name || '';
-  const lines = (d.lines || []).map(l => ({name:it(l.item).name || '', sub:it(l.item).part ? 'Part No. ' + it(l.item).part : '', hsn:it(l.item).hsn || '', qty:+l.qty || 0, unit:unitOf(l.item), rate:+l.rate || 0, amt:+l.value || 0, gst:itemGst(l.item) || 0}));
-  if (isRn) return {title:'RECEIPT NOTE', tag:'RN', co:coBlock, parties:[ourParty('Consignee (Ship to)'), {label:'Received from (Bill from)', ...cust}], inter:isInter(g),
-    meta:[['Receipt Note No.', d.no], ['Dated', fd(d.date)], ['Against RDC No.', dc.no || '—'], ['RDC Dated', fd(dc.date)], ['Executive', ex], ['Remarks', d.remarks || '']], lines,
-    foot:{left:'Received in good condition', right:'Authorised Signatory', pan:co.pan}};
-  const rdc = dcKind(d) === 'rdc';
-  return {title:rdc ? 'RETURNABLE DELIVERY CHALLAN' : 'DELIVERY CHALLAN', tag:rdc ? 'RDC' : 'DC', co:coBlock, parties:[{label:'Consignee (Ship to)', ...cust}, {label:'Buyer (Bill to)', ...cust}], inter:isInter(g),
-    meta:[[rdc ? 'Returnable DC No.' : 'Delivery Challan No.', d.no], ['Dated', fd(d.date)], ['Reference No.', d.refNo || ''], ["Buyer's Order No.", d.orderNo || ''], ['Dispatched through', d.dispatch || ''], ['Destination', d.dest || ''], ['Executive', ex], ['Manager', mg]], lines,
-    note:rdc ? 'Returnable samples: not for sale. To be returned to us in good condition.' : (d.remarks || ''), remarks:rdc ? d.remarks : '',
-    foot:{left:'Received in good condition', right:'Authorised Signatory', pan:co.pan}};
-}
+const BRLOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAaQAAABRCAAAAAC4D433AAABUWlDQ1BJQ0MgUHJvZmlsZQAAeJx9kL9LAmEcxj+nhWA2RA0NDTdFwxWiQS0NahBFw2EFatN5/gS1l7uLENr6B4T+gwqa25IGGxsagqgpamtqKmgpeePuDI2oZ3k/PO/Dw5cHApOGELUhoN5wrPRKUs1kc2roGQUFT4Zpi4Sur7v8/f7U+72fvZ11u37//6twoWibwCcQNYXlgKIB+p4jXN4HJqxMNgdKy+Wyzycu530+9zKb6RQo14BqVowCKC+Alh/wywNcr+2avRvc6yPFxtaG2wNMsUwVG0ENgyYqOvE/8vNePsUOgiYWVcpUcFBJILyGIiqrNDCZQ0MlRpQYMXfn3n53vf20vnfwBEsdKeVF31vrwNkChNt9b2YRxkbgqi0My/CsIBAoleD1FEazMH4D4W27FI/510eSMPwo5ds0hA6h25Ly40jK7jEEH+Cy8QUDp2ITOrol5gAAA3pJREFUeNrtnNHS6yAIhLOZvP8r77k6/6SNGkA0NrNcplYJnyigLbhJVpddJhAkiSAJkkSQJIIkSBJBkgiSIEkESZAkgiQRJEGSCJJEkARJIkgSQRIkiSAJkkSQJGY5vh+g1Vo3KR8R0MFoZUxYeg6hS7kvSLj/BteFVNQNz6uMTsPtwRGXZFTSDcuojCRI+F1KXnjXlliPzruiO3TbB+NnH2ZCwvY+wcovtttCBJJ8kYPVGo6lxLQ86dzjZ6/Ez8LgOysOfPNOVW8I/ETFocFoWVfCzVM6vo8FJ+iR5Udo9wBzt7ApcUoQcaMPnYz7ixc4D2yPPOmBRO8Kj8ITNtIVWnRGXQ8Y2oQZFctloena7AT2QcHqDKh2S8tr8qaBrWZI51bDUhuGNi4aVkCUV4zPTopTE54ZdfgnCFPyJtCUjDIhTUNfJITaHMcFkz9Sie9JvqorYrvaeRA0OmdOKt0ZEGBSNFEc5+jGjWjkYXxvf50+xdC8HRCXXjMcqbTLHpmMGIyNYLctCsaENV0oUhqZWPD2c1y3rp496X5CsqYYPB3RlvucR+wzMzEmk+ftpOS50Z8aV7McW1oeyQzc/J5kVQfIcwZaYkHDWlkJrWiM5OpvsU9wbbsJP6q4rbX+q9zLznyctY7nFlIfPKpA3stilKmYYF9Y+0AiJJ9r0Nq4cehBa4TFGBG+8N4dBxQ/Jx5LcXt+ofIYCrHojp9ROwIZBxYqp3ONUeBe/HbPTu5P29BnJ1rHQw4UTEcPSy18T1IotingDa6TfBJGqychXQcy45oER1NCv52R/4r7E9sBlrvZ9tDWaDz326fow/hluEmux1uzhT3Gk8vTEzjA+DjHt3tXpWcdKU4Pxvxxd+BPukqD7D4wZ1dCLKRFv05H35mcWe3iosH4soX/SRzMNW46a+HXT1Bc/FhoR/9SF4Fk+zVZo75euoGD7pIAmj+XGH9eBLtyjSou1r2w718uUxKd7hNIpozEZX9VQdtntB8lBEbrrr6mG589kOg/fxlbo2DKq9PUVSPUtAI0g2aPJ3FaBYY2M14+qAaqrXqGrdpBYw2zdbo6ZOFGpJxG603TxNpn9DhrbMzAaDlu8wRRcB9/cu49iM67+CMxMavyf3dZGvprhvX/rkCQNv1tjUSQBEkiSBJBEiSJIEkESZAkgiRIEkGSCJIgSZ6TfwOfJaErPYXAAAAAAElFTkSuQmCC';
 function docHTML(M){
+  const rn = M.kind === 'rn', hsnC = !rn, pre = M.inputTax ? 'INPUT-' : '';
   const tx = {}; let sub = 0, qty = 0;
   M.lines.forEach(l => { sub += l.amt; qty += l.qty; const k = (l.hsn || '—') + '|' + l.gst; tx[k] = tx[k] || {hsn:l.hsn || '—', gst:l.gst, base:0}; tx[k].base += l.amt; });
   const T = Object.values(tx).map(t => ({...t, tax:M.inter ? r2(t.base * t.gst / 100) : r2(t.base * t.gst / 200) * 2}));
   const byRate = {}; T.forEach(t => { if (t.gst) byRate[t.gst] = (byRate[t.gst] || 0) + t.tax; });
   const taxTot = r2(T.reduce((a, t) => a + t.tax, 0)), raw = sub + taxTot, grand = Math.round(raw), ro = r2(grand - raw);
-  const taxRows = Object.keys(byRate).map(Number).sort((a, b) => a - b).flatMap(g => M.inter ? [[`IGST @ ${g}%`, byRate[g]]] : [[`CGST @ ${g / 2}%`, byRate[g] / 2], [`SGST @ ${g / 2}%`, byRate[g] / 2]]);
-  const unitAll = [...new Set(M.lines.map(l => l.unit))], qu = unitAll.length === 1 ? ' ' + unitAll[0] : '';
-  const party = p => `<div class="pb"><div class="lab">${esc(p.label)}</div><div class="pt">${esc(p.title || '')}</div>${p.lines.map(x => `<div>${esc(x)}</div>`).join('')}</div>`;
-  const meta = M.meta.map(([k, v]) => `<div class="mc"><div class="lab">${esc(k)}</div><div class="mv">${esc(v || '')}</div></div>`).join('');
-  const items = M.lines.map((l, i) => `<tr><td class="c">${i + 1}</td><td><b>${esc(l.name)}</b>${l.sub ? `<div class="sm">${esc(l.sub)}</div>` : ''}</td><td class="c">${esc(l.hsn)}</td><td class="r"><b>${pq(l.qty)} ${esc(l.unit)}</b></td><td class="r">${pn(l.rate)}</td><td class="c">${esc(l.unit)}</td><td class="r">${pn(l.amt)}</td></tr>`).join('');
-  const taxLines = taxRows.map(([k, v]) => `<tr class="tx"><td></td><td class="r"><i>${k}</i></td><td></td><td></td><td></td><td></td><td class="r">${pn(v)}</td></tr>`).join('') + (ro ? `<tr class="tx"><td></td><td class="r"><i>Round off</i></td><td></td><td></td><td></td><td></td><td class="r">${ro > 0 ? '' : '-'}${pn(Math.abs(ro))}</td></tr>` : '');
-  const hsnHead = M.inter ? '<th rowspan="2">HSN/SAC</th><th rowspan="2" class="r">Taxable value</th><th colspan="2">IGST</th><th rowspan="2" class="r">Total tax</th>' : '<th rowspan="2">HSN/SAC</th><th rowspan="2" class="r">Taxable value</th><th colspan="2">CGST</th><th colspan="2">SGST</th><th rowspan="2" class="r">Total tax</th>';
-  const hsnSub = M.inter ? '<th>Rate</th><th class="r">Amount</th>' : '<th>Rate</th><th class="r">Amount</th><th>Rate</th><th class="r">Amount</th>';
-  const hsnRows = T.map(t => M.inter ? `<tr><td>${esc(t.hsn)}</td><td class="r">${pn(t.base)}</td><td class="c">${t.gst}%</td><td class="r">${pn(t.tax)}</td><td class="r">${pn(t.tax)}</td></tr>` : `<tr><td>${esc(t.hsn)}</td><td class="r">${pn(t.base)}</td><td class="c">${t.gst / 2}%</td><td class="r">${pn(t.tax / 2)}</td><td class="c">${t.gst / 2}%</td><td class="r">${pn(t.tax / 2)}</td><td class="r">${pn(t.tax)}</td></tr>`).join('');
-  const hsnTot = M.inter ? `<tr class="b"><td class="r">Total</td><td class="r">${pn(sub)}</td><td></td><td class="r">${pn(taxTot)}</td><td class="r">${pn(taxTot)}</td></tr>` : `<tr class="b"><td class="r">Total</td><td class="r">${pn(sub)}</td><td></td><td class="r">${pn(taxTot / 2)}</td><td></td><td class="r">${pn(taxTot / 2)}</td><td class="r">${pn(taxTot)}</td></tr>`;
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(M.tag + ' ' + (M.meta[0][1] || ''))}</title><style>
-  @page{size:A4;margin:10mm}*{box-sizing:border-box}body{margin:0;font:10.5px/1.35 Arial,Helvetica,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .doc{border:1.2px solid #000}.hd{display:flex;align-items:baseline;justify-content:space-between;padding:6px 8px;border-bottom:1.2px solid #000}.hd h1{margin:0;font-size:16px;letter-spacing:.12em}.hd .cp{font-size:9px;font-style:italic}
-  .top{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #000}.top>div:first-child{border-right:1px solid #000}.prt{display:grid;grid-template-columns:1fr 1fr}.prt>.pb{border-bottom:0}.prt>.pb:first-child{border-right:1px solid #000}
-  .pb{padding:5px 8px}.pt{font-weight:700;font-size:11.5px}.co .pt{font-size:13px}
-  .lab{font-size:8.5px;text-transform:uppercase;letter-spacing:.06em;color:#000;opacity:.75}.meta{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr}.mc{padding:4px 8px;border-bottom:1px solid #000;border-right:1px solid #000}.mc:nth-child(2n){border-right:0}.meta .mc:nth-last-child(-n+2){border-bottom:0}.mv{font-weight:700}
-  table{width:100%;border-collapse:collapse}.it th{border-top:1.2px solid #000;border-bottom:1px solid #000;padding:4px 5px;font-size:9.5px;text-align:left}.it td{padding:3px 5px;vertical-align:top;border-right:1px solid #000}.it td:last-child,.it th:last-child{border-right:0}.it th{border-right:1px solid #000}
-  .it tbody tr:last-child td{padding-bottom:10px}.it .tx td{padding-top:1px;padding-bottom:1px}.it tfoot td{border-top:1px solid #000;border-bottom:1.2px solid #000;font-weight:700;padding:4px 5px;border-right:1px solid #000}.it tfoot td:last-child{border-right:0;font-size:12.5px}
-  .r{text-align:right}.c{text-align:center}.sm{font-size:9px;margin-top:1px}.words{padding:5px 8px;border-bottom:1px solid #000}.words b{font-size:11px}
-  .hs th,.hs td{border:1px solid #000;padding:3px 5px;font-size:9.5px}.hs{border-left:0;border-right:0}.hs tr>*:first-child{border-left:0}.hs tr>*:last-child{border-right:0}.hs th{font-weight:700}.hs .b td{font-weight:700}
-  .ft{display:grid;grid-template-columns:1fr 1fr}.ft>div{padding:6px 8px}.ft>div:first-child{border-right:1px solid #000}.sig{text-align:right;display:flex;flex-direction:column;justify-content:space-between;min-height:70px}
-  .note{padding:5px 8px;border-bottom:1px solid #000;font-weight:700}.cg{text-align:center;font-size:9px;margin-top:4px}
-  @media screen{body{background:#eee}.page{background:#fff;width:210mm;margin:12px auto;padding:10mm;box-shadow:0 2px 12px rgba(0,0,0,.2)}.pbar{text-align:center;margin:12px}.pbar button{font:14px Arial;padding:8px 22px;cursor:pointer}}
+  const taxRows = Object.keys(byRate).map(Number).sort((a, b) => a - b).flatMap(g => M.inter ? [[`${pre}IGST @ ${g}%`, g, byRate[g]]] : [[`${pre}CGST @ ${g / 2}%`, g / 2, byRate[g] / 2], [`${pre}SGST @ ${g / 2}%`, g / 2, byRate[g] / 2]]);
+  const units = [...new Set(M.lines.map(l => l.unit))], qu = units.length === 1 ? ' ' + units[0] : '';
+  const blk = (lab, p, cls = '') => `<div class="blk ${cls}">${lab ? `<div class="lab">${esc(lab)}</div>` : ''}<div class="pt">${esc(p.title || '')}</div>${p.lines.map(x => `<div>${esc(x)}</div>`).join('')}</div>`;
+  const kv = (k, v) => { const [a, b] = String(k).split('|'); return `<td><div class="lab">${esc(a)}</div><div class="mv">${esc(v || '')}</div></td>`; };
+  const metaRows = M.meta.map(r => `<tr>${kv(r[0], r[1])}${r.length > 2 ? kv(r[2], r[3]) : '<td></td>'}</tr>`).join('');
+  const ncol = hsnC ? 7 : 6, col = (html, cls = '') => `<td class="${cls}">${html}</td>`;
+  const item = (l, i) => `<tr class="ir">${col(i + 1, 'c')}${col(`<b>${esc(l.name)}</b>${l.sub ? `<div class="sm">${esc(l.sub)}</div>` : ''}${l.note ? `<div class="sm"><i>${esc(l.note)}</i></div>` : ''}`)}${hsnC ? col(esc(l.hsn), 'c') : ''}${col(`<b>${pq(l.qty)} ${esc(l.unit)}</b>`, 'r')}${col(pn(l.rate), 'r')}${col(esc(l.unit), 'c')}${col(`<b>${pn(l.amt)}</b>`, 'r')}</tr>`;
+  const txr = ([k, rate, v]) => `<tr class="ir">${col('')}${col(`<b><i>${k}</i></b>`, 'r')}${hsnC ? col('') : ''}${col('')}${col(rate, 'r')}${col('%', 'c')}${col(`<b>${pn(v)}</b>`, 'r')}</tr>`;
+  const roRow = ro ? `<tr class="ir">${col('')}${col('<b><i>ROUND OFF</i></b>', 'r')}${hsnC ? col('') : ''}${col('')}${col('')}${col('')}${col(`<b>${ro < 0 ? '(-)' : ''}${pn(Math.abs(ro))}</b>`, 'r')}</tr>` : '';
+  const fill = `<tr class="ir fill">${'<td></td>'.repeat(ncol)}</tr>`;
+  const hsnTab = !M.hsnSummary || !T.some(t => t.gst) ? '' : (M.inter
+    ? `<table class="hs"><thead><tr><th rowspan="2" style="width:40%">HSN/SAC</th><th rowspan="2" class="r">Taxable<br>Value</th><th colspan="2">IGST</th><th rowspan="2" class="r">Total<br>Tax Amount</th></tr><tr><th>Rate</th><th class="r">Amount</th></tr></thead><tbody>${T.map(t => `<tr><td>${esc(t.hsn)}</td><td class="r">${pn(t.base)}</td><td class="c">${t.gst}%</td><td class="r">${pn(t.tax)}</td><td class="r">${pn(t.tax)}</td></tr>`).join('')}<tr class="b"><td class="r">Total</td><td class="r">${pn(sub)}</td><td></td><td class="r">${pn(taxTot)}</td><td class="r">${pn(taxTot)}</td></tr></tbody></table>`
+    : `<table class="hs"><thead><tr><th rowspan="2" style="width:32%">HSN/SAC</th><th rowspan="2" class="r">Taxable<br>Value</th><th colspan="2">Central Tax</th><th colspan="2">State Tax</th><th rowspan="2" class="r">Total<br>Tax Amount</th></tr><tr><th>Rate</th><th class="r">Amount</th><th>Rate</th><th class="r">Amount</th></tr></thead><tbody>${T.map(t => `<tr><td>${esc(t.hsn)}</td><td class="r">${pn(t.base)}</td><td class="c">${t.gst / 2}%</td><td class="r">${pn(t.tax / 2)}</td><td class="c">${t.gst / 2}%</td><td class="r">${pn(t.tax / 2)}</td><td class="r">${pn(t.tax)}</td></tr>`).join('')}<tr class="b"><td class="r">Total</td><td class="r">${pn(sub)}</td><td></td><td class="r">${pn(taxTot / 2)}</td><td></td><td class="r">${pn(taxTot / 2)}</td><td class="r">${pn(taxTot)}</td></tr></tbody></table>`)
+    + `<div class="row"><span>Tax Amount (in words) :</span> <b>${inWords(taxTot)}</b></div>`;
+  const logo = M.co.logo ? `<img class="logo" src="${M.co.logo}" alt="">` : `<div class="logo tl">${esc(M.co.short || '')}</div>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(M.tag + ' ' + (M.no || ''))}</title><style>
+  @page{size:A4;margin:9mm}*{box-sizing:border-box}html,body{margin:0}body{font:11px/1.32 Arial,Helvetica,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .page{display:flex;flex-direction:column;min-height:279mm}
+  .ttl{display:flex;justify-content:center;position:relative;padding:2px 0 6px}.ttl b{font-size:16px;letter-spacing:.04em}.ttl i{position:absolute;right:0;top:4px;font-size:10.5px}
+  .doc{border:1px solid #000;flex:1;display:flex;flex-direction:column}
+  .top{display:flex;border-bottom:1px solid #000}.lft{width:52%;border-right:1px solid #000;display:flex;flex-direction:column}.rgt{width:48%;display:flex;flex-direction:column}
+  .blk{padding:3px 6px;border-bottom:1px solid #000}.blk:last-child{border-bottom:0;flex:1}.pt{font-weight:700;font-size:11.5px}.co{display:flex;gap:8px}.co .pt{font-size:12px}
+  .logo{width:92px;height:auto;align-self:center;flex:0 0 auto}.logo.tl{font-weight:800;font-size:16px;letter-spacing:-.02em;width:auto}
+  .lab{font-size:10px}.mv{font-weight:700;min-height:14px}
+  .meta{width:100%;border-collapse:collapse}.meta td{border-bottom:1px solid #000;border-right:1px solid #000;padding:2px 5px;vertical-align:top;width:50%;height:34px}.meta td:last-child{border-right:0}
+  .tod{flex:1;padding:2px 5px}.tod .mv{font-weight:400;white-space:pre-wrap}
+  .itw{flex:1;display:flex;flex-direction:column}.it{width:100%;border-collapse:collapse;flex:1 1 auto}.it th{font-weight:400;border-bottom:1px solid #000;border-right:1px solid #000;padding:2px 4px;text-align:center;font-size:10.5px;vertical-align:top}.it th:last-child{border-right:0}
+  .it td{border-right:1px solid #000;padding:1px 4px;vertical-align:top}.it td:last-child{border-right:0}.it tr.ir{height:1px}.it tr.ir:first-child td{padding-top:4px}.it tr.fill{height:100%}
+  .it tfoot td{border-top:1px solid #000;padding:2px 4px;height:1px}.it tfoot .gt{font-size:13.5px;font-weight:700}
+  .r{text-align:right}.c{text-align:center}.sm{font-size:10px;padding-left:12px}
+  .row{padding:3px 6px;border-top:1px solid #000}.aw{display:flex;justify-content:space-between}.aw i{font-size:10.5px}
+  .hs{width:100%;border-collapse:collapse;border-top:1px solid #000}.hs th{font-weight:400;font-size:10.5px}.hs th,.hs td{border-right:1px solid #000;border-bottom:1px solid #000;padding:1px 5px}.hs tr>*:last-child{border-right:0}.hs tr.b td{font-weight:700;border-bottom:0}
+  .ft{display:flex;border-top:1px solid #000}.ft>div{width:50%;padding:3px 6px}.ft>div:first-child{border-right:1px solid #000}.sig{text-align:right;display:flex;flex-direction:column;justify-content:space-between;min-height:62px}
+  .pan{padding:10px 6px 3px;border-top:1px solid #000}.cg{text-align:center;font-size:10.5px;margin-top:5px}
+  @media screen{body{background:#e9e9e9}.wrap{background:#fff;width:210mm;margin:12px auto;padding:9mm;box-shadow:0 2px 12px rgba(0,0,0,.2)}.pbar{text-align:center;margin:12px}.pbar button{font:14px Arial;padding:8px 24px;cursor:pointer}}
   @media print{.pbar{display:none}}</style></head><body>
   <div class="pbar"><button onclick="window.print()">Print</button></div>
-  <div class="page"><div class="doc">
-   <div class="hd"><h1>${esc(M.title)}</h1><span class="cp">(Original)</span></div>
-   <div class="top"><div class="pb co"><div class="pt">${esc(M.co.title)}</div>${M.co.lines.map(x => `<div>${esc(x)}</div>`).join('')}</div>
-   <div class="meta">${meta}</div></div>
-   <div class="prt">${M.parties.map(party).join('')}</div>
-   ${M.note ? `<div class="note">${esc(M.note)}</div>` : ''}
-   <table class="it"><thead><tr><th class="c" style="width:28px">Sl No.</th><th>Description of Goods</th><th class="c" style="width:78px">HSN/SAC</th><th class="r" style="width:82px">Quantity</th><th class="r" style="width:72px">Rate</th><th class="c" style="width:38px">per</th><th class="r" style="width:92px">Amount</th></tr></thead>
-   <tbody>${items}${taxLines}</tbody><tfoot><tr><td></td><td class="r">Total</td><td></td><td class="r">${pq(qty)}${qu}</td><td></td><td></td><td class="r">₹ ${pn(grand)}</td></tr></tfoot></table>
-   <div class="words"><div class="lab">Amount chargeable (in words)</div><b>${inWords(grand)}</b></div>
-   ${T.some(t => t.gst) ? `<table class="hs"><thead><tr>${hsnHead}</tr><tr>${hsnSub}</tr></thead><tbody>${hsnRows}${hsnTot}</tbody></table><div class="words"><div class="lab">Tax amount (in words)</div><b>${inWords(taxTot)}</b></div>` : ''}
-   ${M.remarks ? `<div class="words"><div class="lab">Remarks</div>${esc(M.remarks)}</div>` : ''}
-   <div class="ft"><div><div>Company's PAN : <b>${esc(M.foot.pan)}</b></div><div style="margin-top:22px">${esc(M.foot.left)}</div></div><div class="sig"><b>for ${esc(M.co.title)}</b><span>${esc(M.foot.right)}</span></div></div>
-  </div><div class="cg">This is a computer generated document</div></div></body></html>`;
+  <div class="wrap"><div class="page">
+   <div class="ttl"><b>${esc(M.title)}</b>${M.copy ? `<i>(${esc(M.copy)})</i>` : ''}</div>
+   <div class="doc">
+    <div class="top"><div class="lft"><div class="blk co">${logo}<div><div class="pt">${esc(M.co.title)}</div>${M.co.lines.map(x => `<div>${esc(x)}</div>`).join('')}</div></div>${M.parties.map(p => blk(p.label, p)).join('')}</div>
+     <div class="rgt"><table class="meta">${metaRows}</table><div class="tod"><div class="lab">${esc(M.todLabel || '')}</div><div class="mv">${esc(M.tod || '')}</div></div></div></div>
+    <div class="itw"><table class="it"><thead><tr><th style="width:26px">Sl<br>No.</th><th>Description of Goods</th>${hsnC ? '<th style="width:74px">HSN/SAC</th>' : ''}<th style="width:76px">Quantity</th><th style="width:66px">Rate</th><th style="width:34px">per</th><th style="width:96px">Amount</th></tr></thead>
+     <tbody>${M.lines.map(item).join('')}${taxRows.map(txr).join('')}${roRow}${fill}</tbody>
+     <tfoot><tr><td></td><td class="r">Total</td>${hsnC ? '<td></td>' : ''}<td class="r"><b>${pq(qty)}${qu}</b></td><td></td><td></td><td class="r gt">₹ ${pn(grand)}</td></tr></tfoot></table></div>
+    <div class="row"><div class="aw"><span>Amount Chargeable (in words)</span><i>E. &amp; O.E</i></div><b>${inWords(grand)}</b></div>
+    ${hsnTab}
+    ${M.remarks ? `<div class="row"><span>Remarks :</span> ${esc(M.remarks)}</div>` : ''}
+    <div class="pan">Company's PAN &nbsp;&nbsp;: &nbsp;<b>${esc(M.co.pan)}</b></div>
+    <div class="ft"><div>${esc(M.leftFoot || '')}</div><div class="sig"><b>for ${esc(M.co.title)}</b><span>Authorised Signatory</span></div></div>
+   </div>
+   <div class="cg">This is a Computer Generated Document</div>
+  </div></div></body></html>`;
+}
+function docModel(m, d){
+  const cid = compOf(d.comp), co = COINFO[cid] || COINFO.Excoso, it = id => D.inv_items.get(id) || {};
+  const coBlock = {title:co.name, logo:cid === 'Excoso' ? BRLOGO : '', short:cid === 'Expert' ? 'EXPERT' : '', pan:co.pan, lines:[...co.lines, co.mob ? 'Mob : ' + co.mob : '', 'GSTIN/UIN: ' + co.gstin, `State Name : ${co.state}, Code : ${co.code}`, co.cin ? 'CIN: ' + co.cin : '', co.email ? 'E-Mail : ' + co.email : ''].filter(Boolean)};
+  const us = lab => ({label:lab, title:co.name, lines:[...co.lines, co.mob ? 'Mob : ' + co.mob : '', co.email ? 'e-mail : ' + co.email : '', 'GSTIN/UIN : ' + co.gstin, `State Name : ${co.state}, Code : ${co.code}`].filter(Boolean)});
+  const stName = g => { const c = String(g || '').slice(0, 2); return STCODE[c] ? `${STCODE[c]}, Code : ${c}` : ''; };
+  if (m === 'mi'){
+    const s = (SUPL || []).find(x => (d.supGst && x.gstin === d.supGst) || normName(x.name) === normName(d.supName)) || {}, a = (d.supAddr && d.supAddr.addr1) ? d.supAddr : s;
+    const sup = {label:'Supplier (Bill from)', title:d.supName, lines:[a.addr1, a.addr2, a.addr3, d.supGst ? 'GSTIN/UIN : ' + d.supGst : '', stName(d.supGst) ? 'State Name : ' + stName(d.supGst) : '', s.mobile ? 'Contact : ' + s.mobile : ''].filter(Boolean)};
+    return {kind:'mi', title:'GOODS RECEIPT NOTE', tag:'GRN', no:d.grnNo, co:coBlock, parties:[us('Consignee (Ship to)'), sup], inter:isInter(d.supGst), inputTax:true, hsnSummary:true,
+      meta:[['GRN No.', d.grnNo || '', 'Dated', fd(d.at || d.invDate)], ["Supplier's Invoice No.", d.invNo, 'Dated', fd(d.invDate)], ['Reference No. & Date.', d.refNo || '', 'Other References', d.otherRef || ''], ['Received by', '', 'Checked by', '']],
+      todLabel:'Remarks', tod:d.remarks || '', lines:(d.lines || []).map(l => ({name:it(l.item).name || l.name, sub:it(l.item).part ? 'Part No. ' + it(l.item).part : '', hsn:l.hsn || it(l.item).hsn || '', qty:+l.qty || 0, unit:(l.unit || unitOf(l.item)).toLowerCase(), rate:+l.rate || 0, amt:+l.taxable || 0, gst:+l.gst || 0})),
+      leftFoot:'Recd. in Good Condition'};
+  }
+  const isRn = m === 'rn', dc = isRn ? (D.mat_dc.get(d.dc) || {}) : d, g = dc.gstin || '';
+  const cust = {title:d.party, lines:[dc.addr1, dc.addr2, dc.addr3, g ? 'GSTIN/UIN : ' + g : '', stName(g) ? 'State Name : ' + stName(g) : '', dc.contact ? 'Contact : ' + dc.contact : ''].filter(Boolean)};
+  const ex = D.users.get(dc.exec)?.name || '', mg = D.users.get(dc.mgr)?.name || '';
+  const lines = (d.lines || []).map(l => ({name:it(l.item).name || '', sub:it(l.item).part ? 'Part No. ' + it(l.item).part : '', note:l.note || '', hsn:it(l.item).hsn || '', qty:+l.qty || 0, unit:unitOf(l.item), rate:+l.rate || 0, amt:+l.value || 0, gst:itemGst(l.item) || 0}));
+  if (isRn) return {kind:'rn', title:'Receipt Note', tag:'RN', no:d.no, co:coBlock, parties:[us('Consignee (Ship to)'), {label:'Supplier (Bill from)', ...cust}], inter:isInter(g), inputTax:true, hsnSummary:false,
+    meta:[['Receipt Note No.', d.no, 'Dated', fd(d.date)], ['Reference No. & Date.', dc.no ? `${dc.no} dt. ${fd(dc.date)}` : '', 'Other References', ex ? 'Executive: ' + ex : '']],
+    todLabel:'', tod:d.remarks || '', lines, leftFoot:'Recd. in Good Condition'};
+  const rdc = dcKind(d) === 'rdc';
+  return {kind:'dc', title:rdc ? 'RETURNABLE DELIVERY CHALLAN' : 'DELIVERY CHALLAN', copy:'ORIGINAL FOR CONSIGNEE', tag:rdc ? 'RDC' : 'DC', no:d.no, co:coBlock, parties:[{label:'Consignee (Ship to)', ...cust}, {label:'Buyer (Bill to)', ...cust}], inter:isInter(g), inputTax:false, hsnSummary:true,
+    meta:[[rdc ? 'Returnable DC No.' : 'Delivery Note No.', d.no, 'Dated', fd(d.date)], ['Executive', ex, 'Mode/Terms of Payment', d.terms || ''], ['Reference No. & Date.', d.refNo || '', 'Other References', d.otherRef || (mg ? 'Manager: ' + mg : '')], ["Buyer's Order No.", d.orderNo || '', 'Dated', d.orderDate ? fd(d.orderDate) : ''], ['Dispatch Doc No.', d.dispDoc || '', '', ''], ['Dispatched through', d.dispatch || '', 'Destination', d.dest || '']],
+    todLabel:'Terms of Delivery', tod:d.tod || (rdc ? 'Returnable samples - not for sale. To be returned in good condition.' : ''), lines, remarks:d.remarks || '', leftFoot:'Recd. in Good Condition'};
 }
 function printDoc(m, id){
   const d = D[MATCOL[m]].get(id); if (!d) return;
