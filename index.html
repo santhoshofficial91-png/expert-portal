@@ -246,7 +246,7 @@ textarea{width:100%;padding:10px 12px;border:1px solid #cbd2dc;border-radius:8px
 <script>
 const SB_URL = 'https://ogvltuavclcgbxlyxkhs.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ndmx0dWF2Y2xjZ2J4bHl4a2hzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3MjY4MDAsImV4cCI6MjExMDMwMjgwMH0.M8toXkbQui8TjCacIobkiyew9O-6IrqgZTTzIkQV8Sg';
-const BUILD = '20261121135648';   // set by build.sh; makes browsers fetch fresh module pages after each update
+const BUILD = '20261121140446';   // set by build.sh; makes browsers fetch fresh module pages after each update
 const MODULES = {
   out: {key:'outstanding', title:'Customer Outstanding', path:'outstanding/'},
   pay: {key:'payments', title:'Payment Request', path:'payments/'}
@@ -388,9 +388,8 @@ function buildNav(){
   // Admin: Create + Users & Access
   const cr = get('create'); let ai = '';
   if (cr) ai += itemHTML('outstanding', cr);
-  const im = get('imp'); if (im) ai += itemHTML('outstanding', im);
   if (isAdmin()) ai += `<button class="si ${current === 'access' ? 'on' : ''}" data-v="access">Users &amp; Access</button>`;
-  if (ai) h += groupHTML('admin', 'Admin', ai, on('outstanding', cr) || on('outstanding', im) || current === 'access');
+  if (ai) h += groupHTML('admin', 'Admin', ai, on('outstanding', cr) || current === 'access');
   // Send Alert: WhatsApp + payment mail
   const al = ['wa', 'mail'].map(get).filter(Boolean);
   if (al.length) h += groupHTML('alert', 'Send Alert', al.map(it => itemHTML('outstanding', it)).join(''), al.some(it => on('outstanding', it)));
