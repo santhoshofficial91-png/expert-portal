@@ -330,7 +330,7 @@ input[type=search]:not(:placeholder-shown){background:#fff4c2;border:2px solid #
 #drpop .drf{display:flex;justify-content:space-between;gap:6px;margin-top:10px}
 .xlink{display:block;border:0;background:none;padding:0;font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:3px;text-align:left}.xlink:hover{opacity:.75}
 .annclock{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;color:#fff;background:#14163a;padding:6px 18px;border-radius:12px;letter-spacing:.02em}
-tr.clk{cursor:pointer}tr.clk:hover td,tr.clk:focus td{background:#eef2ff}tr.dim td{color:#9ca3af}.stkt th.c{text-align:center}.stkt td,.stkt th{white-space:nowrap}
+tr.clk{cursor:pointer;outline:none}tr.clk:hover td{background:#fff7d6}tr.clk.sel td,tr.clk:focus td{background:#fcd34d!important;color:#111}tr.dim td{color:#9ca3af}.stkt th.c{text-align:center}.stkt td,.stkt th{white-space:nowrap}.stkt .gl{border-left:1.5px solid #c7c9d9}.stkt thead th{border-bottom:1px solid #c7c9d9}.stkt tfoot td{border-top:1.5px solid #c7c9d9}
 </style>
 </head>
 <body>
@@ -1416,6 +1416,11 @@ async function qrPrint(){
     @media print{.bar{display:none}}</style></head><body><div class="bar"><button onclick="window.print()">Print ${labels.length} labels</button></div>${rows}</body></html>`);
   w0.document.close(); w0.focus(); setTimeout(() => { try { w0.print(); } catch(e){} }, 500);
 }
+// Tally-style moving bar: the chosen row is yellow, ↑ ↓ move it, Enter opens it
+const stkFocus = () => setTimeout(() => { const r = document.querySelector('#main tr.clk.sel') || document.querySelector('#main table.stkt tr.clk:not(.dim)'); if (r){ r.focus({preventScroll:true}); const b = r.getBoundingClientRect(); if (b.top < 0 || b.bottom > innerHeight) r.scrollIntoView({block:'center'}); } }, 30);
+document.addEventListener('focusin', ev => { const r = ev.target; if (r.tagName === 'TR' && r.classList.contains('clk')) r.parentNode.querySelectorAll('tr.sel').forEach(x => x !== r && x.classList.remove('sel')), r.classList.add('sel'); });
+document.addEventListener('keydown', ev => { const r = ev.target; if (r.tagName !== 'TR' || !r.classList.contains('clk') || (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp')) return; ev.preventDefault();
+  let n = r; do { n = ev.key === 'ArrowDown' ? n.nextElementSibling : n.previousElementSibling; } while (n && !n.classList.contains('clk')); if (n){ n.focus({preventScroll:true}); n.scrollIntoView({block:'nearest'}); } });
 /* ---------- Stock List → item month summary → month vouchers → the entry (like Tally Stock Item Monthly Summary) ---------- */
 const MVT = {mi:'GRN', ps:'Physical Stock', dc:'Delivery Challan', rdc:'Returnable DC', rn:'Receipt Note'};
 function itemMoves(id){
@@ -1429,9 +1434,11 @@ function itemMoves(id){
 }
 const sumMv = L => L.reduce((a, x) => ({inQ:a.inQ + x.inQ, inV:a.inV + x.inV, outQ:a.outQ + x.outQ, outV:a.outV + x.outV}), {inQ:0, inV:0, outQ:0, outV:0});
 const fyStartY = () => { const d = new Date(TODAY); return d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1; };
-const qv = (q, v, u) => q || v ? `<td class="r num">${qtyF(q)} ${esc(u)}</td><td class="r num">${inr(v)}</td>` : '<td></td><td></td>';
-const qvC = (q, v, u) => `<td class="r num"${q < 0 ? ' style="color:#b91c1c"' : ''}>${qtyF(q)} ${esc(u)}</td><td class="r num">${inr(v)}</td>`;
-const MV_HEAD = first => `<thead><tr><th rowspan="2">${first}</th><th colspan="2" class="c">Inwards</th><th colspan="2" class="c">Outwards</th><th colspan="2" class="c">Closing balance</th></tr><tr><th class="r">Quantity</th><th class="r">Value</th><th class="r">Quantity</th><th class="r">Value</th><th class="r">Quantity</th><th class="r">Value</th></tr></thead>`;
+const E2 = '<td class="gl"></td><td></td>';
+const qv = (q, v, u) => q || v ? `<td class="r num gl">${qtyF(q)} ${esc(u)}</td><td class="r num">${inr(v)}</td>` : E2;
+const qvC = (q, v, u) => `<td class="r num gl"${q < 0 ? ' style="color:#b91c1c"' : ''}>${qtyF(q)} ${esc(u)}</td><td class="r num">${inr(v)}</td>`;
+const MV_SUB = '<tr><th class="r gl">Quantity</th><th class="r">Value</th><th class="r gl">Quantity</th><th class="r">Value</th><th class="r gl">Quantity</th><th class="r">Value</th></tr>';
+const MV_HEAD = first => `<thead><tr><th rowspan="2">${first}</th><th colspan="2" class="c gl">Inwards</th><th colspan="2" class="c gl">Outwards</th><th colspan="2" class="c gl">Closing balance</th></tr>${MV_SUB}</thead>`;
 function viewStockItem(id){
   const x = D.inv_items.get(id); if (!x) { F.stkI = ''; return viewStock(); }
   const u = D.inv_units.get(x.unit)?.unit || '', y = F.stkY || fyStartY(), fs = `${y}-04-01`, fe = `${y + 1}-03-31`, all = itemMoves(id);
@@ -1441,22 +1448,24 @@ function viewStockItem(id){
     const mo = F.stkM, mm = (mo + 3) % 12, yy = mo < 9 ? y : y + 1, ms = `${yy}-${String(mm + 1).padStart(2, '0')}`;
     const pre = sumMv(all.filter(r => r.date < ms + '-01')); let rq = pre.inQ - pre.outQ, rv = pre.inV - pre.outV;
     const L = all.filter(r => r.date.slice(0, 7) === ms), T = sumMv(L);
-    const rows = L.map(r => { rq += r.inQ - r.outQ; rv += r.inV - r.outV; return `<tr class="clk" data-act="stkDoc" data-m="${r.m}" data-id="${esc(r.id)}" tabindex="0" title="Open this ${esc(r.type)}"><td class="nowrap">${esc(fmtD(r.date))}</td><td class="wrap"><b>${esc(r.party)}</b></td><td>${esc(r.type)}</td><td class="mono nowrap">${esc(r.no)}</td>${qv(r.inQ, r.inV, u)}${qv(r.outQ, r.outV, u)}${qvC(r2(rq), r2(rv), u)}</tr>`; }).join('');
+    const rows = L.map((r, k) => { rq += r.inQ - r.outQ; rv += r.inV - r.outV; return `<tr class="clk${(F.stkLastD ? F.stkLastD === r.id : k === 0) ? ' sel' : ''}" data-act="stkDoc" data-m="${r.m}" data-id="${esc(r.id)}" tabindex="0" title="Open this ${esc(r.type)}"><td class="nowrap">${esc(fmtD(r.date))}</td><td class="wrap"><b>${esc(r.party)}</b></td><td>${esc(r.type)}</td><td class="mono nowrap">${esc(r.no)}</td>${qv(r.inQ, r.inV, u)}${qv(r.outQ, r.outV, u)}${qvC(r2(rq), r2(rv), u)}</tr>`; }).join('');
     return `<div class="head"><div>${back} <button class="btn sm" data-act="stkMon" data-i="">← ${y}-${String(y + 1).slice(2)} months</button>${title}</div></div>
     <h2 style="margin:12px 0 6px">${MONF[mm]} ${yy} · vouchers</h2>
-    <div class="tw"><table class="stkt"><thead><tr><th rowspan="2">Date</th><th rowspan="2">Particulars</th><th rowspan="2">Voucher type</th><th rowspan="2">Voucher no</th><th colspan="2" class="c">Inwards</th><th colspan="2" class="c">Outwards</th><th colspan="2" class="c">Closing</th></tr><tr><th class="r">Quantity</th><th class="r">Value</th><th class="r">Quantity</th><th class="r">Value</th><th class="r">Quantity</th><th class="r">Value</th></tr></thead><tbody>
-    <tr class="mut"><td></td><td><i>Opening balance</i></td><td></td><td></td><td></td><td></td><td></td><td></td>${qvC(r2(pre.inQ - pre.outQ), r2(pre.inV - pre.outV), u)}</tr>
+    <div class="tw"><table class="stkt"><thead><tr><th rowspan="2">Date</th><th rowspan="2">Particulars</th><th rowspan="2">Voucher type</th><th rowspan="2">Voucher no</th><th colspan="2" class="c gl">Inwards</th><th colspan="2" class="c gl">Outwards</th><th colspan="2" class="c gl">Closing</th></tr>${MV_SUB}</thead><tbody>
+    <tr class="mut"><td></td><td><i>Opening balance</i></td><td></td><td></td>${E2}${E2}${qvC(r2(pre.inQ - pre.outQ), r2(pre.inV - pre.outV), u)}</tr>
     ${rows || '<tr><td colspan="10" class="empty">No movement in this month.</td></tr>'}</tbody>
     <tfoot><tr class="ttop"><td colspan="4" class="r">Total</td>${qv(T.inQ, T.inV, u)}${qv(T.outQ, T.outV, u)}${qvC(r2(rq), r2(rv), u)}</tr></tfoot></table></div>
     <p class="mut" style="font-size:12px">Click a voucher to open its entry.</p>`;
   }
+  const curM = (() => { const [cy, cm] = TODAY.split('-').map(Number), k = (cm - 4 + 12) % 12, ky = cm >= 4 ? cy : cy - 1; return ky === y ? k : ky > y ? 11 : 0; })();
+  const selM = F.stkLastM != null ? F.stkLastM : curM;
   const rows = Array.from({length:12}, (_, i) => { const mm = (i + 3) % 12, yy = i < 9 ? y : y + 1, ms = `${yy}-${String(mm + 1).padStart(2, '0')}`, T = sumMv(all.filter(r => r.date.slice(0, 7) === ms)), has = T.inQ || T.outQ || T.inV || T.outV;
     cq += T.inQ - T.outQ; cv += T.inV - T.outV;
-    return `<tr class="clk${has ? '' : ' dim'}" data-act="stkMon" data-i="${i}" tabindex="0" title="Show ${MONF[mm]} vouchers"><td>${MONF[mm]} ${yy}</td>${qv(T.inQ, T.inV, u)}${qv(T.outQ, T.outV, u)}${(has || cq) && ms <= TODAY.slice(0, 7) ? qvC(r2(cq), r2(cv), u) : '<td></td><td></td>'}</tr>`; }).join('');
+    return `<tr class="clk${has ? '' : ' dim'}${i === selM ? ' sel' : ''}" data-act="stkMon" data-i="${i}" tabindex="0" title="Show ${MONF[mm]} vouchers"><td>${MONF[mm]} ${yy}</td>${qv(T.inQ, T.inV, u)}${qv(T.outQ, T.outV, u)}${(has || cq) && ms <= TODAY.slice(0, 7) ? qvC(r2(cq), r2(cv), u) : E2}</tr>`; }).join('');
   const T = sumMv(all.filter(r => r.date >= fs && r.date <= fe));
   return `<div class="head"><div>${back}${title}</div><div style="display:flex;gap:6px;align-items:center"><button class="btn sm" data-act="stkY" data-d="-1" aria-label="Previous year">‹</button><b>FY ${y}-${String(y + 1).slice(2)}</b><button class="btn sm" data-act="stkY" data-d="1" aria-label="Next year">›</button></div></div>
   <h2 style="margin:12px 0 6px">Monthly summary · 1-Apr-${y} to 31-Mar-${y + 1}</h2>
-  <div class="tw"><table class="stkt">${MV_HEAD('Particulars')}<tbody><tr class="mut"><td><i>Opening balance</i></td><td></td><td></td><td></td><td></td>${qvC(r2(op.inQ - op.outQ), r2(op.inV - op.outV), u)}</tr>${rows}</tbody>
+  <div class="tw"><table class="stkt">${MV_HEAD('Particulars')}<tbody><tr class="mut"><td><i>Opening balance</i></td>${E2}${E2}${qvC(r2(op.inQ - op.outQ), r2(op.inV - op.outV), u)}</tr>${rows}</tbody>
   <tfoot><tr class="ttop"><td class="r">Grand total</td>${qv(T.inQ, T.inV, u)}${qv(T.outQ, T.outV, u)}${qvC(r2(cq), r2(cv), u)}</tr></tfoot></table></div>
   <p class="mut" style="font-size:12px">Click a month to see its GRN, Delivery Challan, Receipt Note and Physical Stock vouchers.</p>`;
 }
@@ -1465,10 +1474,10 @@ function viewStock(){
   const q = (F.stq || '').trim().toLowerCase(), nm = (col, id) => D[col].get(id)?.name || '';
   const list = [...D.inv_items.values()].filter(x => !q || [x.name, x.part, x.code, nm('inv_brands', x.brand), nm('inv_cats', x.cat), nm('inv_subs', x.sub)].join(' ').toLowerCase().includes(q)).sort((a, b) => String(a.part).localeCompare(String(b.part)));
   const P = pg(list, 'stklist', 50);
-  const body = P.items.map(x => `<tr class="clk" data-act="stkOpen" data-id="${esc(x.id)}" tabindex="0" title="Show in / out details"><td class="mono">${esc(x.part)}</td><td class="wrap"><b>${esc(x.name)}</b></td><td>${esc(nm('inv_brands', x.brand))}</td><td>${esc(nm('inv_cats', x.cat))}</td><td>${esc(nm('inv_subs', x.sub))}</td></tr>`).join('');
+  const body = P.items.map(x => `<tr class="clk${F.stkLast === x.id ? ' sel' : ''}" data-act="stkOpen" data-id="${esc(x.id)}" tabindex="0" title="Show in / out details"><td class="mono">${esc(x.part)}</td><td class="wrap"><b>${esc(x.name)}</b></td><td>${esc(nm('inv_brands', x.brand))}</td><td>${esc(nm('inv_cats', x.cat))}</td><td>${esc(nm('inv_subs', x.sub))}</td></tr>`).join('');
   return `<div class="head"><div><h1>Stock List</h1><p class="sub">${list.length} stock items · click one to see month-wise in, out and closing stock</p></div>${XB('xStock')}</div>
   <div class="bar sfb"><label class="sf"><span>Search</span><input id="stq" data-f="stq" type="search" placeholder="Product, part no, brand, category" value="${esc(F.stq || '')}" autocomplete="off"></label></div>
-  <div class="tw"><table><thead><tr><th>Part no</th><th>Product</th><th>Brand</th><th>Category</th><th>Sub category</th></tr></thead><tbody>${body || '<tr><td colspan="5" class="empty">No stock items yet. Create them in Create Stock Item or from a GRN.</td></tr>'}</tbody></table></div>${P.html}`;
+  <div class="tw"><table class="stkl"><thead><tr><th>Part no</th><th>Product</th><th>Brand</th><th>Category</th><th>Sub category</th></tr></thead><tbody>${body || '<tr><td colspan="5" class="empty">No stock items yet. Create them in Create Stock Item or from a GRN.</td></tr>'}</tbody></table></div>${P.html}`;
 }
 // update the computed parts of a form without redrawing it (keeps the cursor where it is)
 function matRecalc(m){
@@ -1584,12 +1593,12 @@ const MATACT = {
   spAll:t => { F.spall = !F.spall; forceRender = true; render(); },
   dcTy:t => { F.dcty = t.dataset.t; forceRender = true; render(); },
   matPrint:t => printDoc(t.dataset.m, t.dataset.id),
-  stkOpen:t => { F.stkI = t.dataset.id; F.stkM = null; F.stkY = fyStartY(); forceRender = true; render(); window.scrollTo(0, 0); },
-  stkBack:() => { F.stkI = ''; F.stkM = null; forceRender = true; render(); },
-  stkY:t => { F.stkY = (F.stkY || fyStartY()) + (+t.dataset.d); F.stkM = null; forceRender = true; render(); },
-  stkMon:t => { F.stkM = t.dataset.i === '' ? null : +t.dataset.i; forceRender = true; render(); window.scrollTo(0, 0); },
-  stkDoc:t => { F.stkRet = {i:F.stkI, m:F.stkM, y:F.stkY}; ACT.matEdit(t); },
-  stkRet:() => { const r = F.stkRet; F.stkRet = null; if (!r) return; F.stkI = r.i; F.stkM = r.m; F.stkY = r.y; ['mi','dc','rn','ps'].forEach(k => { if (F[k] && F[k].id) F[k] = null; }); ACT.nav({dataset:{k:'inv_stock', keep:'1'}}); },
+  stkOpen:t => { F.stkI = F.stkLast = t.dataset.id; F.stkM = F.stkLastM = null; F.stkLastD = ''; F.stkY = fyStartY(); forceRender = true; render(); stkFocus(); },
+  stkBack:() => { F.stkI = ''; F.stkM = null; forceRender = true; render(); stkFocus(); },
+  stkY:t => { F.stkY = (F.stkY || fyStartY()) + (+t.dataset.d); F.stkM = F.stkLastM = null; forceRender = true; render(); stkFocus(); },
+  stkMon:t => { if (t.dataset.i !== ''){ F.stkLastM = +t.dataset.i; F.stkLastD = ''; } F.stkM = t.dataset.i === '' ? null : +t.dataset.i; forceRender = true; render(); stkFocus(); },
+  stkDoc:t => { F.stkLastD = t.dataset.id; F.stkRet = {i:F.stkI, m:F.stkM, y:F.stkY}; ACT.matEdit(t); },
+  stkRet:() => { const r = F.stkRet; F.stkRet = null; if (!r) return; F.stkI = r.i; F.stkM = r.m; F.stkY = r.y; ['mi','dc','rn','ps'].forEach(k => { if (F[k] && F[k].id) F[k] = null; }); ACT.nav({dataset:{k:'inv_stock', keep:'1'}}); stkFocus(); },
   matCancel:t => { const m = t.dataset.m; F[m] = null; ACT.nav({dataset:{k:m === 'mi' ? 'mat_in' : m === 'dc' ? 'mat_dc' : m === 'ps' ? 'mat_ps' : 'mat_rn'}}); },
   matEdit:t => { const m = t.dataset.m, d = D[MATCOL[m]].get(t.dataset.id); if (!d) return; F[m] = JSON.parse(JSON.stringify(d)); (F[m].lines || []).forEach(l => { l.rateTyped = 1; l.gstTouched = 1; }); F.justSaved = ''; ACT.nav({dataset:{k:m === 'mi' ? 'mat_in_new' : m === 'rn' ? 'rn_new' : m === 'ps' ? 'ps_new' : (dcKind(d) === 'dc' ? 'dc_new' : 'rdc_new')}}); },
   matDel:async t => { const m = t.dataset.m, col = MATCOL[m], d = D[col].get(t.dataset.id); if (!d) return;
