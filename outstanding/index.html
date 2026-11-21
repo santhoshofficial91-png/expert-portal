@@ -330,6 +330,7 @@ input[type=search]:not(:placeholder-shown){background:#fff4c2;border:2px solid #
 #drpop .drf{display:flex;justify-content:space-between;gap:6px;margin-top:10px}
 .xlink{display:block;border:0;background:none;padding:0;font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:3px;text-align:left}.xlink:hover{opacity:.75}
 .annclock{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;color:#fff;background:#14163a;padding:6px 18px;border-radius:12px;letter-spacing:.02em}
+tr.clk{cursor:pointer}tr.clk:hover td,tr.clk:focus td{background:#eef2ff}tr.dim td{color:#9ca3af}.stkt th.c{text-align:center}.stkt td,.stkt th{white-space:nowrap}
 </style>
 </head>
 <body>
@@ -1415,17 +1416,59 @@ async function qrPrint(){
     @media print{.bar{display:none}}</style></head><body><div class="bar"><button onclick="window.print()">Print ${labels.length} labels</button></div>${rows}</body></html>`);
   w0.document.close(); w0.focus(); setTimeout(() => { try { w0.print(); } catch(e){} }, 500);
 }
+/* ---------- Stock List → item month summary → month vouchers → the entry (like Tally Stock Item Monthly Summary) ---------- */
+const MVT = {mi:'GRN', ps:'Physical Stock', dc:'Delivery Challan', rdc:'Returnable DC', rn:'Receipt Note'};
+function itemMoves(id){
+  const out = [], add = (m, d, date, party, no, l, dir) => out.push({m, id:d.id, date:String(date || '').slice(0, 10), party:party || '', no:no || '', type:MVT[m === 'dc' ? (dcKind(d) === 'dc' ? 'dc' : 'rdc') : m], inQ:dir > 0 ? +l.qty || 0 : 0, inV:dir > 0 ? +(m === 'mi' ? l.taxable : l.value) || 0 : 0, outQ:dir < 0 ? +l.qty || 0 : 0, outV:dir < 0 ? +l.value || 0 : 0});
+  D.mat_in.forEach(d => (d.lines || []).forEach(l => { if (l.item === id) add('mi', d, d.at || d.invDate, d.supName, d.grnNo || d.invNo, l, 1); }));
+  D.mat_ps.forEach(d => (d.lines || []).forEach(l => { if (l.item === id) add('ps', d, d.date, d.remarks ? 'Physical Stock · ' + d.remarks : 'Physical Stock', d.no, l, 1); }));
+  D.mat_dc.forEach(d => (d.lines || []).forEach(l => { if (l.item === id) add('dc', d, d.date, d.party, d.no, l, -1); }));
+  D.mat_rn.forEach(d => (d.lines || []).forEach(l => { if (l.item === id) add('rn', d, d.date, d.party, d.no, l, 1); }));
+  const O = {ps:0, mi:1, dc:2, rn:3};   // same day: opening stock, then purchases, then samples out, then samples back
+  return out.sort((a, b) => a.date.localeCompare(b.date) || (O[a.m] - O[b.m]) || a.no.localeCompare(b.no));
+}
+const sumMv = L => L.reduce((a, x) => ({inQ:a.inQ + x.inQ, inV:a.inV + x.inV, outQ:a.outQ + x.outQ, outV:a.outV + x.outV}), {inQ:0, inV:0, outQ:0, outV:0});
+const fyStartY = () => { const d = new Date(TODAY); return d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1; };
+const qv = (q, v, u) => q || v ? `<td class="r num">${qtyF(q)} ${esc(u)}</td><td class="r num">${inr(v)}</td>` : '<td></td><td></td>';
+const qvC = (q, v, u) => `<td class="r num"${q < 0 ? ' style="color:#b91c1c"' : ''}>${qtyF(q)} ${esc(u)}</td><td class="r num">${inr(v)}</td>`;
+const MV_HEAD = first => `<thead><tr><th rowspan="2">${first}</th><th colspan="2" class="c">Inwards</th><th colspan="2" class="c">Outwards</th><th colspan="2" class="c">Closing balance</th></tr><tr><th class="r">Quantity</th><th class="r">Value</th><th class="r">Quantity</th><th class="r">Value</th><th class="r">Quantity</th><th class="r">Value</th></tr></thead>`;
+function viewStockItem(id){
+  const x = D.inv_items.get(id); if (!x) { F.stkI = ''; return viewStock(); }
+  const u = D.inv_units.get(x.unit)?.unit || '', y = F.stkY || fyStartY(), fs = `${y}-04-01`, fe = `${y + 1}-03-31`, all = itemMoves(id);
+  const op = sumMv(all.filter(r => r.date < fs)); let cq = op.inQ - op.outQ, cv = op.inV - op.outV;
+  const back = `<button class="btn sm" data-act="stkBack">← Stock List</button>`, title = `<h1 style="margin:6px 0 2px">${esc(x.name)}</h1><p class="sub">Part no ${esc(x.part)}${x.comp ? ' · ' + esc(compOf(x.comp)) : ''}</p>`;
+  if (F.stkM != null){
+    const mo = F.stkM, mm = (mo + 3) % 12, yy = mo < 9 ? y : y + 1, ms = `${yy}-${String(mm + 1).padStart(2, '0')}`;
+    const pre = sumMv(all.filter(r => r.date < ms + '-01')); let rq = pre.inQ - pre.outQ, rv = pre.inV - pre.outV;
+    const L = all.filter(r => r.date.slice(0, 7) === ms), T = sumMv(L);
+    const rows = L.map(r => { rq += r.inQ - r.outQ; rv += r.inV - r.outV; return `<tr class="clk" data-act="stkDoc" data-m="${r.m}" data-id="${esc(r.id)}" tabindex="0" title="Open this ${esc(r.type)}"><td class="nowrap">${esc(fmtD(r.date))}</td><td class="wrap"><b>${esc(r.party)}</b></td><td>${esc(r.type)}</td><td class="mono nowrap">${esc(r.no)}</td>${qv(r.inQ, r.inV, u)}${qv(r.outQ, r.outV, u)}${qvC(r2(rq), r2(rv), u)}</tr>`; }).join('');
+    return `<div class="head"><div>${back} <button class="btn sm" data-act="stkMon" data-i="">← ${y}-${String(y + 1).slice(2)} months</button>${title}</div></div>
+    <h2 style="margin:12px 0 6px">${MONF[mm]} ${yy} · vouchers</h2>
+    <div class="tw"><table class="stkt"><thead><tr><th rowspan="2">Date</th><th rowspan="2">Particulars</th><th rowspan="2">Voucher type</th><th rowspan="2">Voucher no</th><th colspan="2" class="c">Inwards</th><th colspan="2" class="c">Outwards</th><th colspan="2" class="c">Closing</th></tr><tr><th class="r">Quantity</th><th class="r">Value</th><th class="r">Quantity</th><th class="r">Value</th><th class="r">Quantity</th><th class="r">Value</th></tr></thead><tbody>
+    <tr class="mut"><td></td><td><i>Opening balance</i></td><td></td><td></td><td></td><td></td><td></td><td></td>${qvC(r2(pre.inQ - pre.outQ), r2(pre.inV - pre.outV), u)}</tr>
+    ${rows || '<tr><td colspan="10" class="empty">No movement in this month.</td></tr>'}</tbody>
+    <tfoot><tr class="ttop"><td colspan="4" class="r">Total</td>${qv(T.inQ, T.inV, u)}${qv(T.outQ, T.outV, u)}${qvC(r2(rq), r2(rv), u)}</tr></tfoot></table></div>
+    <p class="mut" style="font-size:12px">Click a voucher to open its entry.</p>`;
+  }
+  const rows = Array.from({length:12}, (_, i) => { const mm = (i + 3) % 12, yy = i < 9 ? y : y + 1, ms = `${yy}-${String(mm + 1).padStart(2, '0')}`, T = sumMv(all.filter(r => r.date.slice(0, 7) === ms)), has = T.inQ || T.outQ || T.inV || T.outV;
+    cq += T.inQ - T.outQ; cv += T.inV - T.outV;
+    return `<tr class="clk${has ? '' : ' dim'}" data-act="stkMon" data-i="${i}" tabindex="0" title="Show ${MONF[mm]} vouchers"><td>${MONF[mm]} ${yy}</td>${qv(T.inQ, T.inV, u)}${qv(T.outQ, T.outV, u)}${(has || cq) && ms <= TODAY.slice(0, 7) ? qvC(r2(cq), r2(cv), u) : '<td></td><td></td>'}</tr>`; }).join('');
+  const T = sumMv(all.filter(r => r.date >= fs && r.date <= fe));
+  return `<div class="head"><div>${back}${title}</div><div style="display:flex;gap:6px;align-items:center"><button class="btn sm" data-act="stkY" data-d="-1" aria-label="Previous year">‹</button><b>FY ${y}-${String(y + 1).slice(2)}</b><button class="btn sm" data-act="stkY" data-d="1" aria-label="Next year">›</button></div></div>
+  <h2 style="margin:12px 0 6px">Monthly summary · 1-Apr-${y} to 31-Mar-${y + 1}</h2>
+  <div class="tw"><table class="stkt">${MV_HEAD('Particulars')}<tbody><tr class="mut"><td><i>Opening balance</i></td><td></td><td></td><td></td><td></td>${qvC(r2(op.inQ - op.outQ), r2(op.inV - op.outV), u)}</tr>${rows}</tbody>
+  <tfoot><tr class="ttop"><td class="r">Grand total</td>${qv(T.inQ, T.inV, u)}${qv(T.outQ, T.outV, u)}${qvC(r2(cq), r2(cv), u)}</tr></tfoot></table></div>
+  <p class="mut" style="font-size:12px">Click a month to see its GRN, Delivery Challan, Receipt Note and Physical Stock vouchers.</p>`;
+}
 function viewStock(){
-  const st = stockMap(), q = (F.stq || '').trim().toLowerCase();
-  const Z = {q:0, v:0};  // every stock item shows, also those with nothing in stock
-  const list = [...D.inv_items.values()].map(x => ({id:x.id, s:st.get(x.id) || Z, x})).filter(r => !q || [r.x.name, r.x.part, r.x.code].join(' ').toLowerCase().includes(q)).sort((a, b) => String(a.x.part).localeCompare(String(b.x.part)));
-  const tq = list.reduce((a, r) => a + r.s.q, 0), tv = list.reduce((a, r) => a + r.s.v, 0);
-  const unit = x => D.inv_units.get(x.unit)?.unit || '';
-  const body = list.map(({s, x}) => `<tr ${s.q ? '' : 'style="opacity:.55"'}><td class="mono">${esc(x.part)}</td><td class="wrap">${esc(x.name)}</td><td class="r num">${qtyF(s.q)} ${esc(unit(x))}</td><td class="r num">${inr(s.v)}</td></tr>`).join('');
-  return `<div class="head"><div><h1>Stock List</h1><p class="sub">Closing stock = Physical Stock + GRN − Delivery Challan + Receipt Note</p></div>${XB('xStock')}</div>
-  <div class="bar sfb"><label class="sf"><span>Search</span><input id="stq" data-f="stq" type="search" placeholder="Product, part no, code" value="${esc(F.stq || '')}" autocomplete="off"></label></div>
-  <h2 style="margin:12px 0 6px">Closing Stock</h2>
-  <div class="tw"><table><thead><tr class="ttop"><td></td><td class="r">Total (${list.length})</td><td class="r num">${qtyF(tq)}</td><td class="r num">${inr(tv)}</td></tr><tr><th>Part no</th><th>Product</th><th class="r">Quantity</th><th class="r">Taxable value</th></tr></thead><tbody>${body || '<tr><td colspan="4" class="empty">No stock items yet. Create them in Create Stock Item or from a GRN.</td></tr>'}</tbody></table></div>`;
+  if (F.stkI) return viewStockItem(F.stkI);
+  const q = (F.stq || '').trim().toLowerCase(), nm = (col, id) => D[col].get(id)?.name || '';
+  const list = [...D.inv_items.values()].filter(x => !q || [x.name, x.part, x.code, nm('inv_brands', x.brand), nm('inv_cats', x.cat), nm('inv_subs', x.sub)].join(' ').toLowerCase().includes(q)).sort((a, b) => String(a.part).localeCompare(String(b.part)));
+  const P = pg(list, 'stklist', 50);
+  const body = P.items.map(x => `<tr class="clk" data-act="stkOpen" data-id="${esc(x.id)}" tabindex="0" title="Show in / out details"><td class="mono">${esc(x.part)}</td><td class="wrap"><b>${esc(x.name)}</b></td><td>${esc(nm('inv_brands', x.brand))}</td><td>${esc(nm('inv_cats', x.cat))}</td><td>${esc(nm('inv_subs', x.sub))}</td></tr>`).join('');
+  return `<div class="head"><div><h1>Stock List</h1><p class="sub">${list.length} stock items · click one to see month-wise in, out and closing stock</p></div>${XB('xStock')}</div>
+  <div class="bar sfb"><label class="sf"><span>Search</span><input id="stq" data-f="stq" type="search" placeholder="Product, part no, brand, category" value="${esc(F.stq || '')}" autocomplete="off"></label></div>
+  <div class="tw"><table><thead><tr><th>Part no</th><th>Product</th><th>Brand</th><th>Category</th><th>Sub category</th></tr></thead><tbody>${body || '<tr><td colspan="5" class="empty">No stock items yet. Create them in Create Stock Item or from a GRN.</td></tr>'}</tbody></table></div>${P.html}`;
 }
 // update the computed parts of a form without redrawing it (keeps the cursor where it is)
 function matRecalc(m){
@@ -1541,6 +1584,12 @@ const MATACT = {
   spAll:t => { F.spall = !F.spall; forceRender = true; render(); },
   dcTy:t => { F.dcty = t.dataset.t; forceRender = true; render(); },
   matPrint:t => printDoc(t.dataset.m, t.dataset.id),
+  stkOpen:t => { F.stkI = t.dataset.id; F.stkM = null; F.stkY = fyStartY(); forceRender = true; render(); window.scrollTo(0, 0); },
+  stkBack:() => { F.stkI = ''; F.stkM = null; forceRender = true; render(); },
+  stkY:t => { F.stkY = (F.stkY || fyStartY()) + (+t.dataset.d); F.stkM = null; forceRender = true; render(); },
+  stkMon:t => { F.stkM = t.dataset.i === '' ? null : +t.dataset.i; forceRender = true; render(); window.scrollTo(0, 0); },
+  stkDoc:t => { F.stkRet = {i:F.stkI, m:F.stkM, y:F.stkY}; ACT.matEdit(t); },
+  stkRet:() => { const r = F.stkRet; F.stkRet = null; if (!r) return; F.stkI = r.i; F.stkM = r.m; F.stkY = r.y; ['mi','dc','rn','ps'].forEach(k => { if (F[k] && F[k].id) F[k] = null; }); ACT.nav({dataset:{k:'inv_stock', keep:'1'}}); },
   matCancel:t => { const m = t.dataset.m; F[m] = null; ACT.nav({dataset:{k:m === 'mi' ? 'mat_in' : m === 'dc' ? 'mat_dc' : m === 'ps' ? 'mat_ps' : 'mat_rn'}}); },
   matEdit:t => { const m = t.dataset.m, d = D[MATCOL[m]].get(t.dataset.id); if (!d) return; F[m] = JSON.parse(JSON.stringify(d)); (F[m].lines || []).forEach(l => { l.rateTyped = 1; l.gstTouched = 1; }); F.justSaved = ''; ACT.nav({dataset:{k:m === 'mi' ? 'mat_in_new' : m === 'rn' ? 'rn_new' : m === 'ps' ? 'ps_new' : (dcKind(d) === 'dc' ? 'dc_new' : 'rdc_new')}}); },
   matDel:async t => { const m = t.dataset.m, col = MATCOL[m], d = D[col].get(t.dataset.id); if (!d) return;
@@ -1983,7 +2032,7 @@ function render(){
     ${nav.map(n => n[0] === 'create' ? `<button class="nav ${S.view === 'create' ? 'on' : ''}" data-act="toggleCreate" aria-expanded="${S.createOpen}">${ico('create')}Create<span class="chev">${S.createOpen ? '▲' : '▼'}</span></button>${!S.createOpen ? '' : (isAdm() ? ['Area','Sub Admin','Manager','Executive'] : ['Area','Manager','Executive']).map(r => `<button class="nav navc ${S.view === 'create' && F.cr === r ? 'on' : ''}" data-act="nav" data-k="create" data-role="${r}">${r}</button>`).join('')}` : `<button class="nav ${S.view === n[0] ? 'on' : ''}" data-act="nav" data-k="${n[0]}">${ico(n[0])}${n[1]}${n[0] === 'chat' && chatUnread() ? `<span class="cnt chc2" style="background:#12a594;margin-left:auto" title="Unread messages">${chatUnread()}</span>` : ''}${n[0] === 'outstanding' && isTop() && missedN ? `<span class="cnt" title="Expected date missed">${missedN}</span>` : ''}</button>`).join('')}
     </aside>
     <main class="main" id="main"><div class="mtop"><button class="tg" data-act="toggleSide" aria-label="${S.sideHidden ? 'Show menu' : 'Hide menu'}" aria-expanded="${!S.sideHidden}" title="${S.sideHidden ? 'Show menu' : 'Hide menu'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><button class="tgh" data-act="toggleSide" aria-label="${S.sideHidden ? 'Show menu' : 'Hide menu'}"><span class="tga" aria-hidden="true">◀</span><span class="tgt">Hide / Unhide</span></button>
-  <div class="prof"><button class="av" data-act="myProfile" aria-label="Open my profile" title="My profile">${esc(me().name.trim().slice(0,1).toUpperCase())}</button><div class="pn"><b>${esc(me().name)}</b><small>${esc(me().role)}</small></div><button class="btn sm lo" data-act="logout">Log out</button></div></div>${me().mustChange && isAdm() ? '<div class="note bad" style="margin-bottom:14px">You are using a default password. <button class="btn sm" data-act="profile">Change password now</button></div>' : ''}${Store.mode === 'local' ? '<div class="note info" style="margin-bottom:14px">Local mode: data is saved only in this browser. Open the published link to share data with your team.</div>' : ''}${cur[2]()}</main></div>`;
+  <div class="prof"><button class="av" data-act="myProfile" aria-label="Open my profile" title="My profile">${esc(me().name.trim().slice(0,1).toUpperCase())}</button><div class="pn"><b>${esc(me().name)}</b><small>${esc(me().role)}</small></div><button class="btn sm lo" data-act="logout">Log out</button></div></div>${me().mustChange && isAdm() ? '<div class="note bad" style="margin-bottom:14px">You are using a default password. <button class="btn sm" data-act="profile">Change password now</button></div>' : ''}${Store.mode === 'local' ? '<div class="note info" style="margin-bottom:14px">Local mode: data is saved only in this browser. Open the published link to share data with your team.</div>' : ''}${F.stkRet && /_new$/.test(S.view) ? `<div style="margin-bottom:10px"><button class="btn sm" data-act="stkRet">← Back to stock ${esc(D.inv_items.get(F.stkRet.i)?.name || '')}</button></div>` : ''}${cur[2]()}</main></div>`;
   const m2 = $('#main'); if (m2) m2.scrollTop = st;
   if (aid){ const el = document.getElementById(aid); if (el){ el.focus(); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch(e){} } }
   if (S.drawer) renderDrawer(true);
@@ -2492,8 +2541,9 @@ const XACT2 = {
   xClosing:() => { const st = stockMap(); const rows = [...D.inv_items.values()].map(x => ({x, s:st.get(x.id) || {q:0, v:0, rate:0}})).filter(r => r.s.q > 0 || F.csall).sort((a, b) => String(a.x.part).localeCompare(String(b.x.part)));
     return exportSheet('Closing_Stock_' + TODAY, 'Closing Stock', ['Part no','Stock item','Category','Sub category','Brand','Company','Closing qty','Unit','Rate / piece','Taxable value'],
       rows.map(({x, s}) => [x.part, x.name, xnm('inv_cats', x.cat), xnm('inv_subs', x.sub), xnm('inv_brands', x.brand), x.comp ? compOf(x.comp) : '', s.q, D.inv_units.get(x.unit)?.unit || '', r2(s.q > 0 ? s.v / s.q : s.rate), r2(s.v)]), [10,36,18,18,18,10,12,8,14,16]); },
-  xStock:() => { const st = stockMap(); return exportSheet('Stock_List_' + TODAY, 'Stock List', ['Part no','Product','Quantity','Unit','Taxable value'],
-    [...D.inv_items.values()].sort((a, b) => String(a.part).localeCompare(String(b.part))).map(x => { const s = st.get(x.id) || {q:0, v:0}; return [x.part, x.name, s.q, D.inv_units.get(x.unit)?.unit || '', r2(s.v)]; }), [10,40,12,8,16]); },
+  xStock:() => { const nm = (col, id) => D[col].get(id)?.name || ''; if (F.stkI){ const x = D.inv_items.get(F.stkI), L = itemMoves(F.stkI); let q = 0, v = 0; return exportSheet('Stock_' + (x?.part || '') + '_' + TODAY, 'Stock vouchers', ['Date','Particulars','Voucher type','Voucher no','In qty','In value','Out qty','Out value','Closing qty','Closing value'], L.map(r => { q += r.inQ - r.outQ; v += r.inV - r.outV; return [r.date, r.party, r.type, r.no, r.inQ || '', r.inV ? r2(r.inV) : '', r.outQ || '', r.outV ? r2(r.outV) : '', r2(q), r2(v)]; }), [12,36,18,16,10,14,10,14,12,14]); }
+    return exportSheet('Stock_List_' + TODAY, 'Stock List', ['Part no','Product','Brand','Category','Sub category'],
+    [...D.inv_items.values()].sort((a, b) => String(a.part).localeCompare(String(b.part))).map(x => [x.part, x.name, nm('inv_brands', x.brand), nm('inv_cats', x.cat), nm('inv_subs', x.sub)]), [10,40,18,18,18]); },
   xItems:() => exportSheet('Stock_Items', 'Stock Items', ['Part no','Stock name','Product code','Company','Brand','Category','Sub category','Unit','HSN','GST %'],
     [...D.inv_items.values()].sort((a, b) => String(a.part).localeCompare(String(b.part))).map(x => [x.part, x.name, x.code || '', x.comp ? compOf(x.comp) : '', xnm('inv_brands', x.brand), xnm('inv_cats', x.cat), xnm('inv_subs', x.sub), D.inv_units.get(x.unit)?.unit || '', x.hsn || '', D.inv_gst.get(x.gst)?.rate ?? '']), [10,36,16,10,18,18,18,8,12,8]),
   xMaster:t => { const k = t.dataset.k, M = INVM[k]; return exportSheet(M.title.replace(/\s+/g, '_'), M.title.slice(0, 31), k === 'sub' ? ['Category', 'Sub category', 'Stock items'] : [M.title, 'Stock items'],
@@ -2523,7 +2573,7 @@ async function exportX(){
 
 /* ---------- events ---------- */
 const ACT = {
-  nav:t => { S.editRow = null; S.view = t.dataset.k; if (t.dataset.role){ F.cr = t.dataset.role; createMsg = ''; S.createOpen = true; } closeDrawer(); forceRender = true; render(); },
+  nav:t => { S.editRow = null; if (t.dataset.k === 'inv_stock' && !t.dataset.keep){ F.stkI = ''; F.stkM = null; } if (!t.dataset.keep && !/_new$/.test(t.dataset.k)) F.stkRet = null; S.view = t.dataset.k; if (t.dataset.role){ F.cr = t.dataset.role; createMsg = ''; S.createOpen = true; } closeDrawer(); forceRender = true; render(); },
   billDelAll:() => { if (!isAdm()) return; openModal(`<h2>Delete all bill details?</h2><p>This permanently deletes all <b>${D.billing.size}</b> billing rows for every area. You can import them again from Excel afterwards. This cannot be undone.</p><div class="acts"><button class="btn" data-act="closeModal">No</button><button class="btn dng" data-act="billDelAllYes">Yes, delete all</button></div>`); },
   billDelAllYes:async t => { if (!isAdm()) return; t.disabled = true; const n = D.billing.size; const ok = await Store.delAll('billing'); if (ok) await logAct('Billing delete all', n + ' billing rows deleted'); closeModal(); forceRender = true; render(); },
   addBill:() => { if (canBill()) billModal(); },
@@ -2694,6 +2744,7 @@ document.addEventListener('paste', async ev => {
   ev.preventDefault(); const f = it.getAsFile(); if (!f) return;
   try { S.chatImg = await compressImg(f); chatPrev(); $('#chtxt')?.focus(); } catch(e){}
 });
+document.addEventListener('keydown', ev => { const r = ev.target; if (ev.key === 'Enter' && r.tagName === 'TR' && r.classList.contains('clk')){ ev.preventDefault(); r.click(); } });
 document.addEventListener('keydown', ev => { if (ev.target.id === 'chtxt' && ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); ACT.chatSend(); return; }
   if (ev.key === 'Escape'){ if (document.getElementById('lb')) ACT.closeLb(); else if ($('#ov').classList.contains('show')) closeModal(); else if (S.drawer) closeDrawer(); } });
 document.addEventListener('input', ev => { const t = ev.target; if (t.dataset.f){ S.editRow = null; F[t.dataset.f] = t.value; F.page = 1; F.pgs = {}; const id = t.id, pos = t.selectionStart; render(); if (id){ const el = document.getElementById(id); if (el){ el.focus(); try { const n = (pos == null ? el.value.length : pos); el.setSelectionRange(n, n); } catch(e){} } } } });
