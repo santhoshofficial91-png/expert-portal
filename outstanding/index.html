@@ -1068,7 +1068,6 @@ function dcFormHTML(){
     <div class="igrid">
       <label class="f">${k === 'dc' ? 'DC no' : 'RDC no'} *${mInp('dc', 'no', d.no)}</label>
       <label class="f">Date *${mInp('dc', 'date', d.date, {type:'date'})}</label>
-      <label class="f">Company *<select class="mdi" id="dc_comp" data-m="dc" data-k="comp">${COMPS.map(c => `<option ${compOf(d.comp) === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
       <label class="f">Customer *${mInp('dc', 'party', d.party, {list:'mat_parties'})}</label>
       <label class="f">Executive ${k === 'rdc' ? '*' : ''}<select class="mdi" id="dc_exec" data-m="dc" data-k="exec"><option value="">Select executive</option>${exs.map(u => `<option value="${esc(u.id)}" ${d.exec === u.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
       <label class="f">Manager<select class="mdi" id="dc_mgr" data-m="dc" data-k="mgr"><option value="">Select manager</option>${mgs.map(u => `<option value="${esc(u.id)}" ${d.mgr === u.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
@@ -1092,7 +1091,7 @@ function dcFormHTML(){
 function viewMatOut(m, mode){
   const col = MATCOL[m];
   if (mode === 'dc' || mode === 'rdc'){
-    if (!F.dc || (!F.dc.id && dcKind(F.dc) !== mode)) F.dc = {kind:mode, no:nextNo('mat_dc', mode === 'dc' ? 'DC/' : 'RDC/'), date:TODAY, comp:'Excoso', party:'', exec:'', mgr:'', remarks:'', lines:[blankLine('dc')]};
+    if (!F.dc || (!F.dc.id && dcKind(F.dc) !== mode)) F.dc = {kind:mode, no:nextNo('mat_dc', mode === 'dc' ? 'DC/' : 'RDC/'), date:TODAY, comp:'Expert', party:'', exec:'', mgr:'', remarks:'', lines:[blankLine('dc')]};
     const k = dcKind(F.dc);
     return `<div class="head"><div><h1>${F.dc.id ? 'Edit ' : 'Create '}${k === 'dc' ? 'DC' : 'Returnable DC'}</h1><p class="sub">${k === 'dc' ? 'Stock going out (not samples)' : 'Samples an executive takes to a customer and brings back'}</p></div><button class="btn" data-act="go" data-k="mat_dc">DC List</button></div>${dcFormHTML()}`;
   }
@@ -1199,7 +1198,8 @@ function docHTML(M){
   </div></div></body></html>`;
 }
 function docModel(m, d){
-  const cid = compOf(d.comp), co = COINFO[cid] || COINFO.Excoso, it = id => D.inv_items.get(id) || {};
+  // the company printed is fixed per document: GRN in Branditude, DC / Returnable DC / Receipt Note in Expert
+  const cid = m === 'mi' ? 'Excoso' : 'Expert', co = COINFO[cid], it = id => D.inv_items.get(id) || {};
   const coBlock = {title:co.name, logo:cid === 'Excoso' ? BRLOGO : '', short:cid === 'Expert' ? 'EXPERT' : '', pan:co.pan, lines:[...co.lines, co.mob ? 'Mob : ' + co.mob : '', 'GSTIN/UIN: ' + co.gstin, `State Name : ${co.state}, Code : ${co.code}`, co.cin ? 'CIN: ' + co.cin : '', co.email ? 'E-Mail : ' + co.email : ''].filter(Boolean)};
   const us = lab => ({label:lab, title:co.name, lines:[...co.lines, co.mob ? 'Mob : ' + co.mob : '', co.email ? 'e-mail : ' + co.email : '', 'GSTIN/UIN : ' + co.gstin, `State Name : ${co.state}, Code : ${co.code}`].filter(Boolean)});
   const stName = g => { const c = String(g || '').slice(0, 2); return STCODE[c] ? `${STCODE[c]}, Code : ${c}` : ''; };
@@ -1380,7 +1380,8 @@ const MATACT = {
     const doc = {...d, id, lines:clean, by:d.by || S.me, at:d.at || nowISO(), editedBy:d.id ? S.me : undefined, editedAt:d.id ? nowISO() : undefined};
     delete doc.aiTotal; if (m === 'mi'){ const T = miTotals(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; doc.igst = T.inter; doc.comp = compOf(doc.comp); if (!doc.grnNo) doc.grnNo = nextNo('mat_in', 'GRN/', 'grnNo');
       const sm = (SUPL || []).find(x => (doc.supGst && x.gstin === doc.supGst) || normName(x.name) === normName(doc.supName)), sp = sm && sm.addr1 ? sm : (d.ns && d.ns.addr1 ? d.ns : sm); if (sp) doc.supAddr = {addr1:sp.addr1 || '', addr2:sp.addr2 || '', addr3:sp.addr3 || ''}; }
-    if (m === 'dc'){ doc.kind = dcKind(doc); doc.comp = compOf(doc.comp); }
+    if (m === 'dc'){ doc.kind = dcKind(doc); doc.comp = 'Expert'; }
+    if (m === 'rn') doc.comp = 'Expert';
     t.disabled = true;
     try {
       if (m === 'mi'){
