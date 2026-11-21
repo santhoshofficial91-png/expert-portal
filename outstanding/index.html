@@ -1230,14 +1230,15 @@ function printDoc(m, id){
 }
 function viewStock(){
   const st = stockMap(), q = (F.stq || '').trim().toLowerCase();
-  const list = [...st.entries()].map(([id, s]) => ({id, s, x:D.inv_items.get(id)})).filter(r => r.x && (!q || [r.x.name, r.x.part, r.x.code].join(' ').toLowerCase().includes(q))).sort((a, b) => a.x.name.localeCompare(b.x.name));
+  const Z = {q:0, v:0};  // every stock item shows, also those with nothing in stock
+  const list = [...D.inv_items.values()].map(x => ({id:x.id, s:st.get(x.id) || Z, x})).filter(r => !q || [r.x.name, r.x.part, r.x.code].join(' ').toLowerCase().includes(q)).sort((a, b) => String(a.x.part).localeCompare(String(b.x.part)));
   const tq = list.reduce((a, r) => a + r.s.q, 0), tv = list.reduce((a, r) => a + r.s.v, 0);
   const unit = x => D.inv_units.get(x.unit)?.unit || '';
-  const body = list.map(({s, x}) => `<tr><td class="mono">${esc(x.part)}</td><td class="wrap">${esc(x.name)}</td><td class="r num">${qtyF(s.q)} ${esc(unit(x))}</td><td class="r num">${inr(s.v)}</td></tr>`).join('');
+  const body = list.map(({s, x}) => `<tr ${s.q ? '' : 'style="opacity:.55"'}><td class="mono">${esc(x.part)}</td><td class="wrap">${esc(x.name)}</td><td class="r num">${qtyF(s.q)} ${esc(unit(x))}</td><td class="r num">${inr(s.v)}</td></tr>`).join('');
   return `<div class="head"><div><h1>Stock List</h1><p class="sub">Closing stock = GRN − Delivery Challan + Receipt Note</p></div></div>
   <div class="bar sfb"><label class="sf"><span>Search</span><input id="stq" data-f="stq" type="search" placeholder="Product, part no, code" value="${esc(F.stq || '')}" autocomplete="off"></label></div>
   <h2 style="margin:12px 0 6px">Closing Stock</h2>
-  <div class="tw"><table><thead><tr class="ttop"><td></td><td class="r">Total (${list.length})</td><td class="r num">${qtyF(tq)}</td><td class="r num">${inr(tv)}</td></tr><tr><th>Part no</th><th>Product</th><th class="r">Quantity</th><th class="r">Taxable value</th></tr></thead><tbody>${body || '<tr><td colspan="4" class="empty">No stock yet. Save a GRN and it shows here.</td></tr>'}</tbody></table></div>`;
+  <div class="tw"><table><thead><tr class="ttop"><td></td><td class="r">Total (${list.length})</td><td class="r num">${qtyF(tq)}</td><td class="r num">${inr(tv)}</td></tr><tr><th>Part no</th><th>Product</th><th class="r">Quantity</th><th class="r">Taxable value</th></tr></thead><tbody>${body || '<tr><td colspan="4" class="empty">No stock items yet. Create them in Create Stock Item or from a GRN.</td></tr>'}</tbody></table></div>`;
 }
 // update the computed parts of a form without redrawing it (keeps the cursor where it is)
 function matRecalc(m){
