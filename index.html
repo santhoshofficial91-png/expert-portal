@@ -246,7 +246,7 @@ textarea{width:100%;padding:10px 12px;border:1px solid #cbd2dc;border-radius:8px
 <script>
 const SB_URL = 'https://ogvltuavclcgbxlyxkhs.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ndmx0dWF2Y2xjZ2J4bHl4a2hzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3MjY4MDAsImV4cCI6MjExMDMwMjgwMH0.M8toXkbQui8TjCacIobkiyew9O-6IrqgZTTzIkQV8Sg';
-const BUILD = '20261121143402';   // set by build.sh; makes browsers fetch fresh module pages after each update
+const BUILD = '20261121144130';   // set by build.sh; makes browsers fetch fresh module pages after each update
 const MODULES = {
   out: {key:'outstanding', title:'Customer Outstanding', path:'outstanding/'},
   pay: {key:'payments', title:'Payment Request', path:'payments/'}
@@ -349,7 +349,7 @@ const GICON = {
 const OUT_BASE = [{k:'dashboard',label:'Dashboard'},{k:'outstanding',label:'Outstanding'},{k:'billing',label:'Billing'},{k:'collection',label:'Collection'},{k:'chat',label:'Chat'},{k:'edits',label:'Edit History'},{k:'activity',label:'Activity log'}];
 const OUT_INV = [{k:'inv_stock',label:'Stock List'},{k:'inv_item',label:'Create Stock Item'},{k:'inv_brand',label:'Brand'},{k:'inv_cat',label:'Category'},{k:'inv_sub',label:'Sub Category'},{k:'inv_unit',label:'Units'},{k:'inv_gst',label:'GST Percentage'},{k:'mat_in_new',label:'Create GRN'},{k:'dc_new',label:'Create Delivery Challan'},{k:'rdc_new',label:'Create Returnable DC'},{k:'rn_new',label:'Create Receipt Note'},{k:'ps_new',label:'Create Physical Stock'},{k:'cls_stock',label:'Closing Stock Details'},{k:'mat_in',label:'GRN Register'},{k:'mat_dc',label:'Delivery Challan Register'},{k:'mat_rn',label:'Receipt Note Register'},{k:'mat_ps',label:'Physical Stock Register'},{k:'smp_pend',label:'Pending Samples'}];
 // menu shown before the Sales module has loaded once (it then sends its exact menu)
-const outFallback = () => { const adm = P && P.role === 'Admin', items = OUT_BASE.slice(); if (adm || (P && P.role === 'Sub Admin' && P.canAlert)) items.splice(1, 0, {k:'mail', label:'Send Payment Mail'}); if (adm || (P && P.canInv)) items.push(...OUT_INV); return items; };
+const outFallback = () => { const adm = P && P.role === 'Admin', items = OUT_BASE.slice(); if (adm || (P && P.role === 'Sub Admin' && P.canAlert)) items.splice(1, 0, {k:'mail', label:'Send Payment Mail'}); if (adm || (P && (P.role === 'Sub Admin' || P.role === 'Manager'))) items.splice(items.findIndex(i => i.k === 'collection') + 1, 0, {k:'cust_list', label:'Customer List'}); if (adm || (P && P.canInv)) items.push(...OUT_INV); return items; };
 const RENAME = {outstanding:{outstanding:'Customer Outstanding'}};  // Purchase labels are set by the module (they depend on the role)
 const MOD_NAV = {};          // module key -> {items, view, role}
 let openG = {}, subOpen = {}, frameMod = null, frameReady = false, pendingGo = null;
