@@ -61,7 +61,7 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--in
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
 .wacard summary{cursor:pointer;list-style:none}.wacard summary::-webkit-details-marker{display:none}.wacard summary::before{content:'▸ ';color:#25a244}.wacard[open] summary::before{content:'▾ '}.watab{width:auto;min-width:100%;border-collapse:collapse}.watab th,.watab td{padding:7px 8px;white-space:nowrap}.watab thead th{white-space:normal;vertical-align:bottom}.watab th.c{max-width:90px}.watab td:first-child{max-width:150px;overflow:hidden;text-overflow:ellipsis}.watab td.c,.watab th.c{text-align:center}.wats{display:flex;flex-direction:column;line-height:1.25;font-size:12.5px}.wats span{color:#6b7280}
 .igrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px 14px}.igrid .f{margin:0}
-.mtab td{padding:4px 4px;vertical-align:top}.mdet{margin-top:10px;border:1px solid var(--line,#ddd);border-radius:10px;padding:8px 12px}.mdet summary{cursor:pointer;font-weight:700}.nowrap{white-space:nowrap}tr.pon td{background:#ecfdf5}.pdc tr.pon td{background:#ecfdf5}.sgrp td{background:#eef2ff;font-weight:800;color:#3730a3}.nirow td{background:#fffbeb}.nibox{background:#fffbeb;border:1px solid #f5d77a;border-radius:10px;padding:10px 12px}.ntag{background:#fde68a;color:#7a4b00;border-radius:6px;padding:0 6px;font-size:11px;font-weight:800;margin-left:4px}.mtab input,.mtab select{width:100%;min-width:72px;padding:6px 7px;font:inherit}.mtab td:first-child input{min-width:200px}.mtab td:nth-child(2) select{min-width:220px}.msum{width:100%}.msum td{padding:3px 6px;border:0}.msum .mtot td{font-weight:800;border-top:1px solid var(--line,#ddd)}.mai{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:6px 0 10px}.mtabs{display:flex;gap:6px;margin:4px 0 10px}.mtabs button{border:1px solid var(--line,#ddd);background:transparent;border-radius:8px;padding:8px 14px;font:inherit;font-weight:700;cursor:pointer}.mtabs button.on{background:#4f46e5;color:#fff;border-color:#4f46e5}
+.mtab td{padding:4px 4px;vertical-align:middle}.mtab th,.mtab td{text-align:center}.mtab th:first-child,.mtab td:first-child{text-align:left}.mtab input{text-align:center}.mtab td:first-child input{text-align:left}.mdet{margin-top:10px;border:1px solid var(--line,#ddd);border-radius:10px;padding:8px 12px}.mdet summary{cursor:pointer;font-weight:700}.nowrap{white-space:nowrap}tr.pon td{background:#ecfdf5}.pdc tr.pon td{background:#ecfdf5}.sgrp td{background:#eef2ff;font-weight:800;color:#3730a3}.nirow td{background:#fffbeb}.nibox{background:#fffbeb;border:1px solid #f5d77a;border-radius:10px;padding:10px 12px}.ntag{background:#fde68a;color:#7a4b00;border-radius:6px;padding:0 6px;font-size:11px;font-weight:800;margin-left:4px}.mtab input,.mtab select{width:100%;min-width:72px;padding:6px 7px;font:inherit}.mtab td:first-child input{min-width:200px}.mtab td:nth-child(2) select{min-width:220px}.msum{width:100%}.msum td{padding:3px 6px;border:0}.msum .mtot td{font-weight:800;border-top:1px solid var(--line,#ddd)}.mai{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:6px 0 10px}.mtabs{display:flex;gap:6px;margin:4px 0 10px}.mtabs button{border:1px solid var(--line,#ddd);background:transparent;border-radius:8px;padding:8px 14px;font:inherit;font-weight:700;cursor:pointer}.mtabs button.on{background:#4f46e5;color:#fff;border-color:#4f46e5}
 .ttop td{font-weight:800;color:#4f46e5;background:transparent;border-bottom:0;padding-top:4px;padding-bottom:4px;white-space:nowrap}
 .mprev{border:1px solid var(--line);border-radius:8px;padding:16px 18px;background:#fff;color:#000;font-family:Verdana,Arial,sans-serif;font-size:13px;max-width:820px;overflow:auto}.mprev table th,.mprev table td{white-space:nowrap}
 .wamgr td{font-weight:800;color:#0f1b2d;background:#eef1f6}.wagh{text-align:center;border-bottom:2px solid #25a244}.wagh .mut{font-weight:500;font-size:12px}
@@ -376,7 +376,7 @@ async function hashPw(pw, salt){
 }
 
 /* ---------- storage (shared db when available, local fallback) ---------- */
-const COLS_DB = ['users','entries','followups','payments','activity','edits','meta','chats','billing','wasent','contacts','mailthread','inv_items','inv_brands','inv_cats','inv_subs','inv_units','inv_gst','mat_in','mat_dc','mat_rn','mat_map'];   // contacts: customer To/CC; mailthread: payment mail thread per customer (written by the send-mail service)   // wasent: last WhatsApp alert sent per person + type
+const COLS_DB = ['users','entries','followups','payments','activity','edits','meta','chats','billing','wasent','contacts','mailthread','inv_items','inv_brands','inv_cats','inv_subs','inv_units','inv_gst','mat_in','mat_dc','mat_rn','mat_map','cust_addr'];   // contacts: customer To/CC; mailthread: payment mail thread per customer (written by the send-mail service)   // wasent: last WhatsApp alert sent per person + type
 const D = {}; COLS_DB.forEach(c => D[c] = new Map());
 const hasOut = u => !u || !Array.isArray(u.mods) || u.mods.includes('out'); // Payment Request-only people are not Customer Outstanding users
 const ALLU = new Map();   // every user doc (Sales and Purchase), used only by the Create pages
@@ -841,7 +841,10 @@ function stockMap(skip){
 // how much of each DC line has come back
 function dcBack(dcId, skip){ const b = {}; D.mat_rn.forEach(r => { if (r.dc !== dcId || r.id === skip) return; (r.lines || []).forEach(l => { b[l.item] = (b[l.item] || 0) + (+l.qty || 0); }); }); return b; }
 function dcPending(d, skip){ const b = dcBack(d.id, skip); return (d.lines || []).map(l => ({...l, back: b[l.item] || 0, left: r2((+l.qty || 0) - (b[l.item] || 0))})); }
-const nextNo = (col, pre, f = 'no') => { let m = 0; D[col].forEach(d => { const k = String(d[f] || '').match(new RegExp('^' + pre.replace('/', '\\/') + '(\\d+)$')); if (k) m = Math.max(m, +k[1]); }); return pre + String(m + 1).padStart(4, '0'); };
+const fyOf = dt => { const d = new Date(dt || TODAY), y = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1; return String(y % 100).padStart(2, '0') + String((y + 1) % 100).padStart(2, '0'); };
+// voucher numbers: GRN/001/2627, DC/001/2627, RDC/001/2627, RN/001/2627 (counting again from 001 each financial year)
+const vno = (col, pre, f = 'no', dt) => { const fy = fyOf(dt), re = new RegExp('^' + pre + '/(\\d+)/' + fy + '$'); let m = 0; D[col].forEach(d => { const k = String(d[f] || '').match(re); if (k) m = Math.max(m, +k[1]); }); return `${pre}/${String(m + 1).padStart(3, '0')}/${fy}`; };
+const isAutoNo = v => /^[A-Z]+\/\d{3,}\/\d{4}$/.test(String(v || ''));
 function miTotals(d){
   const by = {}; let tx = 0;
   (d.lines || []).forEach(l => { const t = +l.taxable || 0, g = +l.gst || 0; tx += t; by[g] = (by[g] || 0) + t; });
@@ -964,6 +967,18 @@ const pendDCs = party => [...D.mat_dc.values()].filter(x => dcKind(x) === 'rdc' 
 const dcParties = () => [...new Set(pendDCs('').map(x => x.party))].sort((a, b) => a.localeCompare(b));
 const exName = id => D.users.get(id)?.name || '';
 const daysOut = d => Math.max(0, Math.round((new Date(TODAY) - new Date(d)) / 864e5));
+function viewSamplesPending(){
+  const q = (F.spq || '').trim().toLowerCase(), ex = F.spex || '', all = !!F.spall, M = new Map();
+  sampleRows().forEach(r => { const k = r.party + '|' + r.exec + '|' + r.item; const o = M.get(k) || {party:r.party, exec:r.exec, item:r.item, outQ:0, inQ:0, left:0, leftV:0, dcs:new Set()}; o.outQ += r.outQ; o.inQ += r.inQ; o.left += r.left; o.leftV += r.left * r.rate; if (r.left > 0) o.dcs.add(r.dc.no); M.set(k, o); });
+  const exs = [...new Set([...M.values()].map(r => r.exec))].map(id => [id, exName(id)]).sort((a, b) => a[1].localeCompare(b[1]));
+  const rows = [...M.values()].filter(r => (all || r.left > 0) && (!ex || r.exec === ex) && (!q || [r.party, exName(r.exec), itemLbl(r.item), ...r.dcs].join(' ').toLowerCase().includes(q)))
+    .sort((a, b) => exName(a.exec).localeCompare(exName(b.exec)) || a.party.localeCompare(b.party));
+  const T = k => rows.reduce((a, r) => a + r[k], 0);
+  const body = rows.map(r => `<tr><td class="wrap">${esc(r.party)}</td><td>${esc(exName(r.exec))}</td><td class="wrap">${esc(itemLbl(r.item))}</td><td class="mono wrap">${esc([...r.dcs].join(', '))}</td><td class="r num">${qtyF(r.outQ)}</td><td class="r num">${qtyF(r.inQ)}</td><td class="r num" ${r.left > 0 ? 'style="color:#b42318;font-weight:700"' : ''}>${qtyF(r.left)}</td><td class="r num">${inr(r.leftV)}</td></tr>`).join('');
+  return `<div class="head"><div><h1>Pending Samples</h1><p class="sub">Returnable samples with customers: out, back and still pending, by customer, executive and item. The value is at the rate the sample went out.</p></div></div>
+  <div class="bar sfb"><label class="sf"><span>Search</span><input id="spq" data-f="spq" type="search" placeholder="Customer, executive, item, RDC no" value="${esc(F.spq || '')}" autocomplete="off"></label><label class="sf"><span>Executive</span><select data-f="spex"><option value="">All executives</option>${exs.map(([id, n]) => `<option value="${esc(id)}" ${ex === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label><button class="btn sm" style="align-self:end;margin-bottom:6px" data-act="spAll" aria-pressed="${all}">${all ? 'Hide fully returned' : 'Show fully returned too'}</button></div>
+  <div class="tw"><table><thead><tr class="ttop"><td colspan="3"></td><td class="r">Total (${rows.length})</td><td class="r num">${qtyF(T('outQ'))}</td><td class="r num">${qtyF(T('inQ'))}</td><td class="r num">${qtyF(T('left'))}</td><td class="r num">${inr(T('leftV'))}</td></tr><tr><th>Customer</th><th>Executive</th><th>Stock item</th><th>Pending RDC</th><th class="r">Out</th><th class="r">In</th><th class="r">Pending</th><th class="r">Pending value</th></tr></thead><tbody>${body || '<tr><td colspan="8" class="empty">No samples pending. Every returnable DC has come back.</td></tr>'}</tbody></table></div>`;
+}
 function rnFormHTML(){
   const d = F.rn, sel = D.mat_dc.get(d.dc), pend = sel ? dcPending(sel, d.id) : [];
   const list = d.party ? pendDCs(d.party).concat(sel && !pendDCs(d.party).includes(sel) ? [sel] : []) : [];
@@ -992,29 +1007,6 @@ function sampleRows(){
   D.mat_dc.forEach(x => dcKind(x) === 'rdc' && dcPending(x).forEach(l => out.push({dc:x, l, exec:x.exec, party:x.party, item:l.item, outQ:+l.qty || 0, inQ:l.back, left:l.left, rate:+l.rate || 0})));
   return out;
 }
-function viewSamplesPending(){
-  const q = (F.spq || '').trim().toLowerCase(), ex = F.spex || '';
-  const rows = sampleRows().filter(r => r.left > 0 && (!ex || r.exec === ex) && (!q || [exName(r.exec), r.party, r.dc.no, itemLbl(r.item)].join(' ').toLowerCase().includes(q)))
-    .sort((a, b) => exName(a.exec).localeCompare(exName(b.exec)) || a.party.localeCompare(b.party) || String(a.dc.date).localeCompare(String(b.dc.date)));
-  const tq = rows.reduce((a, r) => a + r.left, 0), tv = rows.reduce((a, r) => a + r.left * r.rate, 0);
-  const exs = [...new Set(sampleRows().filter(r => r.left > 0).map(r => r.exec))].map(id => [id, exName(id)]).sort((a, b) => a[1].localeCompare(b[1]));
-  let last = '';
-  const body = rows.map(r => { const g = exName(r.exec) || '—', head = g !== last; last = g;
-    return `${head ? `<tr class="sgrp"><td colspan="8">${esc(g)} · ${qtyF(rows.filter(x => exName(x.exec) === exName(r.exec)).reduce((a, x) => a + x.left, 0))} pending</td></tr>` : ''}<tr><td>${esc(g)}</td><td class="wrap">${esc(r.party)}</td><td class="mono">${esc(r.dc.no)}</td><td>${esc(fmtD(r.dc.date))}</td><td class="r num">${daysOut(r.dc.date)}</td><td class="wrap">${esc(itemLbl(r.item))}</td><td class="r num" style="color:#b42318;font-weight:700">${qtyF(r.left)}</td><td class="r num">${inr(r.left * r.rate)}</td></tr>`; }).join('');
-  return `<div class="head"><div><h1>Pending Samples</h1><p class="sub">Samples still with customers, executive-wise</p></div></div>
-  <div class="bar sfb"><label class="sf"><span>Search</span><input id="spq" data-f="spq" type="search" placeholder="Executive, customer, DC, item" value="${esc(F.spq || '')}" autocomplete="off"></label><label class="sf"><span>Executive</span><select data-f="spex"><option value="">All executives</option>${exs.map(([id, n]) => `<option value="${esc(id)}" ${ex === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label></div>
-  <div class="tw"><table><thead><tr class="ttop"><td colspan="5"></td><td class="r">Total (${rows.length})</td><td class="r num">${qtyF(tq)}</td><td class="r num">${inr(tv)}</td></tr><tr><th>Executive</th><th>Customer</th><th>DC no</th><th>DC date</th><th class="r">Days out</th><th>Stock item</th><th class="r">Pending qty</th><th class="r">Pending value</th></tr></thead><tbody>${body || '<tr><td colspan="8" class="empty">No samples pending. Every delivery challan has come back.</td></tr>'}</tbody></table></div>`;
-}
-function viewSampleIO(){
-  const q = (F.ioq || '').trim().toLowerCase(), M = new Map();
-  sampleRows().forEach(r => { const k = r.party + '|' + r.exec + '|' + r.item; const o = M.get(k) || {party:r.party, exec:r.exec, item:r.item, outQ:0, inQ:0, left:0, outV:0, inV:0}; o.outQ += r.outQ; o.inQ += r.inQ; o.left += r.left; o.outV += r.outQ * r.rate; o.inV += r.inQ * r.rate; M.set(k, o); });
-  const rows = [...M.values()].filter(r => !q || [r.party, exName(r.exec), itemLbl(r.item)].join(' ').toLowerCase().includes(q)).sort((a, b) => a.party.localeCompare(b.party) || exName(a.exec).localeCompare(exName(b.exec)));
-  const T = k => rows.reduce((a, r) => a + r[k], 0);
-  const body = rows.map(r => `<tr><td class="wrap">${esc(r.party)}</td><td>${esc(exName(r.exec))}</td><td class="wrap">${esc(itemLbl(r.item))}</td><td class="r num">${qtyF(r.outQ)}</td><td class="r num">${qtyF(r.inQ)}</td><td class="r num" ${r.left > 0 ? 'style="color:#b42318;font-weight:700"' : ''}>${qtyF(r.left)}</td><td class="r num">${inr(r.outV)}</td><td class="r num">${inr(r.inV)}</td><td class="r num">${inr(r.outV - r.inV)}</td></tr>`).join('');
-  return `<div class="head"><div><h1>Sample In &amp; Out</h1><p class="sub">For each customer and executive: how much went out, came back and is still pending</p></div></div>
-  <div class="bar sfb"><label class="sf"><span>Search</span><input id="ioq" data-f="ioq" type="search" placeholder="Customer, executive, item" value="${esc(F.ioq || '')}" autocomplete="off"></label></div>
-  <div class="tw"><table><thead><tr class="ttop"><td colspan="2"></td><td class="r">Total (${rows.length})</td><td class="r num">${qtyF(T('outQ'))}</td><td class="r num">${qtyF(T('inQ'))}</td><td class="r num">${qtyF(T('left'))}</td><td class="r num">${inr(T('outV'))}</td><td class="r num">${inr(T('inV'))}</td><td class="r num">${inr(T('outV') - T('inV'))}</td></tr><tr><th>Customer</th><th>Executive</th><th>Stock item</th><th class="r">Out</th><th class="r">In</th><th class="r">Pending</th><th class="r">Out value</th><th class="r">In value</th><th class="r">Pending value</th></tr></thead><tbody>${body || '<tr><td colspan="9" class="empty">No delivery challans yet.</td></tr>'}</tbody></table></div>`;
-}
 /* ---------- companies on our documents ---------- */
 const COINFO = {
   Excoso:{name:'BRANDITUDE CORPORATE PRIVATE LIMITED', lines:['Plot No.1,2,3,4, First Floor', 'Sree Mahalakshmi Nagar', 'Noombal, Chennai - 600077'], mob:'9994699776', gstin:'33AAHCB4086D1ZX', state:'Tamil Nadu', code:'33', cin:'U74999TN2017PTC118273', email:'sales@branditude.in', pan:'AAHCB4086D'},
@@ -1030,6 +1022,7 @@ function partyTeam(party){
   const ex = ownerOf(e), u = D.users.get(ex);
   return {area:e.sub || '', exec:ex || '', mgr:(u && u.managerId) || ''};
 }
+const custAddr = party => { const n = normName(party); if (!n) return null; const c = D.cust_addr.get(mapKey(party)); if (c) return c; const l = lastDcFor(party); return l && (l.addr1 || l.gstin) ? l : null; };
 const lastDcFor = party => [...D.mat_dc.values()].filter(x => normName(x.party) === normName(party)).sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))[0];
 const managers = () => [...D.users.values()].filter(u => u.role === 'Manager' && u.active !== false).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
@@ -1073,15 +1066,11 @@ function dcFormHTML(){
       <label class="f">Manager<select class="mdi" id="dc_mgr" data-m="dc" data-k="mgr"><option value="">Select manager</option>${mgs.map(u => `<option value="${esc(u.id)}" ${d.mgr === u.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
     </div>
     ${d.party ? `<p class="mut" style="margin:4px 0 0;font-size:12px">${team.area ? `Area ${esc(team.area)} · executive and manager picked from the area; you can change them.` : 'No invoice for this customer yet, so pick the executive and manager.'}</p>` : ''}
-    <details class="mdet" ${d.addr1 || d.gstin ? 'open' : ''}><summary>Customer address and other details (printed on the challan)</summary>
-    <div class="igrid" style="margin-top:6px">
+    <h3 style="margin:12px 0 4px;font-size:14px">Customer address <span class="mut" style="font-weight:400;font-size:12px">· fills from the customer's saved address; you can change it</span></h3>
+    <div class="igrid">
       <label class="f">Address line 1${mInp('dc', 'addr1', d.addr1)}</label><label class="f">Address line 2${mInp('dc', 'addr2', d.addr2)}</label><label class="f">Address line 3${mInp('dc', 'addr3', d.addr3)}</label>
-      <label class="f">Customer GSTIN${mInp('dc', 'gstin', d.gstin)}</label><label class="f">Contact${mInp('dc', 'contact', d.contact)}</label>
-      <label class="f">Mode / Terms of payment${mInp('dc', 'terms', d.terms)}</label><label class="f">Reference no &amp; date${mInp('dc', 'refNo', d.refNo)}</label><label class="f">Other references${mInp('dc', 'otherRef', d.otherRef)}</label>
-      <label class="f">Buyer's order no${mInp('dc', 'orderNo', d.orderNo)}</label><label class="f">Order dated${mInp('dc', 'orderDate', d.orderDate, {type:'date'})}</label><label class="f">Dispatch doc no${mInp('dc', 'dispDoc', d.dispDoc)}</label>
-      <label class="f">Dispatched through${mInp('dc', 'dispatch', d.dispatch)}</label><label class="f">Destination${mInp('dc', 'dest', d.dest)}</label><label class="f">Terms of delivery${mInp('dc', 'tod', d.tod)}</label>
-      <label class="f">Remarks${mInp('dc', 'remarks', d.remarks)}</label>
-    </div></details>
+      <label class="f">Customer GSTIN${mInp('dc', 'gstin', d.gstin)}</label>
+    </div>
     <datalist id="mat_parties">${matParties().map(s => `<option value="${esc(s)}">`).join('')}</datalist>
     <div class="tw" style="margin-top:10px"><table class="mtab"><thead><tr><th>Stock item *</th><th>Available</th><th class="r">Qty *</th><th class="r">Rate</th><th class="r">Value</th><th>Item note (printed)</th><th></th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="4" class="r"><b>Total value</b></td><td class="r num" id="dc_tot"><b>${inr(tot)}</b></td><td colspan="2"></td></tr></tfoot></table></div>
     <button class="btn" data-act="matAddL" data-m="dc" style="margin-top:8px">+ Add item</button>
@@ -1091,12 +1080,12 @@ function dcFormHTML(){
 function viewMatOut(m, mode){
   const col = MATCOL[m];
   if (mode === 'dc' || mode === 'rdc'){
-    if (!F.dc || (!F.dc.id && dcKind(F.dc) !== mode)) F.dc = {kind:mode, no:nextNo('mat_dc', mode === 'dc' ? 'DC/' : 'RDC/'), date:TODAY, comp:'Expert', party:'', exec:'', mgr:'', remarks:'', lines:[blankLine('dc')]};
+    if (!F.dc || (!F.dc.id && dcKind(F.dc) !== mode)) F.dc = {kind:mode, no:vno('mat_dc', mode === 'dc' ? 'DC' : 'RDC'), date:TODAY, comp:'Expert', party:'', exec:'', mgr:'', remarks:'', lines:[blankLine('dc')]};
     const k = dcKind(F.dc);
     return `<div class="head"><div><h1>${F.dc.id ? 'Edit ' : 'Create '}${k === 'dc' ? 'DC' : 'Returnable DC'}</h1><p class="sub">${k === 'dc' ? 'Stock going out (not samples)' : 'Samples an executive takes to a customer and brings back'}</p></div><button class="btn" data-act="go" data-k="mat_dc">DC List</button></div>${dcFormHTML()}`;
   }
   if (mode === 'new'){
-    if (!F.rn) F.rn = {no:nextNo('mat_rn', 'RN/'), date:TODAY, party:'', dc:'', remarks:'', lines:[]};
+    if (!F.rn) F.rn = {no:vno('mat_rn', 'RN'), date:TODAY, party:'', dc:'', remarks:'', lines:[]};
     return `<div class="head"><div><h1>${F.rn.id ? 'Edit' : 'Create'} Receipt Note</h1><p class="sub">Samples coming back from a customer, against a returnable DC</p></div><button class="btn" data-act="go" data-k="mat_rn">Receipt Note List</button></div>${rnFormHTML()}`;
   }
   const q = (F.moq || '').trim().toLowerCase(), ty = F.dcty || 'all', rows = [];
@@ -1215,7 +1204,7 @@ function docModel(m, d){
   const cust = {title:d.party, lines:[dc.addr1, dc.addr2, dc.addr3, g ? 'GSTIN/UIN : ' + g : '', stName(g) ? 'State Name : ' + stName(g) : '', dc.contact ? 'Contact : ' + dc.contact : ''].filter(Boolean)};
   const ex = D.users.get(dc.exec)?.name || '', mg = D.users.get(dc.mgr)?.name || '';
   const lines = (d.lines || []).map(l => ({name:it(l.item).name || '', sub:it(l.item).part ? 'Part No. ' + it(l.item).part : '', note:l.note || '', hsn:it(l.item).hsn || '', qty:+l.qty || 0, unit:unitOf(l.item), rate:+l.rate || 0, amt:+l.value || 0, gst:itemGst(l.item) || 0}));
-  if (isRn) return {kind:'rn', title:'Receipt Note', tag:'RN', no:d.no, co:coBlock, parties:[us('Consignee (Ship to)'), {label:'Supplier (Bill from)', ...cust}], inter:isInter(g), inputTax:true, hsnSummary:false,
+  if (isRn) return {kind:'rn', title:'Receipt Note', tag:'RN', no:d.no, co:coBlock, parties:[us('Consignee (Bill to / Ship to)'), {label:'Bill from', ...cust}], inter:isInter(g), inputTax:true, hsnSummary:false,
     meta:[['Receipt Note No.', d.no, 'Dated', fd(d.date)], ['Reference No. & Date.', dc.no ? `${dc.no} dt. ${fd(dc.date)}` : '', 'Other References', ex ? 'Executive: ' + ex : '']],
     todLabel:'', tod:d.remarks || '', lines, leftFoot:'Recd. in Good Condition'};
   const rdc = dcKind(d) === 'rdc';
@@ -1256,9 +1245,9 @@ function matInput(t){
     if (m === 'rn' && k === 'dc'){ const x = D.mat_dc.get(v); if (x){ d.party = x.party; d.lines = dcPending(x, d.id).filter(l => l.left > 0).map(l => ({item:l.item, qty:l.left, rate:l.rate, value:r2(l.left * (+l.rate || 0))})); } forceRender = true; render(); return; }
     if (m === 'mi' && k === 'supGst'){ d.supGst = v.toUpperCase().replace(/\s/g, ''); const s = (SUPL || []).find(x => x.gstin === d.supGst); if (s && !d.supName){ d.supName = s.name; const n = document.getElementById('mi_supName'); if (n) n.value = s.name; } }
     if (m === 'mi' && k === 'supName'){ const s = (SUPL || []).find(x => x.name.toLowerCase() === v.trim().toLowerCase()); if (s && s.gstin && !d.supGst){ d.supGst = s.gstin; const g = document.getElementById('mi_supGst'); if (g) g.value = s.gstin; } }
-    if (m === 'dc' && k === 'party'){ clearTimeout(matInput.t); matInput.t = setTimeout(() => { const tm = partyTeam(d.party), last = lastDcFor(d.party);
+    if (m === 'dc' && k === 'party'){ clearTimeout(matInput.t); matInput.t = setTimeout(() => { const tm = partyTeam(d.party);
         if (tm.exec) d.exec = tm.exec; if (tm.mgr) d.mgr = tm.mgr;
-        if (last && !d.addr1 && !d.gstin){ ['addr1', 'addr2', 'addr3', 'gstin', 'contact'].forEach(f => { d[f] = last[f] || ''; }); }
+        const ca = custAddr(d.party); if (ca && normName(d.addrFor) !== normName(d.party)){ ['addr1', 'addr2', 'addr3', 'gstin'].forEach(f => { d[f] = ca[f] || ''; }); d.addrFor = d.party; }
         forceRender = true; render(); const e = document.getElementById('dc_party'); if (e && document.activeElement !== e){ e.focus(); try { e.setSelectionRange(e.value.length, e.value.length); } catch(x){} } }, 500); return; }
     if (m === 'dc' && k === 'exec'){ const u = D.users.get(v); if (u && u.managerId){ d.mgr = u.managerId; const e = document.getElementById('dc_mgr'); if (e) e.value = u.managerId; } return; }
     if (m === 'rn' && k === 'party'){ if (d.dc && normName(D.mat_dc.get(d.dc)?.party) !== normName(v)){ d.dc = ''; d.lines = []; } clearTimeout(matInput.t); matInput.t = setTimeout(() => { forceRender = true; render(); document.getElementById('rn_party')?.focus(); }, 500); return; }
@@ -1311,7 +1300,7 @@ async function matFile(t){
     } else {
       const parties = matParties(), p = parties.find(y => normName(y) === normName(x.party)) || String(x.party || '').trim(), st = stockMap();
       const lines = (x.lines || []).filter(l => l && l.name).map(l => { const it = guessItem(l.name, ''), s = st.get(it), q = r2(l.qty) || ''; const rate = r2(l.value && q ? l.value / q : (s ? s.rate : 0)); return {item:it, aiName:String(l.name), qty:q, rate, value:r2(l.value) || r2((+q || 0) * rate)}; });
-      F[m] = {no:String(x.doc_no || '').trim() || nextNo(MATCOL[m], m === 'dc' ? 'DC/' : 'RN/'), date:ymdOk(x.doc_date) || TODAY, party:p, exec:'', dc:'', remarks:'', lines:lines.length ? lines : [blankLine(m)]};
+      F[m] = {no:String(x.doc_no || '').trim() || vno(MATCOL[m], m === 'dc' ? 'RDC' : 'RN'), date:ymdOk(x.doc_date) || TODAY, party:p, exec:'', dc:'', remarks:'', lines:lines.length ? lines : [blankLine(m)]};
       if (m === 'rn'){ const dc = [...D.mat_dc.values()].find(d => normName(d.party) === normName(p) && dcPending(d).some(l => l.left > 0)); if (dc) F.rn.dc = dc.id; }
       say(`Done: ${lines.length} item${lines.length === 1 ? '' : 's'} read. Check and save.`);
     }
@@ -1320,7 +1309,7 @@ async function matFile(t){
 }
 const MATACT = {
   moTab:t => { F.moTab = t.dataset.t; forceRender = true; render(); },
-  matNew:t => { const m = t.dataset.m; F[m + 'Ais'] = ''; F[m] = m === 'mi' ? {invNo:'', invDate:TODAY, supName:'', supGst:'', comp:'Excoso', lines:[blankLine('mi')]} : {no:nextNo(MATCOL[m], m === 'dc' ? 'DC/' : 'RN/'), date:TODAY, party:'', exec:'', dc:'', remarks:'', lines:m === 'rn' ? [] : [blankLine(m)]}; forceRender = true; render(); },
+  matNew:t => { const m = t.dataset.m; F[m + 'Ais'] = ''; F[m] = m === 'mi' ? {invNo:'', invDate:TODAY, supName:'', supGst:'', comp:'Excoso', lines:[blankLine('mi')]} : {no:vno(MATCOL[m], m === 'dc' ? 'RDC' : 'RN'), date:TODAY, party:'', exec:'', dc:'', remarks:'', lines:m === 'rn' ? [] : [blankLine(m)]}; forceRender = true; render(); },
   matAddL:t => { const m = t.dataset.m; F[m].lines.push(blankLine(m)); forceRender = true; render(); },
   matDelL:t => { const m = t.dataset.m; F[m].lines.splice(+t.dataset.i, 1); if (!F[m].lines.length && m !== 'rn') F[m].lines.push(blankLine(m)); forceRender = true; render(); },
   matNiCreate:async t => { const i = +t.dataset.i, l = F.mi.lines[i], nw = F.mi.lines.filter(x => x.item === '__new'), e = niCheck(l, nw.indexOf(l)), er = document.getElementById('mi_nierr' + i);
@@ -1333,6 +1322,7 @@ const MATACT = {
     toastOk(`Created ${n} stock item${n === 1 ? '' : 's'}. Now check the rows and save the GRN.`); forceRender = true; render(); },
   rnPick:t => { const d = F.rn, x = D.mat_dc.get(t.dataset.id); if (!d || !x) return; d.dc = x.id; d.party = x.party; d.lines = dcPending(x, d.id).filter(l => l.left > 0).map(l => ({item:l.item, qty:l.left, rate:l.rate, value:r2(l.left * (+l.rate || 0))})); forceRender = true; render(); },
   go:t => { F.justSaved = ''; ACT.nav({dataset:{k:t.dataset.k}}); },
+  spAll:t => { F.spall = !F.spall; forceRender = true; render(); },
   dcTy:t => { F.dcty = t.dataset.t; forceRender = true; render(); },
   matPrint:t => printDoc(t.dataset.m, t.dataset.id),
   matCancel:t => { const m = t.dataset.m; F[m] = null; ACT.nav({dataset:{k:m === 'mi' ? 'mat_in' : m === 'dc' ? 'mat_dc' : 'mat_rn'}}); },
@@ -1378,9 +1368,11 @@ const MATACT = {
     err.textContent = '';
     const id = d.id || uid(m), clean = lines.map(l => { const o = {...l}; delete o.rateTyped; delete o.gstTouched; delete o.back; delete o.left; ['qty', 'rate', 'taxable', 'value', 'gst'].forEach(k => { if (k in o) o[k] = r2(o[k]); }); return o; });
     const doc = {...d, id, lines:clean, by:d.by || S.me, at:d.at || nowISO(), editedBy:d.id ? S.me : undefined, editedAt:d.id ? nowISO() : undefined};
-    delete doc.aiTotal; if (m === 'mi'){ const T = miTotals(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; doc.igst = T.inter; doc.comp = compOf(doc.comp); if (!doc.grnNo) doc.grnNo = nextNo('mat_in', 'GRN/', 'grnNo');
+    delete doc.aiTotal; if (m === 'mi'){ const T = miTotals(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; doc.igst = T.inter; doc.comp = compOf(doc.comp); if (!doc.grnNo) doc.grnNo = vno('mat_in', 'GRN', 'grnNo', doc.at);
       const sm = (SUPL || []).find(x => (doc.supGst && x.gstin === doc.supGst) || normName(x.name) === normName(doc.supName)), sp = sm && sm.addr1 ? sm : (d.ns && d.ns.addr1 ? d.ns : sm); if (sp) doc.supAddr = {addr1:sp.addr1 || '', addr2:sp.addr2 || '', addr3:sp.addr3 || ''}; }
     if (m === 'dc'){ doc.kind = dcKind(doc); doc.comp = 'Expert'; }
+    if (m !== 'mi' && !d.id && isAutoNo(doc.no) && !doc.no.endsWith('/' + fyOf(doc.date))) doc.no = vno(col, doc.no.split('/')[0], 'no', doc.date);
+    if (m === 'dc' || m === 'rn'){ ['contact', 'terms', 'refNo', 'otherRef', 'orderNo', 'orderDate', 'dispDoc', 'dispatch', 'dest', 'tod'].forEach(k => { if (!doc[k]) delete doc[k]; }); }
     if (m === 'rn') doc.comp = 'Expert';
     t.disabled = true;
     try {
@@ -1395,6 +1387,8 @@ const MATACT = {
       await Store.set(col, id, doc);
       if (m === 'mi') for (const l of clean){ if (l.name && l.item){ const k = mapKey(l.name), old = D.mat_map.get(k); if (!old || old.item !== l.item) await Store.set('mat_map', k, {name:l.name, item:l.item, by:S.me, at:nowISO()}); } }
       await logAct('Inventory', `${m === 'mi' ? 'GRN' : m === 'dc' ? 'Delivery Challan' : 'Receipt Note'} ${d.id ? 'edited' : 'saved'}: ${m === 'mi' ? doc.invNo + ' · ' + doc.supName + ' · ' + inr(doc.total) : doc.no + ' · ' + doc.party}`);
+      if (m === 'dc' && (doc.addr1 || doc.gstin)){ const k = mapKey(doc.party), o = D.cust_addr.get(k) || {}; if (['addr1', 'addr2', 'addr3', 'gstin'].some(f => (o[f] || '') !== (doc[f] || ''))){ try { await Store.set('cust_addr', k, {party:doc.party, addr1:doc.addr1 || '', addr2:doc.addr2 || '', addr3:doc.addr3 || '', gstin:String(doc.gstin || '').toUpperCase(), by:S.me, at:nowISO()}); } catch(e){} } }
+      delete doc.addrFor;
       F[m] = null; F[m + 'Ais'] = ''; F.justSaved = id; toastOk('Saved ' + (m === 'mi' ? doc.grnNo : doc.no) + '.'); ACT.nav({dataset:{k:m === 'mi' ? 'mat_in' : m === 'dc' ? 'mat_dc' : 'mat_rn'}}); F.justSaved = id; forceRender = true; render();
     } catch(e){ t.disabled = false; bad('Could not save: ' + (e.message || e)); }
   }
@@ -1738,7 +1732,7 @@ function viewCollection(){
 const NAVIC = {"mail": "<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"m3 7 9 6 9-6\"/>", "contacts": "<rect x=\"4\" y=\"3\" width=\"16\" height=\"18\" rx=\"2\"/><circle cx=\"12\" cy=\"10\" r=\"3\"/><path d=\"M7.5 17c.8-2 2.5-3 4.5-3s3.7 1 4.5 3\"/>", "billing": "<path d=\"M6 3h12v18l-3-2-3 2-3-2-3 2z\"/><path d=\"M9 8h6M9 12h6\"/>", "chat": "<path d=\"M21 12a8 8 0 0 1-11.7 7.1L4 20l1-4.6A8 8 0 1 1 21 12z\"/>", "collection": "<path d=\"M3 7a2 2 0 0 1 2-2h13v4\"/><path d=\"M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H5a2 2 0 0 1-2-2z\"/><circle cx=\"16\" cy=\"14.5\" r=\"1.2\"/>", "wa": "<path d=\"M21 12a8 8 0 0 1-11.7 7.1L4 20l1-4.6A8 8 0 1 1 21 12z\"/><path d=\"M9 10.5c.3 1.6 1.9 3.2 3.5 3.5l1-1 1.5.6v1.4c-2.9.3-6.4-3.2-6.1-6.1H10l.6 1.5z\"/>", "dashboard": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"2\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"2\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"2\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"2\"/>", "create": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 8v8M8 12h8\"/>", "outstanding": "<path d=\"M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z\"/><path d=\"M14 3v5h5M9 13h6M9 17h6\"/>", "parties": "<circle cx=\"9\" cy=\"8\" r=\"3.5\"/><path d=\"M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2 .8 3.5 2.7 3.5 6\"/>", "followups": "<path d=\"M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0\"/>", "edits": "<path d=\"M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z\"/>", "activity": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/>"};
 const ico = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${NAVIC[k] || ''}</svg>`;
 const NAV = [
-  ['dashboard','Dashboard',viewDashboard,()=>true],['wa','Send WhatsApp Alert',viewWA,()=>canAlert() && waPeople().length > 0],['mail','Send Payment Mail',viewMail,canAlert],['create','Create',viewCreate,isAdm],['outstanding','Outstanding',viewOutstanding,()=>true],['billing','Billing',viewBilling,()=>true],['collection','Collection',viewCollection,()=>true],['contacts','Customer Contacts',viewContacts,isTop],['inv_stock','Stock List',viewStock,canStock],['inv_item','Create Stock Item',viewInvItems,canStock],['mat_in_new','Create GRN',()=>viewMatIn('new'),canStock],['mat_in','GRN List',()=>viewMatIn('list'),canStock],['dc_new','Create DC',()=>viewMatOut('dc','dc'),canStock],['rdc_new','Create Returnable DC',()=>viewMatOut('dc','rdc'),canStock],['mat_dc','DC List',()=>viewMatOut('dc'),canStock],['rn_new','Create Receipt Note',()=>viewMatOut('rn','new'),canStock],['mat_rn','Receipt Note List',()=>viewMatOut('rn'),canStock],['smp_pend','Pending Samples',viewSamplesPending,canStock],['smp_io','Sample In & Out',viewSampleIO,canStock],['inv_brand','Brand',()=>viewMaster('brand'),canStock],['inv_cat','Category',()=>viewMaster('cat'),canStock],['inv_sub','Sub Category',()=>viewMaster('sub'),canStock],['inv_unit','Units',()=>viewMaster('unit'),canStock],['inv_gst','GST Percentage',()=>viewMaster('gst'),canStock],['chat','Chat',viewChat,()=>true],
+  ['dashboard','Dashboard',viewDashboard,()=>true],['wa','Send WhatsApp Alert',viewWA,()=>canAlert() && waPeople().length > 0],['mail','Send Payment Mail',viewMail,canAlert],['create','Create',viewCreate,isAdm],['outstanding','Outstanding',viewOutstanding,()=>true],['billing','Billing',viewBilling,()=>true],['collection','Collection',viewCollection,()=>true],['contacts','Customer Contacts',viewContacts,isTop],['inv_stock','Stock List',viewStock,canStock],['inv_item','Create Stock Item',viewInvItems,canStock],['mat_in_new','Create GRN',()=>viewMatIn('new'),canStock],['mat_in','GRN List',()=>viewMatIn('list'),canStock],['dc_new','Create DC',()=>viewMatOut('dc','dc'),canStock],['rdc_new','Create Returnable DC',()=>viewMatOut('dc','rdc'),canStock],['mat_dc','DC List',()=>viewMatOut('dc'),canStock],['rn_new','Create Receipt Note',()=>viewMatOut('rn','new'),canStock],['mat_rn','Receipt Note List',()=>viewMatOut('rn'),canStock],['smp_pend','Pending Samples',viewSamplesPending,canStock],['inv_brand','Brand',()=>viewMaster('brand'),canStock],['inv_cat','Category',()=>viewMaster('cat'),canStock],['inv_sub','Sub Category',()=>viewMaster('sub'),canStock],['inv_unit','Units',()=>viewMaster('unit'),canStock],['inv_gst','GST Percentage',()=>viewMaster('gst'),canStock],['chat','Chat',viewChat,()=>true],
   ['edits','Edit History',viewEdits,()=>true],
   ['activity','Activity log',viewActivity,()=>true]
 ];
