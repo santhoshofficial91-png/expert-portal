@@ -1046,7 +1046,7 @@ function viewMatIn(mode){
 function savedBar(m){
   const s = F.justSaved && D[MATCOL[m]].get(F.justSaved); if (!s) return '';
   const no = m === 'mi' ? (s.grnNo || s.invNo) : s.no;
-  return `<div class="nibox" style="margin:0 0 10px;background:#ecfdf5;border-color:#86efac;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>Saved ${esc(no)}.</b>${m === 'ps' ? '' : `<button class="btn sm pri" data-act="matPrint" data-m="${m}" data-id="${esc(s.id)}">Print</button>`}<button class="btn sm" data-act="go" data-k="${m === 'mi' ? 'mat_in_new' : m === 'rn' ? 'rn_new' : m === 'ps' ? 'ps_new' : (dcKind(s) === 'dc' ? 'dc_new' : 'rdc_new')}">Create another</button></div>`;
+  return `<div class="nibox" style="margin:0 0 10px;background:#ecfdf5;border-color:#86efac;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>Saved ${esc(no)}.</b>${m === 'ps' ? '' : `<button class="btn sm pri" data-act="matPrint" data-m="${m}" data-id="${esc(s.id)}">Print</button>`}${m === 'mi' || m === 'ps' ? `<button class="btn sm" data-act="qrOpen" data-m="${m}" data-id="${esc(s.id)}">QR labels</button>` : ''}<button class="btn sm" data-act="go" data-k="${m === 'mi' ? 'mat_in_new' : m === 'rn' ? 'rn_new' : m === 'ps' ? 'ps_new' : (dcKind(s) === 'dc' ? 'dc_new' : 'rdc_new')}">Create another</button></div>`;
 }
 function dcFormHTML(){
   const d = F.dc, st = stockMap(d.id), k = dcKind(d);
@@ -1223,13 +1223,13 @@ function viewPS(mode){
 // Closing Stock Details: what we hold now, with its category, sub category, brand, quantity, rate and taxable value
 function viewClosing(){
   const st = stockMap(), q = (F.csq || '').trim().toLowerCase(), nm = (col, id) => D[col].get(id)?.name || '';
-  const list = [...D.inv_items.values()].map(x => ({x, s:st.get(x.id) || {q:0, v:0, rate:0}})).filter(r => r.s.q > 0 || F.csall)
+  const list = [...D.inv_items.values()].map(x => ({x, s:st.get(x.id) || {q:0, v:0, rate:0}})).filter(r => r.s.q > 0 || F.csall).filter(r => (!F.cscat || r.x.cat === F.cscat) && (!F.csbr || r.x.brand === F.csbr) && (!F.cscomp || compOf(r.x.comp) === F.cscomp))
     .filter(r => !q || [r.x.part, r.x.name, nm('inv_cats', r.x.cat), nm('inv_subs', r.x.sub), nm('inv_brands', r.x.brand), compOf(r.x.comp)].join(' ').toLowerCase().includes(q))
     .sort((a, b) => String(a.x.part).localeCompare(String(b.x.part)));
   const tq = list.reduce((a, r) => a + r.s.q, 0), tv = list.reduce((a, r) => a + r.s.v, 0), unit = x => D.inv_units.get(x.unit)?.unit || '';
   const body = list.map(({x, s}) => `<tr ${s.q ? '' : 'style="opacity:.55"'}><td class="mono">${esc(x.part)}</td><td class="wrap">${esc(x.name)}</td><td>${esc(nm('inv_cats', x.cat))}</td><td>${esc(nm('inv_subs', x.sub))}</td><td>${esc(nm('inv_brands', x.brand))}</td><td>${esc(x.comp ? compOf(x.comp) : '')}</td><td class="r num">${qtyF(s.q)} ${esc(unit(x))}</td><td class="r num">${inr(s.q > 0 ? s.v / s.q : s.rate)}</td><td class="r num">${inr(s.v)}</td></tr>`).join('');
   return `<div class="head"><div><h1>Closing Stock Details</h1><p class="sub">Stock we hold now · Physical Stock + GRN − Delivery Challan + Receipt Note</p></div>${XB('xClosing')}</div>
-  <div class="bar sfb"><label class="sf"><span>Search</span><input id="csq" data-f="csq" type="search" placeholder="Part no, stock, category, brand, company" value="${esc(F.csq || '')}" autocomplete="off"></label><button class="btn sm" style="align-self:end;margin-bottom:6px" data-act="csAll" aria-pressed="${!!F.csall}">${F.csall ? 'Hide items with no stock' : 'Show items with no stock'}</button></div>
+  <div class="bar sfb"><label class="sf"><span>Search</span><input id="csq" data-f="csq" type="search" placeholder="Part no, stock, category, brand, company" value="${esc(F.csq || '')}" autocomplete="off"></label><label class="sf"><span>Category</span><select data-f="cscat"><option value="">All</option>${invList('inv_cats').map(c => `<option value="${esc(c.id)}" ${F.cscat === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="sf"><span>Brand</span><select data-f="csbr"><option value="">All</option>${invList('inv_brands').map(c => `<option value="${esc(c.id)}" ${F.csbr === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="sf"><span>Company</span><select data-f="cscomp"><option value="">All</option>${COMPS.map(c => `<option ${F.cscomp === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label><button class="btn sm" style="align-self:end;margin-bottom:6px" data-act="csAll" aria-pressed="${!!F.csall}">${F.csall ? 'Hide items with no stock' : 'Show items with no stock'}</button></div>
   <h2 style="margin:12px 0 6px">Closing Stock</h2>
   <div class="tw"><table><thead><tr class="ttop"><td colspan="5"></td><td class="r">Total (${list.length})</td><td class="r num">${qtyF(tq)}</td><td></td><td class="r num">${inr(tv)}</td></tr><tr><th>Part no</th><th>Stock item</th><th>Category</th><th>Sub category</th><th>Brand</th><th>Company</th><th class="r">Closing qty</th><th class="r">Rate / piece</th><th class="r">Taxable value</th></tr></thead><tbody>${body || '<tr><td colspan="9" class="empty">No stock in hand.</td></tr>'}</tbody></table></div>`;
 }
@@ -1242,15 +1242,24 @@ function regHTML(m, title, sub, newBtns, opts = {}){
   const val = d => (d.lines || []).reduce((a, l) => a + (+(m === 'mi' ? l.taxable : l.value) || 0), 0);
   let docs = [...D[col].values()];
   if (opts.filter) docs = docs.filter(opts.filter);
+  const fFrom = F['rf_' + m] || '', fTo = F['rt_' + m] || '', fParty = F['rp_' + m] || '', fEx = F['re_' + m] || '', fItem = F['ri_' + m] || '';
+  const partiesAll = [...new Set(docs.map(party).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const itemsAll = [...new Set(docs.flatMap(d => (d.lines || []).map(l => l.item)).filter(x => D.inv_items.has(x)))].sort((a, b) => itemLbl(a).localeCompare(itemLbl(b)));
+  docs = docs.filter(d => (!fFrom || String(dt(d)) >= fFrom) && (!fTo || String(dt(d)) <= fTo) && (!fParty || party(d) === fParty) && (!fEx || d.exec === fEx) && (!fItem || (d.lines || []).some(l => l.item === fItem)))
   docs = docs.filter(d => !q || [no(d), party(d), m === 'mi' ? d.invNo : '', ...(d.lines || []).map(l => itemLbl(l.item))].join(' ').toLowerCase().includes(q))
     .sort((a, b) => String(dt(b)).localeCompare(String(dt(a))) || String(no(b)).localeCompare(String(no(a))));
   const P = pg(docs, 'reg' + m, 50), tv = docs.reduce((a, d) => a + val(d), 0);
   const ex = opts.extra || [];
-  const body = P.items.map(d => `<tr class="${F.justSaved === d.id ? 'pon' : ''}"><td>${esc(fmtD(dt(d)))}</td><td class="mono">${esc(no(d))}</td>${ex.map(e => `<td>${e.v(d)}</td>`).join('')}<td class="wrap">${esc(party(d) || '')}</td><td class="r num">${inr(val(d))}</td><td class="nowrap">${m === 'ps' ? '' : `<button class="btn sm" data-act="matPrint" data-m="${m}" data-id="${esc(d.id)}">Print</button> `}<button class="btn sm" data-act="matEdit" data-m="${m}" data-id="${esc(d.id)}">Edit</button> ${isAdm() ? `<button class="btn sm dng" data-act="matDel" data-m="${m}" data-id="${esc(d.id)}">Delete</button>` : ''}</td></tr>`).join('');
+  const body = P.items.map(d => `<tr class="${F.justSaved === d.id ? 'pon' : ''}"><td>${esc(fmtD(dt(d)))}</td><td class="mono">${esc(no(d))}</td>${ex.map(e => `<td>${e.v(d)}</td>`).join('')}<td class="wrap">${esc(party(d) || '')}</td><td class="r num">${inr(val(d))}</td><td class="nowrap">${m === 'ps' ? '' : `<button class="btn sm" data-act="matPrint" data-m="${m}" data-id="${esc(d.id)}">Print</button> `}${m === 'mi' || m === 'ps' ? `<button class="btn sm" data-act="qrOpen" data-m="${m}" data-id="${esc(d.id)}">QR labels</button> ` : ''}<button class="btn sm" data-act="matEdit" data-m="${m}" data-id="${esc(d.id)}">Edit</button> ${isAdm() ? `<button class="btn sm dng" data-act="matDel" data-m="${m}" data-id="${esc(d.id)}">Delete</button>` : ''}</td></tr>`).join('');
   const nc = 5 + ex.length;
   return `<div class="head"><div><h1>${esc(title)}</h1><p class="sub">${sub}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${newBtns}<button class="btn" data-act="xReg" data-m="${m}">Export Excel</button></div></div>
   ${savedBar(m)}${opts.tabs || ''}
-  <div class="bar sfb"><label class="sf"><span>Search</span><input id="rq_${m}" data-f="rq_${m}" type="search" placeholder="Number, ${m === 'mi' ? 'supplier' : m === 'ps' ? 'remarks' : 'customer'}, item" value="${esc(F['rq_' + m] || '')}" autocomplete="off"></label></div>
+  <div class="bar sfb"><label class="sf"><span>Search</span><input id="rq_${m}" data-f="rq_${m}" type="search" placeholder="Number, ${m === 'mi' ? 'supplier' : m === 'ps' ? 'remarks' : 'customer'}, item" value="${esc(F['rq_' + m] || '')}" autocomplete="off"></label>
+   <label class="sf"><span>From date</span><input id="rf_${m}" data-f="rf_${m}" type="date" value="${esc(fFrom)}"></label><label class="sf"><span>To date</span><input id="rt_${m}" data-f="rt_${m}" type="date" value="${esc(fTo)}"></label>
+   ${m === 'ps' ? '' : `<label class="sf"><span>${m === 'mi' ? 'Supplier' : 'Customer'}</span><select data-f="rp_${m}"><option value="">All</option>${partiesAll.map(p => `<option ${fParty === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></label>`}
+   ${m === 'dc' ? `<label class="sf"><span>Executive</span><select data-f="re_${m}"><option value="">All</option>${[...new Set([...D.mat_dc.values()].map(d => d.exec).filter(Boolean))].map(id => `<option value="${esc(id)}" ${fEx === id ? 'selected' : ''}>${esc(exName(id))}</option>`).join('')}</select></label>` : ''}
+   <label class="sf"><span>Stock item</span><select data-f="ri_${m}"><option value="">All</option>${itemsAll.map(id => `<option value="${esc(id)}" ${fItem === id ? 'selected' : ''}>${esc(itemLbl(id))}</option>`).join('')}</select></label>
+   ${fFrom || fTo || fParty || fEx || fItem || F['rq_' + m] ? `<button class="btn sm" style="align-self:end;margin-bottom:6px" data-act="regClr" data-m="${m}">Clear filters</button>` : ''}</div>
   <div class="tw"><table><thead><tr class="ttop"><td colspan="${nc - 2}"></td><td class="r">Total (${docs.length})</td><td class="r num">${inr(tv)}</td><td></td></tr><tr><th>${m === 'mi' ? 'GRN date' : 'Date'}</th><th>${m === 'mi' ? 'GRN no' : m === 'dc' ? 'DC no' : m === 'rn' ? 'Receipt note no' : 'Number'}</th>${ex.map(e => `<th>${e.h}</th>`).join('')}<th>${m === 'mi' ? 'Supplier' : m === 'ps' ? 'Remarks' : 'Customer'}</th><th class="r">Taxable value</th><th></th></tr></thead><tbody>${body || `<tr><td colspan="${nc + 1}" class="empty">Nothing saved yet.</td></tr>`}</tbody></table></div>${P.html}`;
 }
 /* ---------- Import Masters (Admin): customer address list and supplier list from Excel ---------- */
@@ -1329,7 +1338,7 @@ function custRows(){
 }
 function viewCustList(){
   const q = (F.clq || '').trim().toLowerCase(), all = custRows();
-  const list = all.filter(r => !q || [r.party, r.addr, r.gstin, r.email, r.mobile, r.area, exName(r.exec), exName(r.mgr)].join(' ').toLowerCase().includes(q));
+  const list = all.filter(r => (!F.clar || r.area === F.clar) && (!F.clex || r.exec === F.clex) && (!F.clmg || r.mgr === F.clmg) && (!q || [r.party, r.addr, r.gstin, r.email, r.mobile, r.area, exName(r.exec), exName(r.mgr)].join(' ').toLowerCase().includes(q)));
   const P = pg(list, 'custlist', 50), ed = F.cled === '__new' ? {party:'', area:'', c:{}} : F.cled && all.find(r => normName(r.party) === normName(F.cled));
   const form = !ed ? '' : (() => { const c = F.clform; const inp = (k, lab) => `<label class="f">${lab}<input class="clf" data-k="${k}" id="cl_${k}" value="${esc(c[k] || '')}" autocomplete="off"></label>`;
     return `<div class="card" id="clform" style="margin-bottom:12px"><h2 style="margin:0 0 8px">${F.cled === '__new' ? 'Create Customer' : esc(ed.party)}</h2><div class="igrid">${F.cled === '__new' ? inp('party', 'Customer name *') : ''}${inp('addr1', 'Address line 1')}${inp('addr2', 'Address line 2')}${inp('addr3', 'Address line 3')}${inp('gstin', 'GSTIN')}${inp('email', 'Email')}${inp('mobile', 'Mobile')}
@@ -1344,8 +1353,58 @@ function viewCustList(){
       ${m ? `<p style="margin:6px 0 0;font-weight:700">${esc(m)}</p>` : ''}
       ${r ? `<div class="tw" style="margin-top:8px;max-height:240px;overflow:auto"><table><thead><tr><th>Name</th><th>Address line 1</th><th>Address line 2</th><th>Address line 3</th><th>GSTIN</th></tr></thead><tbody>${r.slice(0, 30).map(x => `<tr><td class="wrap">${esc(x.name)}</td><td class="wrap">${esc(x.addr1)}</td><td class="wrap">${esc(x.addr2)}</td><td class="wrap">${esc(x.addr3)}</td><td class="mono">${esc(x.gstin)}</td></tr>`).join('')}</tbody></table></div><p class="mut" style="margin:4px 0 0">First 30 rows shown.</p>` : ''}</div>`;
   return `<div class="head"><div><h1>Customer List</h1><p class="sub">${all.length} customers · executive from the customer's area in Billing, manager from the executive (you can change both)</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-act="clNew">+ Create Customer</button><button class="btn" data-act="clImp">Import customers (Excel)</button>${XB('xCust', 'Export Excel')}</div></div>
-  ${imp}${form}<div class="bar sfb"><label class="sf"><span>Search</span><input id="clq" data-f="clq" type="search" placeholder="Name, address, GSTIN, email, area, executive" value="${esc(F.clq || '')}" autocomplete="off"></label></div>
+  ${imp}${form}<div class="bar sfb"><label class="sf"><span>Search</span><input id="clq" data-f="clq" type="search" placeholder="Name, address, GSTIN, email, area, executive" value="${esc(F.clq || '')}" autocomplete="off"></label>
+   <label class="sf"><span>Area</span><select data-f="clar"><option value="">All</option>${[...new Set(all.map(r => r.area).filter(Boolean))].sort().map(a => `<option ${F.clar === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}</select></label>
+   <label class="sf"><span>Executive</span><select data-f="clex"><option value="">All</option>${[...new Set(all.map(r => r.exec).filter(Boolean))].map(id => [id, exName(id)]).sort((a, b) => a[1].localeCompare(b[1])).map(([id, n]) => `<option value="${esc(id)}" ${F.clex === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
+   <label class="sf"><span>Manager</span><select data-f="clmg"><option value="">All</option>${[...new Set(all.map(r => r.mgr).filter(Boolean))].map(id => [id, exName(id)]).sort((a, b) => a[1].localeCompare(b[1])).map(([id, n]) => `<option value="${esc(id)}" ${F.clmg === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label></div>
   <div class="tw"><table><thead><tr><th>Customer</th><th>Address</th><th>GSTIN</th><th>Email</th><th>Mobile</th><th>Executive</th><th>Manager</th><th></th></tr></thead><tbody>${body || '<tr><td colspan="8" class="empty">No customers yet. Import the customer address list in Admin → Import Masters.</td></tr>'}</tbody></table></div>${P.html}`;
+}
+/* ---------- QR labels for GRN and Physical Stock (3 labels across, thermal label printer) ---------- */
+const QRDEF = {w:33, h:25, gap:2.5, cols:3, side:1};   // mm; change in the label window, kept on this computer
+const qrSet = () => { try { return {...QRDEF, ...JSON.parse(localStorage.getItem('qr_label') || '{}')}; } catch(e){ return {...QRDEF}; } };
+let QRLIB = null;
+const mrpF = v => { const n = r2(v); return n % 1 ? n.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}) : n.toLocaleString('en-IN'); };
+const loadQR = () => QRLIB || (QRLIB = new Promise((ok, no) => { if (window.qrcode) return ok(window.qrcode); const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js'; s.onload = () => ok(window.qrcode); s.onerror = () => { QRLIB = null; no(new Error('Could not load the QR maker. Check the internet.')); }; document.head.appendChild(s); }));
+const qrSvg = text => { const q = window.qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag({cellSize:2, margin:0, scalable:true}); };
+// what the QR holds: part number, stock name, MRP and the document it came in on
+const qrText = (it, rate, docNo) => `${it.part}|${docNo}|${r2(rate)}`;   // part no | GRN / PS no | MRP (short, so it scans easily)
+function qrLines(m, d){ return (d.lines || []).filter(l => D.inv_items.has(l.item)).map(l => ({item:l.item, qty:Math.max(0, Math.round(+l.qty || 0)), rate:+l.rate || (+(m === 'mi' ? l.taxable : l.value) / (+l.qty || 1)) || 0})); }
+function qrDialog(m, id){
+  const d = D[MATCOL[m]].get(id); if (!d) return; const no = m === 'mi' ? d.grnNo || d.invNo : d.no, L = qrLines(m, d), st = qrSet();
+  F.qr = {m, id, n:L.map(l => l.qty)};
+  openModal(`<h2>QR labels · ${esc(no)}</h2><p class="mut" style="margin:0 0 8px">One label for each piece by default. Change the count for any item.</p>
+    <div class="tw" style="max-height:260px;overflow:auto"><table><thead><tr><th>Stock item</th><th class="r">MRP</th><th class="r">Labels</th></tr></thead><tbody>${L.map((l, i) => { const it = D.inv_items.get(l.item); return `<tr><td class="wrap">${esc(it.part + ' · ' + it.name)}</td><td class="r num">${inr(l.rate)}</td><td class="r"><input class="qrn" data-i="${i}" type="number" min="0" step="1" value="${l.qty}" style="width:80px;text-align:center" aria-label="Labels for ${esc(it.name)}"></td></tr>`; }).join('')}</tbody></table></div>
+    <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">Label size (mm)</summary><div class="frow" style="flex-wrap:wrap;gap:8px;margin-top:6px">
+      ${[['w', 'Label width'], ['h', 'Label height'], ['gap', 'Gap between labels'], ['side', 'Left / right margin'], ['cols', 'Labels across']].map(([k, l]) => `<label class="f" style="width:130px">${l}<input class="qrs" data-k="${k}" type="number" step="0.5" min="0" value="${st[k]}"></label>`).join('')}</div>
+      <p class="mut" style="margin:4px 0 0;font-size:12px">Default: 3 labels of 33 × 25 mm on a 4-inch (104 mm) roll. In the print window choose your label printer, paper size as set here, margins None, scale 100%.</p></details>
+    <div class="acts"><button class="btn" data-act="closeModal">Cancel</button><button class="btn pri" data-act="qrPrint">Print labels</button></div>`);
+}
+async function qrPrint(){
+  const q = F.qr; if (!q) return; const d = D[MATCOL[q.m]].get(q.id); if (!d) return;
+  document.querySelectorAll('.qrn').forEach(e => { q.n[+e.dataset.i] = Math.max(0, Math.round(+e.value || 0)); });
+  const st = qrSet(); document.querySelectorAll('.qrs').forEach(e => { const v = +e.value; if (v >= 0) st[e.dataset.k] = e.dataset.k === 'cols' ? Math.max(1, Math.round(v)) : v; });
+  try { localStorage.setItem('qr_label', JSON.stringify(st)); } catch(e){}
+  const w0 = window.open('', '_blank'); if (!w0){ toast('Allow pop-ups for this site to print.'); return; }
+  w0.document.write('<p style="font:14px Arial;padding:20px">Making labels…</p>');
+  try { await loadQR(); } catch(e){ w0.close(); toast(e.message); return; }
+  const no = q.m === 'mi' ? d.grnNo || d.invNo : d.no, labels = [];
+  qrLines(q.m, d).forEach((l, i) => { const it = D.inv_items.get(l.item), svg = qrSvg(qrText(it, l.rate, no)); for (let k = 0; k < (q.n[i] || 0); k++) labels.push({it, rate:l.rate, svg}); });
+  if (!labels.length){ w0.close(); toast('No labels to print.'); return; }
+  const C = st.cols, rowW = C * st.w + (C - 1) * st.gap + 2 * st.side, qs = Math.min(st.h - 2.5, st.w * 0.48);
+  const one = x => `<div class="lb"><div class="qr">${x.svg}</div><div class="tx"><div class="nm">${esc(x.it.name)}</div><div class="mrp">MRP ₹${mrpF(x.rate)}</div><div class="pt">Part No<br><b>${esc(x.it.part)}</b></div></div></div>`;
+  let rows = ''; for (let i = 0; i < labels.length; i += C) rows += `<div class="row">${labels.slice(i, i + C).map(one).join('')}</div>`;
+  closeModal();
+  w0.document.open(); w0.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>QR labels ${esc(no)}</title><style>
+    @page{size:${rowW}mm ${st.h}mm;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .row{width:${rowW}mm;height:${st.h}mm;padding:0 ${st.side}mm;display:flex;gap:${st.gap}mm;page-break-after:always;break-after:page;overflow:hidden}
+    .lb{width:${st.w}mm;height:${st.h}mm;display:flex;align-items:center;gap:1mm;padding:1mm;overflow:hidden}
+    .qr{width:${qs}mm;height:${qs}mm;flex:0 0 auto}.qr svg{width:100%;height:100%;display:block}
+    .tx{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:.6mm;line-height:1.08}
+    .nm{font-size:6.3pt;font-weight:700;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+    .mrp{font-size:7pt;font-weight:800;word-break:break-all}.pt{font-size:6pt}.pt b{font-size:7pt}
+    @media screen{body{background:#ddd;padding:12px}.row{background:#fff;margin:0 auto 6px;outline:1px dashed #999}.lb{outline:1px dotted #bbb}.bar{text-align:center;margin-bottom:10px}.bar button{font:14px Arial;padding:8px 22px;cursor:pointer}}
+    @media print{.bar{display:none}}</style></head><body><div class="bar"><button onclick="window.print()">Print ${labels.length} labels</button></div>${rows}</body></html>`);
+  w0.document.close(); w0.focus(); setTimeout(() => { try { w0.print(); } catch(e){} }, 500);
 }
 function viewStock(){
   const st = stockMap(), q = (F.stq || '').trim().toLowerCase();
@@ -1465,6 +1524,9 @@ const MATACT = {
     try { await Store.set('cust_addr', k, {...o, id:k, party:o.party || p, addr1:f.addr1.trim(), addr2:f.addr2.trim(), addr3:f.addr3.trim(), gstin:f.gstin.trim().toUpperCase(), email:f.email.trim(), mobile:f.mobile.trim(), exec:f.exec || '', mgr:f.mgr || '', by:S.me, at:nowISO()});
       await logAct('Sales', (isNew ? 'Customer created: ' : 'Customer details edited: ') + p); F.cled = ''; toastOk('Saved.'); } catch(e){ toast('Could not save: ' + (e.message || e)); } t.disabled = false; forceRender = true; render(); },
   csAll:t => { F.csall = !F.csall; forceRender = true; render(); },
+  qrOpen:t => qrDialog(t.dataset.m, t.dataset.id),
+  qrPrint:() => qrPrint(),
+  regClr:t => { const m = t.dataset.m; ['rq_', 'rf_', 'rt_', 'rp_', 're_', 'ri_'].forEach(k => { F[k + m] = ''; }); forceRender = true; render(); },
   spAll:t => { F.spall = !F.spall; forceRender = true; render(); },
   dcTy:t => { F.dcty = t.dataset.t; forceRender = true; render(); },
   matPrint:t => printDoc(t.dataset.m, t.dataset.id),
