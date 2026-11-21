@@ -246,7 +246,7 @@ textarea{width:100%;padding:10px 12px;border:1px solid #cbd2dc;border-radius:8px
 <script>
 const SB_URL = 'https://ogvltuavclcgbxlyxkhs.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ndmx0dWF2Y2xjZ2J4bHl4a2hzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3MjY4MDAsImV4cCI6MjExMDMwMjgwMH0.M8toXkbQui8TjCacIobkiyew9O-6IrqgZTTzIkQV8Sg';
-const BUILD = '20261121134715';   // set by build.sh; makes browsers fetch fresh module pages after each update
+const BUILD = '20261121135410';   // set by build.sh; makes browsers fetch fresh module pages after each update
 const MODULES = {
   out: {key:'outstanding', title:'Customer Outstanding', path:'outstanding/'},
   pay: {key:'payments', title:'Payment Request', path:'payments/'}
@@ -398,7 +398,7 @@ function buildNav(){
   const inv = ['inv_stock', 'inv_item', 'inv_brand', 'inv_cat', 'inv_sub', 'inv_unit', 'inv_gst'].map(get).filter(Boolean);
   if (inv.length) h += groupHTML('inventory', 'Inventory', inv.map(it => itemHTML('outstanding', it)).join(''), inv.some(it => on('outstanding', it)));
   // Sales
-  const sal = ['outstanding', 'billing', 'collection', 'contacts'].map(get).filter(Boolean);
+  const sal = ['outstanding', 'billing', 'collection', 'contacts', 'cust_list'].map(get).filter(Boolean);
   if (sal.length) h += groupHTML('sales', 'Sales', sal.map(it => itemHTML('outstanding', it)).join(''), sal.some(it => on('outstanding', it)));
   // Purchase + Expenses (from the Payment Request module; its "Supplier Payment" sub-group is flattened, "Expense" becomes its own group)
   if (hasPay){

@@ -398,7 +398,7 @@ function buildNav(){
   const inv = ['inv_stock', 'inv_item', 'inv_brand', 'inv_cat', 'inv_sub', 'inv_unit', 'inv_gst'].map(get).filter(Boolean);
   if (inv.length) h += groupHTML('inventory', 'Inventory', inv.map(it => itemHTML('outstanding', it)).join(''), inv.some(it => on('outstanding', it)));
   // Sales
-  const sal = ['outstanding', 'billing', 'collection', 'contacts'].map(get).filter(Boolean);
+  const sal = ['outstanding', 'billing', 'collection', 'contacts', 'cust_list'].map(get).filter(Boolean);
   if (sal.length) h += groupHTML('sales', 'Sales', sal.map(it => itemHTML('outstanding', it)).join(''), sal.some(it => on('outstanding', it)));
   // Purchase + Expenses (from the Payment Request module; its "Supplier Payment" sub-group is flattened, "Expense" becomes its own group)
   if (hasPay){
