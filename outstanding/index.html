@@ -1341,7 +1341,7 @@ function custRows(){
 function viewCustList(){
   const q = (F.clq || '').trim().toLowerCase(), all = custRows();
   const list = all.filter(r => (!F.clar || r.area === F.clar) && (!F.clex || r.exec === F.clex) && (!F.clmg || r.mgr === F.clmg) && (!q || [r.party, r.addr, r.gstin, r.email, r.mobile, r.area, exName(r.exec), exName(r.mgr)].join(' ').toLowerCase().includes(q)));
-  const P = pg(list, 'custlist', 50), ed = F.cled === '__new' ? {party:'', area:'', c:{}} : F.cled && all.find(r => normName(r.party) === normName(F.cled));
+  const P = pg(list, 'custlist', 10), ed = F.cled === '__new' ? {party:'', area:'', c:{}} : F.cled && all.find(r => normName(r.party) === normName(F.cled));
   const form = !ed ? '' : (() => { const c = F.clform; const inp = (k, lab) => `<label class="f">${lab}<input class="clf" data-k="${k}" id="cl_${k}" value="${esc(c[k] || '')}" autocomplete="off"></label>`;
     return `<div class="card" id="clform" style="margin-bottom:12px"><h2 style="margin:0 0 8px">${F.cled === '__new' ? 'Create Customer' : esc(ed.party)}</h2><div class="igrid">${F.cled === '__new' ? inp('party', 'Customer name *') : ''}${inp('addr1', 'Address line 1')}${inp('addr2', 'Address line 2')}${inp('addr3', 'Address line 3')}${inp('gstin', 'GSTIN')}${inp('email', 'Email')}${inp('mobile', 'Mobile')}
       <label class="f">Executive<select class="clf" data-k="exec" id="cl_exec"><option value="">From the area${ed.area ? ' (' + esc(ed.area) + ')' : ''}</option>${execs().sort((a, b) => a.name.localeCompare(b.name)).map(u => `<option value="${esc(u.id)}" ${c.exec === u.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
