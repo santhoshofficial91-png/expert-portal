@@ -1035,16 +1035,7 @@ function viewMatIn(mode){
     return `<div class="head"><div><h1>${F.mi.id ? 'Edit GRN' : 'Create GRN'}</h1><p class="sub">Goods received from a supplier. Upload the purchase invoice and AI fills the entry, or type it.</p></div><button class="btn" data-act="go" data-k="mat_in">GRN Register</button></div>
     ${F.mi.id ? '' : aiBar('mi', 'purchase invoice')}${miFormHTML()}`;
   }
-  const q = (F.miq || '').trim().toLowerCase(), rows = [];
-  [...D.mat_in.values()].sort((a, b) => String(b.invDate).localeCompare(String(a.invDate)) || String(b.at).localeCompare(String(a.at))).forEach(d => (d.lines || []).forEach((l, i) => rows.push({d, l, i})));
-  const list = rows.filter(r => !q || [r.d.grnNo, r.d.invNo, r.d.supName, r.l.name, itemLbl(r.l.item), r.l.hsn].join(' ').toLowerCase().includes(q));
-  const P = pg(list, 'matin', 50);
-  const tq = list.reduce((a, r) => a + (+r.l.qty || 0), 0), tv = list.reduce((a, r) => a + (+r.l.taxable || 0), 0);
-  const body = P.items.map(({d, l, i}) => `<tr class="${F.justSaved === d.id ? 'pon' : ''}"><td class="mono">${esc(d.grnNo || '')}</td><td>${esc(fmtD(d.invDate))}</td><td class="mono">${esc(d.invNo)}</td><td class="wrap">${esc(d.supName)}</td><td class="wrap">${esc(itemLbl(l.item) || l.name || '')}</td><td>${esc(l.hsn || '')}</td><td class="r num">${qtyF(l.qty)} ${esc(l.unit || '')}</td><td class="r num">${inr(l.rate)}</td><td class="r num">${inr(l.taxable)}</td><td class="r">${esc(l.gst)}%${isInter(d.supGst) ? ' IGST' : ''}</td><td class="nowrap">${i === 0 ? `<button class="btn sm" data-act="matPrint" data-m="mi" data-id="${esc(d.id)}">Print</button> <button class="btn sm" data-act="matEdit" data-m="mi" data-id="${esc(d.id)}">Edit</button> ${isAdm() ? `<button class="btn sm dng" data-act="matDel" data-m="mi" data-id="${esc(d.id)}">Delete</button>` : ''}` : ''}</td></tr>`).join('');
-  return `<div class="head"><div><h1>GRN Register</h1><p class="sub">${D.mat_in.size} GRN${D.mat_in.size === 1 ? '' : 's'} · saved items add to the closing stock</p></div><button class="btn pri" data-act="go" data-k="mat_in_new">+ Create GRN</button></div>
-  ${savedBar('mi')}
-  <div class="bar sfb"><label class="sf"><span>Search</span><input id="miq" data-f="miq" type="search" placeholder="GRN no, invoice no, supplier, item, HSN" value="${esc(F.miq || '')}" autocomplete="off"></label></div>
-  <div class="tw"><table><thead><tr class="ttop"><td colspan="5"></td><td class="r">Total (${list.length})</td><td class="r num">${qtyF(tq)}</td><td></td><td class="r num">${inr(tv)}</td><td colspan="2"></td></tr><tr><th>GRN no</th><th>Invoice date</th><th>Invoice no</th><th>Supplier</th><th>Stock item</th><th>HSN</th><th class="r">Qty</th><th class="r">Rate / piece</th><th class="r">Taxable value</th><th class="r">GST %</th><th></th></tr></thead><tbody>${body || '<tr><td colspan="11" class="empty">No GRN yet. Press Create GRN.</td></tr>'}</tbody></table></div>${P.html}`;
+  return regHTML('mi', 'GRN Register', `${D.mat_in.size} GRN${D.mat_in.size === 1 ? '' : 's'} · saved items add to the closing stock`, '<button class="btn pri" data-act="go" data-k="mat_in_new">+ Create GRN</button>');
 }
 function savedBar(m){
   const s = F.justSaved && D[MATCOL[m]].get(F.justSaved); if (!s) return '';
@@ -1089,26 +1080,11 @@ function viewMatOut(m, mode){
     if (!F.rn) F.rn = {no:vno('mat_rn', 'RN'), date:TODAY, party:'', dc:'', remarks:'', lines:[]};
     return `<div class="head"><div><h1>${F.rn.id ? 'Edit' : 'Create'} Receipt Note</h1><p class="sub">Samples coming back from a customer, against a returnable DC</p></div><button class="btn" data-act="go" data-k="mat_rn">Receipt Note Register</button></div>${rnFormHTML()}`;
   }
-  const q = (F.moq || '').trim().toLowerCase(), ty = F.dcty || 'all', rows = [];
-  [...D[col].values()].filter(d => m !== 'dc' || ty === 'all' || dcKind(d) === ty).sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.no).localeCompare(String(a.no))).forEach(d => {
-    const ls = m === 'dc' ? (dcKind(d) === 'rdc' ? dcPending(d) : (d.lines || []).map(l => ({...l, back:null, left:null}))) : (d.lines || []);
-    ls.forEach((l, i) => rows.push({d, l, i}));
-  });
-  const list = rows.filter(r => !q || [r.d.no, r.d.party, itemLbl(r.l.item), m === 'dc' ? D.users.get(r.d.exec)?.name : D.mat_dc.get(r.d.dc)?.no].join(' ').toLowerCase().includes(q));
-  const P = pg(list, 'mat' + m, 50), tq = list.reduce((a, r) => a + (+r.l.qty || 0), 0), tv = list.reduce((a, r) => a + (+r.l.value || 0), 0);
-  const act = (d, i) => i === 0 ? `<button class="btn sm" data-act="matPrint" data-m="${m}" data-id="${esc(d.id)}">Print</button> <button class="btn sm" data-act="matEdit" data-m="${m}" data-id="${esc(d.id)}">Edit</button> ${isAdm() ? `<button class="btn sm dng" data-act="matDel" data-m="${m}" data-id="${esc(d.id)}">Delete</button>` : ''}` : '';
-  const hl = d => F.justSaved === d.id ? 'class="pon"' : '';
-  const body = P.items.map(({d, l, i}) => m === 'dc'
-    ? `<tr ${hl(d)}><td class="mono">${esc(d.no)}</td><td>${dcKind(d) === 'dc' ? 'Delivery' : 'Returnable'}</td><td>${esc(fmtD(d.date))}</td><td class="wrap">${esc(d.party)}</td><td>${esc(D.users.get(d.exec)?.name || '')}</td><td class="wrap">${esc(itemLbl(l.item))}</td><td class="r num">${qtyF(l.qty)}</td><td class="r num">${inr(l.value)}</td><td class="r num">${l.back == null ? '—' : qtyF(l.back)}</td><td class="r num" ${l.left > 0 ? 'style="color:#b42318;font-weight:700"' : ''}>${l.left == null ? '—' : qtyF(l.left)}</td><td class="nowrap">${act(d, i)}</td></tr>`
-    : `<tr ${hl(d)}><td class="mono">${esc(d.no)}</td><td>${esc(fmtD(d.date))}</td><td class="mono">${esc(D.mat_dc.get(d.dc)?.no || '—')}</td><td class="wrap">${esc(d.party)}</td><td class="wrap">${esc(itemLbl(l.item))}</td><td class="r num">${qtyF(l.qty)}</td><td class="r num">${inr(l.value)}</td><td class="nowrap">${act(d, i)}</td></tr>`).join('');
-  const head = m === 'dc' ? `<tr class="ttop"><td colspan="5"></td><td class="r">Total (${list.length})</td><td class="r num">${qtyF(tq)}</td><td class="r num">${inr(tv)}</td><td colspan="3"></td></tr><tr><th>DC no</th><th>Type</th><th>Date</th><th>Customer</th><th>Executive</th><th>Stock item</th><th class="r">Qty</th><th class="r">Value</th><th class="r">Returned</th><th class="r">Not back</th><th></th></tr>`
-    : `<tr class="ttop"><td colspan="4"></td><td class="r">Total (${list.length})</td><td class="r num">${qtyF(tq)}</td><td class="r num">${inr(tv)}</td><td></td></tr><tr><th>Receipt no</th><th>Date</th><th>Against RDC</th><th>Customer</th><th>Stock item</th><th class="r">Qty</th><th class="r">Value</th><th></th></tr>`;
-  const nD = [...D.mat_dc.values()].filter(d => dcKind(d) === 'dc').length, nR = D.mat_dc.size - nD;
-  return `<div class="head"><div><h1>${m === 'dc' ? 'Delivery Challan Register' : 'Receipt Note Register'}</h1><p class="sub">${m === 'dc' ? `${nD} delivery · ${nR} returnable` : D.mat_rn.size + ' receipt note' + (D.mat_rn.size === 1 ? '' : 's')}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${m === 'dc' ? '<button class="btn pri" data-act="go" data-k="dc_new">+ Create DC</button><button class="btn pri" data-act="go" data-k="rdc_new">+ Create Returnable DC</button>' : '<button class="btn pri" data-act="go" data-k="rn_new">+ Create Receipt Note</button>'}</div></div>
-  ${savedBar(m)}
-  ${m === 'dc' ? `<div class="mtabs" role="tablist">${[['all', 'All'], ['dc', 'Delivery DC'], ['rdc', 'Returnable DC']].map(([k, l]) => `<button role="tab" aria-selected="${ty === k}" class="${ty === k ? 'on' : ''}" data-act="dcTy" data-t="${k}">${l}</button>`).join('')}</div>` : ''}
-  <div class="bar sfb"><label class="sf"><span>Search</span><input id="moq" data-f="moq" type="search" placeholder="Number, customer, item" value="${esc(F.moq || '')}" autocomplete="off"></label></div>
-  <div class="tw"><table><thead>${head}</thead><tbody>${body || `<tr><td colspan="11" class="empty">${m === 'dc' ? 'No challan yet.' : 'No receipt note yet.'}</td></tr>`}</tbody></table></div>${P.html}`;
+  if (m === 'dc'){ const ty = F.dcty || 'all', nD = [...D.mat_dc.values()].filter(d => dcKind(d) === 'dc').length, nR = D.mat_dc.size - nD;
+    const tabs = `<div class="mtabs" role="tablist">${[['all', 'All'], ['dc', 'Delivery DC'], ['rdc', 'Returnable DC']].map(([k, l]) => `<button role="tab" aria-selected="${ty === k}" class="${ty === k ? 'on' : ''}" data-act="dcTy" data-t="${k}">${l}</button>`).join('')}</div>`;
+    return regHTML('dc', 'Delivery Challan Register', `${nD} delivery · ${nR} returnable`, '<button class="btn pri" data-act="go" data-k="dc_new">+ Create Delivery Challan</button><button class="btn pri" data-act="go" data-k="rdc_new">+ Create Returnable DC</button>',
+      {tabs, filter:d => ty === 'all' || dcKind(d) === ty, extra:[{h:'Type', v:d => dcKind(d) === 'dc' ? 'Delivery' : 'Returnable'}]}); }
+  return regHTML('rn', 'Receipt Note Register', `${D.mat_rn.size} receipt note${D.mat_rn.size === 1 ? '' : 's'}`, '<button class="btn pri" data-act="go" data-k="rn_new">+ Create Receipt Note</button>');
 }
 
 /* ---------- printed documents (black and white, A4) ---------- */
@@ -1236,28 +1212,40 @@ function viewPS(mode){
     if (!F.ps) F.ps = {no:vno('mat_ps', 'PS'), date:TODAY, remarks:'', lines:[blankLine('ps')]};
     return `<div class="head"><div><h1>${F.ps.id ? 'Edit' : 'Create'} Physical Stock</h1><p class="sub">Register the stock that is physically with us</p></div><button class="btn" data-act="go" data-k="mat_ps">Physical Stock Register</button></div>${psFormHTML()}`;
   }
-  const q = (F.psq || '').trim().toLowerCase(), rows = [];
-  [...D.mat_ps.values()].sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.no).localeCompare(String(a.no))).forEach(d => (d.lines || []).forEach((l, i) => rows.push({d, l, i})));
-  const list = rows.filter(r => !q || [r.d.no, itemLbl(r.l.item), r.d.remarks].join(' ').toLowerCase().includes(q));
-  const P = pg(list, 'matps', 50), tq = list.reduce((a, r) => a + (+r.l.qty || 0), 0), tv = list.reduce((a, r) => a + (+r.l.value || 0), 0);
-  const body = P.items.map(({d, l, i}) => `<tr class="${F.justSaved === d.id ? 'pon' : ''}"><td class="mono">${esc(d.no)}</td><td>${esc(fmtD(d.date))}</td><td class="wrap">${esc(itemLbl(l.item))}</td><td class="r num">${qtyF(l.qty)}</td><td class="r num">${inr(l.rate)}</td><td class="r num">${inr(l.value)}</td><td class="wrap">${i === 0 ? esc(d.remarks || '') : ''}</td><td class="nowrap">${i === 0 ? `<button class="btn sm" data-act="matEdit" data-m="ps" data-id="${esc(d.id)}">Edit</button> ${isAdm() ? `<button class="btn sm dng" data-act="matDel" data-m="ps" data-id="${esc(d.id)}">Delete</button>` : ''}` : ''}</td></tr>`).join('');
-  return `<div class="head"><div><h1>Physical Stock Register</h1><p class="sub">${D.mat_ps.size} entr${D.mat_ps.size === 1 ? 'y' : 'ies'} of stock we already had</p></div><button class="btn pri" data-act="go" data-k="ps_new">+ Create Physical Stock</button></div>
-  ${savedBar('ps')}
-  <div class="bar sfb"><label class="sf"><span>Search</span><input id="psq" data-f="psq" type="search" placeholder="Number, item, remarks" value="${esc(F.psq || '')}" autocomplete="off"></label></div>
-  <div class="tw"><table><thead><tr class="ttop"><td colspan="2"></td><td class="r">Total (${list.length})</td><td class="r num">${qtyF(tq)}</td><td></td><td class="r num">${inr(tv)}</td><td colspan="2"></td></tr><tr><th>Number</th><th>Date</th><th>Stock item</th><th class="r">Physical qty</th><th class="r">Taxable value / piece</th><th class="r">Taxable value</th><th>Remarks</th><th></th></tr></thead><tbody>${body || '<tr><td colspan="8" class="empty">No physical stock entered yet.</td></tr>'}</tbody></table></div>${P.html}`;
+  return regHTML('ps', 'Physical Stock Register', `${D.mat_ps.size} entr${D.mat_ps.size === 1 ? 'y' : 'ies'} of stock we already had`, '<button class="btn pri" data-act="go" data-k="ps_new">+ Create Physical Stock</button>');
 }
 // Closing Stock Details: what we hold now, with its category, sub category, brand, quantity, rate and taxable value
 function viewClosing(){
   const st = stockMap(), q = (F.csq || '').trim().toLowerCase(), nm = (col, id) => D[col].get(id)?.name || '';
   const list = [...D.inv_items.values()].map(x => ({x, s:st.get(x.id) || {q:0, v:0, rate:0}})).filter(r => r.s.q > 0 || F.csall)
-    .filter(r => !q || [r.x.part, r.x.name, nm('inv_cats', r.x.cat), nm('inv_subs', r.x.sub), nm('inv_brands', r.x.brand)].join(' ').toLowerCase().includes(q))
+    .filter(r => !q || [r.x.part, r.x.name, nm('inv_cats', r.x.cat), nm('inv_subs', r.x.sub), nm('inv_brands', r.x.brand), compOf(r.x.comp)].join(' ').toLowerCase().includes(q))
     .sort((a, b) => String(a.x.part).localeCompare(String(b.x.part)));
   const tq = list.reduce((a, r) => a + r.s.q, 0), tv = list.reduce((a, r) => a + r.s.v, 0), unit = x => D.inv_units.get(x.unit)?.unit || '';
-  const body = list.map(({x, s}) => `<tr ${s.q ? '' : 'style="opacity:.55"'}><td class="mono">${esc(x.part)}</td><td class="wrap">${esc(x.name)}</td><td>${esc(nm('inv_cats', x.cat))}</td><td>${esc(nm('inv_subs', x.sub))}</td><td>${esc(nm('inv_brands', x.brand))}</td><td class="r num">${qtyF(s.q)} ${esc(unit(x))}</td><td class="r num">${inr(s.q > 0 ? s.v / s.q : s.rate)}</td><td class="r num">${inr(s.v)}</td></tr>`).join('');
+  const body = list.map(({x, s}) => `<tr ${s.q ? '' : 'style="opacity:.55"'}><td class="mono">${esc(x.part)}</td><td class="wrap">${esc(x.name)}</td><td>${esc(nm('inv_cats', x.cat))}</td><td>${esc(nm('inv_subs', x.sub))}</td><td>${esc(nm('inv_brands', x.brand))}</td><td>${esc(x.comp ? compOf(x.comp) : '')}</td><td class="r num">${qtyF(s.q)} ${esc(unit(x))}</td><td class="r num">${inr(s.q > 0 ? s.v / s.q : s.rate)}</td><td class="r num">${inr(s.v)}</td></tr>`).join('');
   return `<div class="head"><div><h1>Closing Stock Details</h1><p class="sub">Stock we hold now · Physical Stock + GRN − Delivery Challan + Receipt Note</p></div></div>
-  <div class="bar sfb"><label class="sf"><span>Search</span><input id="csq" data-f="csq" type="search" placeholder="Part no, stock, category, brand" value="${esc(F.csq || '')}" autocomplete="off"></label><button class="btn sm" style="align-self:end;margin-bottom:6px" data-act="csAll" aria-pressed="${!!F.csall}">${F.csall ? 'Hide items with no stock' : 'Show items with no stock'}</button></div>
+  <div class="bar sfb"><label class="sf"><span>Search</span><input id="csq" data-f="csq" type="search" placeholder="Part no, stock, category, brand, company" value="${esc(F.csq || '')}" autocomplete="off"></label><button class="btn sm" style="align-self:end;margin-bottom:6px" data-act="csAll" aria-pressed="${!!F.csall}">${F.csall ? 'Hide items with no stock' : 'Show items with no stock'}</button></div>
   <h2 style="margin:12px 0 6px">Closing Stock</h2>
-  <div class="tw"><table><thead><tr class="ttop"><td colspan="4"></td><td class="r">Total (${list.length})</td><td class="r num">${qtyF(tq)}</td><td></td><td class="r num">${inr(tv)}</td></tr><tr><th>Part no</th><th>Stock item</th><th>Category</th><th>Sub category</th><th>Brand</th><th class="r">Closing qty</th><th class="r">Rate / piece</th><th class="r">Taxable value</th></tr></thead><tbody>${body || '<tr><td colspan="8" class="empty">No stock in hand.</td></tr>'}</tbody></table></div>`;
+  <div class="tw"><table><thead><tr class="ttop"><td colspan="5"></td><td class="r">Total (${list.length})</td><td class="r num">${qtyF(tq)}</td><td></td><td class="r num">${inr(tv)}</td></tr><tr><th>Part no</th><th>Stock item</th><th>Category</th><th>Sub category</th><th>Brand</th><th>Company</th><th class="r">Closing qty</th><th class="r">Rate / piece</th><th class="r">Taxable value</th></tr></thead><tbody>${body || '<tr><td colspan="9" class="empty">No stock in hand.</td></tr>'}</tbody></table></div>`;
+}
+// Registers: one row per document (date, number, party, taxable value) with Print / Edit / Delete
+function regHTML(m, title, sub, newBtns, opts = {}){
+  const col = MATCOL[m], q = (F['rq_' + m] || '').trim().toLowerCase();
+  const dt = d => m === 'mi' ? String(d.at || d.invDate || '').slice(0, 10) : d.date;
+  const no = d => m === 'mi' ? (d.grnNo || '') : d.no;
+  const party = d => m === 'mi' ? d.supName : m === 'ps' ? (d.remarks || '') : d.party;
+  const val = d => (d.lines || []).reduce((a, l) => a + (+(m === 'mi' ? l.taxable : l.value) || 0), 0);
+  let docs = [...D[col].values()];
+  if (opts.filter) docs = docs.filter(opts.filter);
+  docs = docs.filter(d => !q || [no(d), party(d), m === 'mi' ? d.invNo : '', ...(d.lines || []).map(l => itemLbl(l.item))].join(' ').toLowerCase().includes(q))
+    .sort((a, b) => String(dt(b)).localeCompare(String(dt(a))) || String(no(b)).localeCompare(String(no(a))));
+  const P = pg(docs, 'reg' + m, 50), tv = docs.reduce((a, d) => a + val(d), 0);
+  const ex = opts.extra || [];
+  const body = P.items.map(d => `<tr class="${F.justSaved === d.id ? 'pon' : ''}"><td>${esc(fmtD(dt(d)))}</td><td class="mono">${esc(no(d))}</td>${ex.map(e => `<td>${e.v(d)}</td>`).join('')}<td class="wrap">${esc(party(d) || '')}</td><td class="r num">${inr(val(d))}</td><td class="nowrap">${m === 'ps' ? '' : `<button class="btn sm" data-act="matPrint" data-m="${m}" data-id="${esc(d.id)}">Print</button> `}<button class="btn sm" data-act="matEdit" data-m="${m}" data-id="${esc(d.id)}">Edit</button> ${isAdm() ? `<button class="btn sm dng" data-act="matDel" data-m="${m}" data-id="${esc(d.id)}">Delete</button>` : ''}</td></tr>`).join('');
+  const nc = 5 + ex.length;
+  return `<div class="head"><div><h1>${esc(title)}</h1><p class="sub">${sub}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${newBtns}</div></div>
+  ${savedBar(m)}${opts.tabs || ''}
+  <div class="bar sfb"><label class="sf"><span>Search</span><input id="rq_${m}" data-f="rq_${m}" type="search" placeholder="Number, ${m === 'mi' ? 'supplier' : m === 'ps' ? 'remarks' : 'customer'}, item" value="${esc(F['rq_' + m] || '')}" autocomplete="off"></label></div>
+  <div class="tw"><table><thead><tr class="ttop"><td colspan="${nc - 2}"></td><td class="r">Total (${docs.length})</td><td class="r num">${inr(tv)}</td><td></td></tr><tr><th>${m === 'mi' ? 'GRN date' : 'Date'}</th><th>${m === 'mi' ? 'GRN no' : m === 'dc' ? 'DC no' : m === 'rn' ? 'Receipt note no' : 'Number'}</th>${ex.map(e => `<th>${e.h}</th>`).join('')}<th>${m === 'mi' ? 'Supplier' : m === 'ps' ? 'Remarks' : 'Customer'}</th><th class="r">Taxable value</th><th></th></tr></thead><tbody>${body || `<tr><td colspan="${nc + 1}" class="empty">Nothing saved yet.</td></tr>`}</tbody></table></div>${P.html}`;
 }
 function viewStock(){
   const st = stockMap(), q = (F.stq || '').trim().toLowerCase();

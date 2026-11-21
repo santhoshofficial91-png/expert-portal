@@ -385,17 +385,17 @@ function buildNav(){
   const on = (m, it) => it && (isOn(m, it) || (it.children || []).some(c => isOn(m, c)));
   let h = '';
   const dash = get('dashboard'); if (dash) h += topBtn('outstanding', dash);
-  // Inventory right after Dashboard
-  const inv = ['inv_stock', 'inv_item', 'inv_brand', 'inv_cat', 'inv_sub', 'inv_unit', 'inv_gst'].map(get).filter(Boolean);
-  if (inv.length) h += groupHTML('inventory', 'Inventory', inv.map(it => itemHTML('outstanding', it)).join(''), inv.some(it => on('outstanding', it)));
-  // Send Alert: WhatsApp + payment mail
-  const al = ['wa', 'mail'].map(get).filter(Boolean);
-  if (al.length) h += groupHTML('alert', 'Send Alert', al.map(it => itemHTML('outstanding', it)).join(''), al.some(it => on('outstanding', it)));
   // Admin: Create + Users & Access
   const cr = get('create'); let ai = '';
   if (cr) ai += itemHTML('outstanding', cr);
   if (isAdmin()) ai += `<button class="si ${current === 'access' ? 'on' : ''}" data-v="access">Users &amp; Access</button>`;
   if (ai) h += groupHTML('admin', 'Admin', ai, on('outstanding', cr) || current === 'access');
+  // Send Alert: WhatsApp + payment mail
+  const al = ['wa', 'mail'].map(get).filter(Boolean);
+  if (al.length) h += groupHTML('alert', 'Send Alert', al.map(it => itemHTML('outstanding', it)).join(''), al.some(it => on('outstanding', it)));
+  // Inventory after Admin and Send Alert
+  const inv = ['inv_stock', 'inv_item', 'inv_brand', 'inv_cat', 'inv_sub', 'inv_unit', 'inv_gst'].map(get).filter(Boolean);
+  if (inv.length) h += groupHTML('inventory', 'Inventory', inv.map(it => itemHTML('outstanding', it)).join(''), inv.some(it => on('outstanding', it)));
   // Sales
   const sal = ['outstanding', 'billing', 'collection', 'contacts'].map(get).filter(Boolean);
   if (sal.length) h += groupHTML('sales', 'Sales', sal.map(it => itemHTML('outstanding', it)).join(''), sal.some(it => on('outstanding', it)));
