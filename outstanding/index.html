@@ -1250,17 +1250,19 @@ function regHTML(m, title, sub, newBtns, opts = {}){
     .sort((a, b) => String(dt(b)).localeCompare(String(dt(a))) || String(no(b)).localeCompare(String(no(a))));
   const P = pg(docs, 'reg' + m, 50), tv = docs.reduce((a, d) => a + val(d), 0);
   const ex = opts.extra || [];
-  const body = P.items.map(d => `<tr class="${F.justSaved === d.id ? 'pon' : ''}"><td>${esc(fmtD(dt(d)))}</td><td class="mono">${esc(no(d))}</td>${ex.map(e => `<td>${e.v(d)}</td>`).join('')}<td class="wrap">${esc(party(d) || '')}</td><td class="r num">${inr(val(d))}</td><td class="nowrap">${m === 'ps' ? '' : `<button class="btn sm" data-act="matPrint" data-m="${m}" data-id="${esc(d.id)}">Print</button> `}${m === 'mi' || m === 'ps' ? `<button class="btn sm" data-act="qrOpen" data-m="${m}" data-id="${esc(d.id)}">QR labels</button> ` : ''}<button class="btn sm" data-act="matEdit" data-m="${m}" data-id="${esc(d.id)}">Edit</button> ${isAdm() ? `<button class="btn sm dng" data-act="matDel" data-m="${m}" data-id="${esc(d.id)}">Delete</button>` : ''}</td></tr>`).join('');
-  const nc = 5 + ex.length;
+  const QS = qsel(m), canQ = m === 'mi' || m === 'ps', pgIds = P.items.map(d => d.id), allOn = canQ && pgIds.length && pgIds.every(i => QS.has(i));
+  const nc = 5 + ex.length + (canQ ? 1 : 0);
+  const qbar = canQ ? `<div class="nibox" style="margin:0 0 10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;${QS.size ? 'background:#eff6ff;border-color:#93c5fd' : ''}">${QS.size ? `<b>${QS.size} ${m === 'mi' ? 'GRN' : 'Physical Stock'}${QS.size > 1 ? 's' : ''} selected · ${qrCount(m, [...QS])} labels</b><button class="btn sm pri" data-act="qrSel" data-m="${m}">Print QR labels together</button><button class="btn sm" data-act="qrSelClr" data-m="${m}">Clear selection</button>` : `<span class="mut">Tick 2 or more ${m === 'mi' ? 'GRNs' : 'entries'} to print all their QR labels together, so no label on the row is wasted.</span>`}</div>` : '';
+  const body = P.items.map(d => `<tr class="${F.justSaved === d.id ? 'pon' : ''}">${canQ ? `<td><input type="checkbox" class="qsel" data-m="${m}" value="${esc(d.id)}" ${QS.has(d.id) ? 'checked' : ''} aria-label="Select ${esc(no(d))} for QR labels"></td>` : ''}<td>${esc(fmtD(dt(d)))}</td><td class="mono">${esc(no(d))}</td>${ex.map(e => `<td>${e.v(d)}</td>`).join('')}<td class="wrap">${esc(party(d) || '')}</td><td class="r num">${inr(val(d))}</td><td class="nowrap">${m === 'ps' ? '' : `<button class="btn sm" data-act="matPrint" data-m="${m}" data-id="${esc(d.id)}">Print</button> `}${m === 'mi' || m === 'ps' ? `<button class="btn sm" data-act="qrOpen" data-m="${m}" data-id="${esc(d.id)}">QR labels</button> ` : ''}<button class="btn sm" data-act="matEdit" data-m="${m}" data-id="${esc(d.id)}">Edit</button> ${isAdm() ? `<button class="btn sm dng" data-act="matDel" data-m="${m}" data-id="${esc(d.id)}">Delete</button>` : ''}</td></tr>`).join('');
   return `<div class="head"><div><h1>${esc(title)}</h1><p class="sub">${sub}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${newBtns}<button class="btn" data-act="xReg" data-m="${m}">Export Excel</button></div></div>
-  ${savedBar(m)}${opts.tabs || ''}
+  ${savedBar(m)}${opts.tabs || ''}${qbar}
   <div class="bar sfb"><label class="sf"><span>Search</span><input id="rq_${m}" data-f="rq_${m}" type="search" placeholder="Number, ${m === 'mi' ? 'supplier' : m === 'ps' ? 'remarks' : 'customer'}, item" value="${esc(F['rq_' + m] || '')}" autocomplete="off"></label>
    <label class="sf"><span>From date</span><input id="rf_${m}" data-f="rf_${m}" type="date" value="${esc(fFrom)}"></label><label class="sf"><span>To date</span><input id="rt_${m}" data-f="rt_${m}" type="date" value="${esc(fTo)}"></label>
    ${m === 'ps' ? '' : `<label class="sf"><span>${m === 'mi' ? 'Supplier' : 'Customer'}</span><select data-f="rp_${m}"><option value="">All</option>${partiesAll.map(p => `<option ${fParty === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></label>`}
    ${m === 'dc' ? `<label class="sf"><span>Executive</span><select data-f="re_${m}"><option value="">All</option>${[...new Set([...D.mat_dc.values()].map(d => d.exec).filter(Boolean))].map(id => `<option value="${esc(id)}" ${fEx === id ? 'selected' : ''}>${esc(exName(id))}</option>`).join('')}</select></label>` : ''}
    <label class="sf"><span>Stock item</span><select data-f="ri_${m}"><option value="">All</option>${itemsAll.map(id => `<option value="${esc(id)}" ${fItem === id ? 'selected' : ''}>${esc(itemLbl(id))}</option>`).join('')}</select></label>
    ${fFrom || fTo || fParty || fEx || fItem || F['rq_' + m] ? `<button class="btn sm" style="align-self:end;margin-bottom:6px" data-act="regClr" data-m="${m}">Clear filters</button>` : ''}</div>
-  <div class="tw"><table><thead><tr class="ttop"><td colspan="${nc - 2}"></td><td class="r">Total (${docs.length})</td><td class="r num">${inr(tv)}</td><td></td></tr><tr><th>${m === 'mi' ? 'GRN date' : 'Date'}</th><th>${m === 'mi' ? 'GRN no' : m === 'dc' ? 'DC no' : m === 'rn' ? 'Receipt note no' : 'Number'}</th>${ex.map(e => `<th>${e.h}</th>`).join('')}<th>${m === 'mi' ? 'Supplier' : m === 'ps' ? 'Remarks' : 'Customer'}</th><th class="r">Taxable value</th><th></th></tr></thead><tbody>${body || `<tr><td colspan="${nc + 1}" class="empty">Nothing saved yet.</td></tr>`}</tbody></table></div>${P.html}`;
+  <div class="tw"><table><thead><tr class="ttop"><td colspan="${nc - 2}"></td><td class="r">Total (${docs.length})</td><td class="r num">${inr(tv)}</td><td></td></tr><tr>${canQ ? `<th style="width:34px"><input type="checkbox" class="qall" data-m="${m}" ${allOn ? 'checked' : ''} aria-label="Select all on this page"></th>` : ''}<th>${m === 'mi' ? 'GRN date' : 'Date'}</th><th>${m === 'mi' ? 'GRN no' : m === 'dc' ? 'DC no' : m === 'rn' ? 'Receipt note no' : 'Number'}</th>${ex.map(e => `<th>${e.h}</th>`).join('')}<th>${m === 'mi' ? 'Supplier' : m === 'ps' ? 'Remarks' : 'Customer'}</th><th class="r">Taxable value</th><th></th></tr></thead><tbody>${body || `<tr><td colspan="${nc + 1}" class="empty">Nothing saved yet.</td></tr>`}</tbody></table></div>${P.html}`;
 }
 /* ---------- Import Masters (Admin): customer address list and supplier list from Excel ---------- */
 const IMPST = {'35':'Andaman and Nicobar Islands','37':'Andhra Pradesh','12':'Arunachal Pradesh','18':'Assam','10':'Bihar','04':'Chandigarh','22':'Chhattisgarh','26':'Dadra and Nagar Haveli and Daman and Diu','07':'Delhi','30':'Goa','24':'Gujarat','06':'Haryana','02':'Himachal Pradesh','01':'Jammu and Kashmir','20':'Jharkhand','29':'Karnataka','32':'Kerala','38':'Ladakh','31':'Lakshadweep','23':'Madhya Pradesh','27':'Maharashtra','14':'Manipur','17':'Meghalaya','15':'Mizoram','13':'Nagaland','21':'Odisha','34':'Puducherry','03':'Punjab','08':'Rajasthan','11':'Sikkim','33':'Tamil Nadu','36':'Telangana','16':'Tripura','09':'Uttar Pradesh','05':'Uttarakhand','19':'West Bengal'};
@@ -1369,26 +1371,33 @@ const qrSvg = text => { const q = window.qrcode(0, 'M'); q.addData(text); q.make
 // what the QR holds: part number, stock name, MRP and the document it came in on
 const qrText = (it, rate, docNo) => `${it.part}|${docNo}|${r2(rate)}`;   // part no | GRN / PS no | MRP (short, so it scans easily)
 function qrLines(m, d){ return (d.lines || []).filter(l => D.inv_items.has(l.item)).map(l => ({item:l.item, qty:Math.max(0, Math.round(+l.qty || 0)), rate:+l.rate || (+(m === 'mi' ? l.taxable : l.value) / (+l.qty || 1)) || 0})); }
-function qrDialog(m, id){
-  const d = D[MATCOL[m]].get(id); if (!d) return; const no = m === 'mi' ? d.grnNo || d.invNo : d.no, L = qrLines(m, d), st = qrSet();
-  F.qr = {m, id, n:L.map(l => l.qty)};
-  openModal(`<h2>QR labels · ${esc(no)}</h2><p class="mut" style="margin:0 0 8px">One label for each piece by default. Change the count for any item.</p>
-    <div class="tw" style="max-height:260px;overflow:auto"><table><thead><tr><th>Stock item</th><th class="r">MRP</th><th class="r">Labels</th></tr></thead><tbody>${L.map((l, i) => { const it = D.inv_items.get(l.item); return `<tr><td class="wrap">${esc(it.part + ' · ' + it.name)}</td><td class="r num">${inr(l.rate)}</td><td class="r"><input class="qrn" data-i="${i}" type="number" min="0" step="1" value="${l.qty}" style="width:80px;text-align:center" aria-label="Labels for ${esc(it.name)}"></td></tr>`; }).join('')}</tbody></table></div>
+const qsel = m => (F.qsel || (F.qsel = {}))[m] || (F.qsel[m] = new Set());
+const qDocNo = (m, d) => m === 'mi' ? d.grnNo || d.invNo : d.no;
+const qrCount = (m, ids) => ids.reduce((a, id) => { const d = D[MATCOL[m]].get(id); return a + (d ? qrLines(m, d).reduce((x, l) => x + l.qty, 0) : 0); }, 0);
+// all lines of one or more GRNs / Physical Stock entries, printed as one continuous run of labels
+function qrAll(m, ids){ const out = []; ids.forEach(id => { const d = D[MATCOL[m]].get(id); if (d) qrLines(m, d).forEach(l => out.push({...l, no:qDocNo(m, d)})); }); return out; }
+function qrDialog(m, ids){
+  ids = (Array.isArray(ids) ? ids : [ids]).filter(id => D[MATCOL[m]].has(id)); if (!ids.length) return;
+  const L = qrAll(m, ids), st = qrSet(), many = ids.length > 1, nos = [...new Set(L.map(l => l.no))];
+  F.qr = {m, ids, n:L.map(l => l.qty)};
+  const tot = L.reduce((a, l) => a + l.qty, 0), C = st.cols, left = tot % C ? C - tot % C : 0;
+  openModal(`<h2>QR labels · ${many ? ids.length + ' ' + (m === 'mi' ? 'GRNs' : 'entries') : esc(nos[0] || '')}</h2><p class="mut" style="margin:0 0 8px">One label for each piece by default. Change the count for any item. <span id="qrtot"><b>${tot} labels</b>${left ? ` · last row has ${left} blank` : ''}</span></p>
+    <div class="tw" style="max-height:300px;overflow:auto"><table><thead><tr>${many ? '<th>Number</th>' : ''}<th>Stock item</th><th class="r">MRP</th><th class="r">Labels</th></tr></thead><tbody>${L.map((l, i) => { const it = D.inv_items.get(l.item); return `<tr>${many ? `<td class="mono nowrap">${esc(l.no)}</td>` : ''}<td class="wrap">${esc(it.part + ' · ' + it.name)}</td><td class="r num">${inr(l.rate)}</td><td class="r"><input class="qrn" data-i="${i}" type="number" min="0" step="1" value="${l.qty}" style="width:80px;text-align:center" aria-label="Labels for ${esc(it.name)}"></td></tr>`; }).join('')}</tbody></table></div>
     <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">Label size (mm)</summary><div class="frow" style="flex-wrap:wrap;gap:8px;margin-top:6px">
       ${[['w', 'Label width'], ['h', 'Label height'], ['gap', 'Gap between labels'], ['side', 'Left / right margin'], ['cols', 'Labels across']].map(([k, l]) => `<label class="f" style="width:130px">${l}<input class="qrs" data-k="${k}" type="number" step="0.5" min="0" value="${st[k]}"></label>`).join('')}</div>
       <p class="mut" style="margin:4px 0 0;font-size:12px">Set for TVS LP 46 Neo: 3 labels of 32 × 25 mm on a 104 mm roll. Printer setup (once): Printing Preferences → Page size 104 × 25 mm, Media: Labels with gaps. In the print window choose TVS LP 46 Neo, margins None, scale 100%.</p></details>
     <div class="acts"><button class="btn" data-act="closeModal">Cancel</button><button class="btn pri" data-act="qrPrint">Print labels</button></div>`);
 }
 async function qrPrint(){
-  const q = F.qr; if (!q) return; const d = D[MATCOL[q.m]].get(q.id); if (!d) return;
+  const q = F.qr; if (!q) return;
   document.querySelectorAll('.qrn').forEach(e => { q.n[+e.dataset.i] = Math.max(0, Math.round(+e.value || 0)); });
   const st = qrSet(); document.querySelectorAll('.qrs').forEach(e => { const v = +e.value; if (v >= 0) st[e.dataset.k] = e.dataset.k === 'cols' ? Math.max(1, Math.round(v)) : v; });
   try { localStorage.setItem('qr_label', JSON.stringify(st)); } catch(e){}
   const w0 = window.open('', '_blank'); if (!w0){ toast('Allow pop-ups for this site to print.'); return; }
   w0.document.write('<p style="font:14px Arial;padding:20px">Making labels…</p>');
   try { await loadQR(); } catch(e){ w0.close(); toast(e.message); return; }
-  const no = q.m === 'mi' ? d.grnNo || d.invNo : d.no, labels = [];
-  qrLines(q.m, d).forEach((l, i) => { const it = D.inv_items.get(l.item), svg = qrSvg(qrText(it, l.rate, no)); for (let k = 0; k < (q.n[i] || 0); k++) labels.push({it, rate:l.rate, svg}); });
+  const AL = qrAll(q.m, q.ids), no = [...new Set(AL.map(l => l.no))].join(', '), labels = [];
+  AL.forEach((l, i) => { const it = D.inv_items.get(l.item), svg = qrSvg(qrText(it, l.rate, l.no)); for (let k = 0; k < (q.n[i] || 0); k++) labels.push({it, rate:l.rate, svg}); });
   if (!labels.length){ w0.close(); toast('No labels to print.'); return; }
   const C = st.cols, rowW = C * st.w + (C - 1) * st.gap + 2 * st.side, qs = Math.min(st.h - 2.5, st.w * 0.48);
   const one = x => `<div class="lb"><div class="qr">${x.svg}</div><div class="tx"><div class="nm">${esc(x.it.name)}</div><div class="mrp">MRP ₹${mrpF(x.rate)}</div><div class="pt">Part No<br><b>${esc(x.it.part)}</b></div></div></div>`;
@@ -1526,6 +1535,8 @@ const MATACT = {
   csAll:t => { F.csall = !F.csall; forceRender = true; render(); },
   qrOpen:t => qrDialog(t.dataset.m, t.dataset.id),
   qrPrint:() => qrPrint(),
+  qrSel:t => qrDialog(t.dataset.m, [...qsel(t.dataset.m)]),
+  qrSelClr:t => { qsel(t.dataset.m).clear(); forceRender = true; render(); },
   regClr:t => { const m = t.dataset.m; ['rq_', 'rf_', 'rt_', 'rp_', 're_', 'ri_'].forEach(k => { F[k + m] = ''; }); forceRender = true; render(); },
   spAll:t => { F.spall = !F.spall; forceRender = true; render(); },
   dcTy:t => { F.dcty = t.dataset.t; forceRender = true; render(); },
@@ -2699,6 +2710,10 @@ document.addEventListener('click', ev => {
 document.addEventListener('input', ev => { const t = ev.target; if (t.classList && t.classList.contains('mdi') && t.tagName !== 'SELECT') matInput(t); });
 document.addEventListener('input', ev => { const t = ev.target; if (t.classList && t.classList.contains('clf') && F.clform){ F.clform[t.dataset.k] = t.value; if (t.dataset.k === 'exec'){ const u = D.users.get(t.value), m = document.getElementById('cl_mgr'); if (m && u && u.managerId && !F.clform.mgr){ F.clform.mgr = u.managerId; m.value = u.managerId; } } } });
 document.addEventListener('change', ev => { const t = ev.target; if (t.classList && t.classList.contains('mdi') && t.tagName === 'SELECT') matInput(t); if (/^(mi|dc|rn)_file$/.test(t.id || '')) matFile(t); if (/^imp_(cust|sup)$/.test(t.id || '')) impFile(t); });
+document.addEventListener('change', ev => { const t = ev.target; if (!t.classList) return;
+  if (t.classList.contains('qsel')){ const S = qsel(t.dataset.m); t.checked ? S.add(t.value) : S.delete(t.value); forceRender = true; render(); }
+  else if (t.classList.contains('qall')){ const S = qsel(t.dataset.m); document.querySelectorAll('.qsel[data-m="' + t.dataset.m + '"]').forEach(x => t.checked ? S.add(x.value) : S.delete(x.value)); forceRender = true; render(); } });
+document.addEventListener('input', ev => { const t = ev.target; if (t.classList && t.classList.contains('qrn') && F.qr){ const st = qrSet(); let tot = 0; document.querySelectorAll('.qrn').forEach(e => tot += Math.max(0, Math.round(+e.value || 0))); const left = tot % st.cols ? st.cols - tot % st.cols : 0, el = document.getElementById('qrtot'); if (el) el.innerHTML = `<b>${tot} labels</b>${left ? ` · last row has ${left} blank` : ''}`; } });
 document.addEventListener('input', ev => { const t = ev.target; if (t.id === 'mto') F.mto = t.value; else if (t.id === 'mcc') F.mcc = t.value; });
 document.addEventListener('change', ev => { const t = ev.target;
   if (t.id === 'mparty'){ const v = t.value.trim(); const hit = custParties().find(x => x.toLowerCase() === v.toLowerCase()); F.matt = []; F.mperson = null; F.mparty = hit || ''; F.mpq = hit ? '' : v; F.msel = null; F.mthread = ''; F.mto = F.mcc = undefined; if (v && !hit) toast('Customer not found. Pick a name from the list.'); setTimeout(() => { forceRender = true; render(); }, 0); return; }
