@@ -1360,7 +1360,7 @@ function viewCustList(){
   <div class="tw"><table><thead><tr><th>Customer</th><th>Address</th><th>GSTIN</th><th>Email</th><th>Mobile</th><th>Executive</th><th>Manager</th><th></th></tr></thead><tbody>${body || '<tr><td colspan="8" class="empty">No customers yet. Import the customer address list in Admin → Import Masters.</td></tr>'}</tbody></table></div>${P.html}`;
 }
 /* ---------- QR labels for GRN and Physical Stock (3 labels across, thermal label printer) ---------- */
-const QRDEF = {w:33, h:25, gap:2.5, cols:3, side:1};   // mm; change in the label window, kept on this computer
+const QRDEF = {w:32, h:25, gap:3, cols:3, side:1};   // mm — TVS LP 46 Neo (203 DPI, 108 mm head), 32×25 mm 3-up roll (104 mm). Change in the label window, kept on this computer
 const qrSet = () => { try { return {...QRDEF, ...JSON.parse(localStorage.getItem('qr_label') || '{}')}; } catch(e){ return {...QRDEF}; } };
 let QRLIB = null;
 const mrpF = v => { const n = r2(v); return n % 1 ? n.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}) : n.toLocaleString('en-IN'); };
@@ -1376,7 +1376,7 @@ function qrDialog(m, id){
     <div class="tw" style="max-height:260px;overflow:auto"><table><thead><tr><th>Stock item</th><th class="r">MRP</th><th class="r">Labels</th></tr></thead><tbody>${L.map((l, i) => { const it = D.inv_items.get(l.item); return `<tr><td class="wrap">${esc(it.part + ' · ' + it.name)}</td><td class="r num">${inr(l.rate)}</td><td class="r"><input class="qrn" data-i="${i}" type="number" min="0" step="1" value="${l.qty}" style="width:80px;text-align:center" aria-label="Labels for ${esc(it.name)}"></td></tr>`; }).join('')}</tbody></table></div>
     <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">Label size (mm)</summary><div class="frow" style="flex-wrap:wrap;gap:8px;margin-top:6px">
       ${[['w', 'Label width'], ['h', 'Label height'], ['gap', 'Gap between labels'], ['side', 'Left / right margin'], ['cols', 'Labels across']].map(([k, l]) => `<label class="f" style="width:130px">${l}<input class="qrs" data-k="${k}" type="number" step="0.5" min="0" value="${st[k]}"></label>`).join('')}</div>
-      <p class="mut" style="margin:4px 0 0;font-size:12px">Default: 3 labels of 33 × 25 mm on a 4-inch (104 mm) roll. In the print window choose your label printer, paper size as set here, margins None, scale 100%.</p></details>
+      <p class="mut" style="margin:4px 0 0;font-size:12px">Set for TVS LP 46 Neo: 3 labels of 32 × 25 mm on a 104 mm roll. Printer setup (once): Printing Preferences → Page size 104 × 25 mm, Media: Labels with gaps. In the print window choose TVS LP 46 Neo, margins None, scale 100%.</p></details>
     <div class="acts"><button class="btn" data-act="closeModal">Cancel</button><button class="btn pri" data-act="qrPrint">Print labels</button></div>`);
 }
 async function qrPrint(){
