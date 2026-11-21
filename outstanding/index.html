@@ -817,7 +817,7 @@ const isInter = g => /^\d{2}[A-Z]/.test(String(g || '').toUpperCase()) && String
 const itemLbl = id => { const x = D.inv_items.get(id); return x ? `${x.part} · ${x.name}` : ''; };
 const normName = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const mapKey = s => 'm_' + normName(s).replace(/ /g, '_').slice(0, 80);
-const matParties = () => { const p = custParties(); [...D.contacts.values()].forEach(c => { if (c.party && !p.includes(c.party)) p.push(c.party); }); D.mat_dc.forEach(d => { if (d.party && !p.includes(d.party)) p.push(d.party); }); return p.sort((a, b) => a.localeCompare(b)); };
+const matParties = () => { const p = custParties(); [...D.contacts.values()].forEach(c => { if (c.party && !p.includes(c.party)) p.push(c.party); }); D.mat_dc.forEach(d => { if (d.party && !p.includes(d.party)) p.push(d.party); }); D.cust_addr.forEach(c => { if (c.party && !p.includes(c.party)) p.push(c.party); }); return p.sort((a, b) => a.localeCompare(b)); };
 let SUPL = null;   // suppliers from Purchase → Create Supplier (read once; empty if this account cannot read them)
 function loadSupl(){ if (SUPL || !SB) return; SUPL = []; Store.sb.from('pr_suppliers').select('name,gstin,addr1,addr2,addr3,state,pincode,mobile,email').then(r => { if (!r.error){ SUPL = r.data || []; forceRender = true; render(); } }, () => {}); }
 // a supplier's product name -> our stock item: remembered once, then exact name, product code, name, or a single item with that HSN
@@ -1247,6 +1247,63 @@ function regHTML(m, title, sub, newBtns, opts = {}){
   <div class="bar sfb"><label class="sf"><span>Search</span><input id="rq_${m}" data-f="rq_${m}" type="search" placeholder="Number, ${m === 'mi' ? 'supplier' : m === 'ps' ? 'remarks' : 'customer'}, item" value="${esc(F['rq_' + m] || '')}" autocomplete="off"></label></div>
   <div class="tw"><table><thead><tr class="ttop"><td colspan="${nc - 2}"></td><td class="r">Total (${docs.length})</td><td class="r num">${inr(tv)}</td><td></td></tr><tr><th>${m === 'mi' ? 'GRN date' : 'Date'}</th><th>${m === 'mi' ? 'GRN no' : m === 'dc' ? 'DC no' : m === 'rn' ? 'Receipt note no' : 'Number'}</th>${ex.map(e => `<th>${e.h}</th>`).join('')}<th>${m === 'mi' ? 'Supplier' : m === 'ps' ? 'Remarks' : 'Customer'}</th><th class="r">Taxable value</th><th></th></tr></thead><tbody>${body || `<tr><td colspan="${nc + 1}" class="empty">Nothing saved yet.</td></tr>`}</tbody></table></div>${P.html}`;
 }
+/* ---------- Import Masters (Admin): customer address list and supplier list from Excel ---------- */
+const IMPST = {'35':'Andaman and Nicobar Islands','37':'Andhra Pradesh','12':'Arunachal Pradesh','18':'Assam','10':'Bihar','04':'Chandigarh','22':'Chhattisgarh','26':'Dadra and Nagar Haveli and Daman and Diu','07':'Delhi','30':'Goa','24':'Gujarat','06':'Haryana','02':'Himachal Pradesh','01':'Jammu and Kashmir','20':'Jharkhand','29':'Karnataka','32':'Kerala','38':'Ladakh','31':'Lakshadweep','23':'Madhya Pradesh','27':'Maharashtra','14':'Manipur','17':'Meghalaya','15':'Mizoram','13':'Nagaland','21':'Odisha','34':'Puducherry','03':'Punjab','08':'Rajasthan','11':'Sikkim','33':'Tamil Nadu','36':'Telangana','16':'Tripura','09':'Uttar Pradesh','05':'Uttarakhand','19':'West Bengal'};
+function addr3(a){ const parts = String(a || '').replace(/\s+/g, ' ').trim().split(',').map(p => p.replace(/^[\s.]+|[\s.]+$/g, '')).filter(Boolean); const out = ['', '', '']; if (!parts.length) return out;
+  const tot = parts.reduce((x, p) => x + p.length, 0); let i = 0, cur = 0;
+  parts.forEach(p => { if (i < 2 && out[i] && cur + p.length > tot / 3 * (i + 1) + 8) i++; out[i] = out[i] ? out[i] + ', ' + p : p; cur += p.length; }); return out.map(o => o.slice(0, 120)); }
+const impGst = g => { g = String(g || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); return /^\d{2}[A-Z0-9]{13}$/.test(g) ? g : ''; };
+const impPin = a => { const m = [...String(a || '').matchAll(/(?<!\d)(\d{3})\s?(\d{3})(?!\d)/g)]; return m.length ? m[m.length - 1][1] + m[m.length - 1][2] : ''; };
+const impState = (g, a, p) => { if (g && IMPST[g.slice(0, 2)]) return IMPST[g.slice(0, 2)]; const t = String(a || '').toLowerCase(); const v = Object.values(IMPST).find(x => t.includes(x.toLowerCase())); if (v) return v; return /^6[0-4]/.test(p) ? 'Tamil Nadu' : ''; };
+let XLSXP = null;
+function loadXlsx(){ return XLSXP || (XLSXP = new Promise((ok, no) => { if (window.XLSX) return ok(window.XLSX); const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'; s.onload = () => ok(window.XLSX); s.onerror = () => { XLSXP = null; no(new Error('Could not load the Excel reader. Check the internet and try again.')); }; document.head.appendChild(s); })); }
+// rows with a name, a full address and a GSTIN, found by their headings (Ledger Name / Name, Full Address / Address, GSTIN / UIN)
+async function readMasterXlsx(file){
+  const X = await loadXlsx(), wb = X.read(await file.arrayBuffer(), {type:'array'}), ws = wb.Sheets[wb.SheetNames[0]];
+  const aoa = X.utils.sheet_to_json(ws, {header:1, defval:'', raw:false});
+  const hi = aoa.findIndex(r => r.some(c => /name/i.test(String(c)))); if (hi < 0) throw new Error('No "Ledger Name" heading found in the first sheet.');
+  const h = aoa[hi].map(c => String(c).toLowerCase()), ci = re => h.findIndex(c => re.test(c));
+  const nI = ci(/ledger name|^name|party|customer|supplier/), aI = ci(/address/), gI = ci(/gst/);
+  if (nI < 0) throw new Error('No name column found.');
+  const seen = new Set(), out = [];
+  aoa.slice(hi + 1).forEach(r => { const n = String(r[nI] || '').replace(/\s+/g, ' ').trim(); if (!n || seen.has(normName(n))) return; seen.add(normName(n));
+    const a = aI >= 0 ? String(r[aI] || '').trim() : '', g = gI >= 0 ? impGst(r[gI]) : '', p = impPin(a), l = addr3(a);
+    out.push({name:n, addr1:l[0], addr2:l[1], addr3:l[2], gstin:g, pincode:p, state:impState(g, a, p)}); });
+  return out;
+}
+let IMP = {cust:null, sup:null, msg:{}};
+function viewImport(){
+  const box = (k, title, help) => { const r = IMP[k], m = IMP.msg[k] || '';
+    return `<div class="card" style="margin-bottom:12px"><h2 style="margin:0 0 4px">${title}</h2><p class="mut" style="margin:0 0 8px">${help}</p>
+      <div class="mai"><label class="btn" for="imp_${k}" style="cursor:pointer">Choose Excel file</label><input id="imp_${k}" type="file" accept=".xlsx,.xls,.csv" style="position:absolute;opacity:0;width:1px;height:1px">
+      ${r ? `<span><b>${r.length}</b> rows read · ${r.filter(x => x.addr1).length} with address · ${r.filter(x => x.gstin).length} with GSTIN</span><button class="btn pri" data-act="impGo" data-k="${k}">Import ${r.length}</button>` : ''}</div>
+      ${m ? `<p style="margin:6px 0 0;font-weight:700">${esc(m)}</p>` : ''}
+      ${r ? `<div class="tw" style="margin-top:8px;max-height:260px;overflow:auto"><table><thead><tr><th>Name</th><th>Address line 1</th><th>Address line 2</th><th>Address line 3</th><th>GSTIN</th><th>State</th><th>Pincode</th></tr></thead><tbody>${r.slice(0, 50).map(x => `<tr><td class="wrap">${esc(x.name)}</td><td class="wrap">${esc(x.addr1)}</td><td class="wrap">${esc(x.addr2)}</td><td class="wrap">${esc(x.addr3)}</td><td class="mono">${esc(x.gstin)}</td><td>${esc(x.state)}</td><td>${esc(x.pincode)}</td></tr>`).join('')}</tbody></table></div><p class="mut" style="margin:4px 0 0">First 50 rows shown.</p>` : ''}</div>`; };
+  return `<div class="head"><div><h1>Import Masters</h1><p class="sub">Load the customer address list and the supplier list from Excel (columns: Ledger Name, Full Address, GSTIN / UIN)</p></div></div>
+    ${box('cust', 'Customer address list', `Fills the customer name, address and GSTIN on Delivery Challans. ${D.cust_addr.size} customers saved now. A customer already saved is updated.`)}
+    ${box('sup', 'Supplier list', 'Adds suppliers to Purchase → Create Supplier (Under: Sundry Creditors). Suppliers already there are skipped. Executive and manager can be set later in Create Supplier.')}`;
+}
+async function impFile(t){ const k = t.id.slice(4), f = t.files[0]; if (!f) return; t.value = ''; IMP.msg[k] = 'Reading…'; forceRender = true; render();
+  try { IMP[k] = await readMasterXlsx(f); IMP.msg[k] = ''; } catch(e){ IMP[k] = null; IMP.msg[k] = e.message || String(e); } forceRender = true; render(); }
+async function impGo(t){
+  const k = t.dataset.k, rows = IMP[k]; if (!rows || !rows.length) return; t.disabled = true;
+  const say = s => { IMP.msg[k] = s; const e = t.closest('.card')?.querySelector('p[style*="font-weight:700"]'); if (e) e.textContent = s; else { forceRender = true; render(); } };
+  try {
+    if (k === 'cust'){
+      const now = nowISO(), docs = rows.map(x => ({col:'cust_addr', id:mapKey(x.name), data:{id:mapKey(x.name), party:x.name, addr1:x.addr1, addr2:x.addr2, addr3:x.addr3, gstin:x.gstin, state:x.state, pincode:x.pincode, by:S.me, at:now}}));
+      for (let i = 0; i < docs.length; i += 400){ say(`Importing customers ${Math.min(i + 400, docs.length)} of ${docs.length}…`); const r = await Store.sb.from('docs').upsert(docs.slice(i, i + 400)); if (r.error) throw r.error; docs.slice(i, i + 400).forEach(d => D.cust_addr.set(d.id, d.data)); }
+      await logAct('Inventory', `Customer address list imported: ${docs.length} customers`); say(`Done: ${docs.length} customers imported.`);
+    } else {
+      const ex = await Store.sb.from('pr_suppliers').select('name'); if (ex.error) throw ex.error;
+      const have = new Set((ex.data || []).map(x => String(x.name).trim().toLowerCase()));
+      const add = rows.filter(x => !have.has(x.name.trim().toLowerCase())).map(x => ({name:x.name, under:'Sundry Creditors', addr1:x.addr1, addr2:x.addr2, addr3:x.addr3, state:x.state, pincode:x.pincode, gstin:x.gstin, pan:x.gstin ? x.gstin.slice(2, 12) : '', mobile:'', email:'', exec_id:null, exec_name:'', mgr_id:null, mgr_name:'', updated_at:nowISO()}));
+      for (let i = 0; i < add.length; i += 300){ say(`Importing suppliers ${Math.min(i + 300, add.length)} of ${add.length}…`); const r = await Store.sb.from('pr_suppliers').insert(add.slice(i, i + 300)); if (r.error) throw r.error; }
+      SUPL = null; await logAct('Inventory', `Supplier list imported: ${add.length} new suppliers`); say(`Done: ${add.length} new suppliers added, ${rows.length - add.length} were already there.`);
+    }
+    IMP[k] = null;
+  } catch(e){ say('Import stopped: ' + (e.message || e)); }
+  t.disabled = false; forceRender = true; render();
+}
 function viewStock(){
   const st = stockMap(), q = (F.stq || '').trim().toLowerCase();
   const Z = {q:0, v:0};  // every stock item shows, also those with nothing in stock
@@ -1352,6 +1409,7 @@ const MATACT = {
     toastOk(`Created ${n} stock item${n === 1 ? '' : 's'}. Now check the rows and save the GRN.`); forceRender = true; render(); },
   rnPick:t => { const d = F.rn, x = D.mat_dc.get(t.dataset.id); if (!d || !x) return; d.dc = x.id; d.party = x.party; d.lines = dcPending(x, d.id).filter(l => l.left > 0).map(l => ({item:l.item, qty:l.left, rate:l.rate, value:r2(l.left * (+l.rate || 0))})); forceRender = true; render(); },
   go:t => { F.justSaved = ''; ACT.nav({dataset:{k:t.dataset.k}}); },
+  impGo:t => impGo(t),
   csAll:t => { F.csall = !F.csall; forceRender = true; render(); },
   spAll:t => { F.spall = !F.spall; forceRender = true; render(); },
   dcTy:t => { F.dcty = t.dataset.t; forceRender = true; render(); },
@@ -1764,7 +1822,7 @@ function viewCollection(){
 const NAVIC = {"mail": "<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"m3 7 9 6 9-6\"/>", "contacts": "<rect x=\"4\" y=\"3\" width=\"16\" height=\"18\" rx=\"2\"/><circle cx=\"12\" cy=\"10\" r=\"3\"/><path d=\"M7.5 17c.8-2 2.5-3 4.5-3s3.7 1 4.5 3\"/>", "billing": "<path d=\"M6 3h12v18l-3-2-3 2-3-2-3 2z\"/><path d=\"M9 8h6M9 12h6\"/>", "chat": "<path d=\"M21 12a8 8 0 0 1-11.7 7.1L4 20l1-4.6A8 8 0 1 1 21 12z\"/>", "collection": "<path d=\"M3 7a2 2 0 0 1 2-2h13v4\"/><path d=\"M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H5a2 2 0 0 1-2-2z\"/><circle cx=\"16\" cy=\"14.5\" r=\"1.2\"/>", "wa": "<path d=\"M21 12a8 8 0 0 1-11.7 7.1L4 20l1-4.6A8 8 0 1 1 21 12z\"/><path d=\"M9 10.5c.3 1.6 1.9 3.2 3.5 3.5l1-1 1.5.6v1.4c-2.9.3-6.4-3.2-6.1-6.1H10l.6 1.5z\"/>", "dashboard": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"2\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"2\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"2\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"2\"/>", "create": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 8v8M8 12h8\"/>", "outstanding": "<path d=\"M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z\"/><path d=\"M14 3v5h5M9 13h6M9 17h6\"/>", "parties": "<circle cx=\"9\" cy=\"8\" r=\"3.5\"/><path d=\"M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2 .8 3.5 2.7 3.5 6\"/>", "followups": "<path d=\"M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0\"/>", "edits": "<path d=\"M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z\"/>", "activity": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/>"};
 const ico = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${NAVIC[k] || ''}</svg>`;
 const NAV = [
-  ['dashboard','Dashboard',viewDashboard,()=>true],['wa','Send WhatsApp Alert',viewWA,()=>canAlert() && waPeople().length > 0],['mail','Send Payment Mail',viewMail,canAlert],['create','Create',viewCreate,isAdm],['outstanding','Outstanding',viewOutstanding,()=>true],['billing','Billing',viewBilling,()=>true],['collection','Collection',viewCollection,()=>true],['contacts','Customer Contacts',viewContacts,isTop],['inv_stock','Stock List',viewStock,canStock],['inv_item','Create Stock Item',viewInvItems,canStock],['mat_in_new','Create GRN',()=>viewMatIn('new'),canStock],['mat_in','GRN Register',()=>viewMatIn('list'),canStock],['dc_new','Create Delivery Challan',()=>viewMatOut('dc','dc'),canStock],['rdc_new','Create Returnable DC',()=>viewMatOut('dc','rdc'),canStock],['mat_dc','Delivery Challan Register',()=>viewMatOut('dc'),canStock],['rn_new','Create Receipt Note',()=>viewMatOut('rn','new'),canStock],['mat_rn','Receipt Note Register',()=>viewMatOut('rn'),canStock],['ps_new','Create Physical Stock',()=>viewPS('new'),canStock],['cls_stock','Closing Stock Details',viewClosing,canStock],['mat_ps','Physical Stock Register',()=>viewPS('list'),canStock],['smp_pend','Pending Samples',viewSamplesPending,canStock],['inv_brand','Brand',()=>viewMaster('brand'),canStock],['inv_cat','Category',()=>viewMaster('cat'),canStock],['inv_sub','Sub Category',()=>viewMaster('sub'),canStock],['inv_unit','Units',()=>viewMaster('unit'),canStock],['inv_gst','GST Percentage',()=>viewMaster('gst'),canStock],['chat','Chat',viewChat,()=>true],
+  ['dashboard','Dashboard',viewDashboard,()=>true],['wa','Send WhatsApp Alert',viewWA,()=>canAlert() && waPeople().length > 0],['mail','Send Payment Mail',viewMail,canAlert],['create','Create',viewCreate,isAdm],['outstanding','Outstanding',viewOutstanding,()=>true],['billing','Billing',viewBilling,()=>true],['collection','Collection',viewCollection,()=>true],['contacts','Customer Contacts',viewContacts,isTop],['inv_stock','Stock List',viewStock,canStock],['inv_item','Create Stock Item',viewInvItems,canStock],['mat_in_new','Create GRN',()=>viewMatIn('new'),canStock],['mat_in','GRN Register',()=>viewMatIn('list'),canStock],['dc_new','Create Delivery Challan',()=>viewMatOut('dc','dc'),canStock],['rdc_new','Create Returnable DC',()=>viewMatOut('dc','rdc'),canStock],['mat_dc','Delivery Challan Register',()=>viewMatOut('dc'),canStock],['rn_new','Create Receipt Note',()=>viewMatOut('rn','new'),canStock],['mat_rn','Receipt Note Register',()=>viewMatOut('rn'),canStock],['imp','Import Masters',viewImport,isAdm],['ps_new','Create Physical Stock',()=>viewPS('new'),canStock],['cls_stock','Closing Stock Details',viewClosing,canStock],['mat_ps','Physical Stock Register',()=>viewPS('list'),canStock],['smp_pend','Pending Samples',viewSamplesPending,canStock],['inv_brand','Brand',()=>viewMaster('brand'),canStock],['inv_cat','Category',()=>viewMaster('cat'),canStock],['inv_sub','Sub Category',()=>viewMaster('sub'),canStock],['inv_unit','Units',()=>viewMaster('unit'),canStock],['inv_gst','GST Percentage',()=>viewMaster('gst'),canStock],['chat','Chat',viewChat,()=>true],
   ['edits','Edit History',viewEdits,()=>true],
   ['activity','Activity log',viewActivity,()=>true]
 ];
@@ -2486,7 +2544,7 @@ document.addEventListener('click', ev => {
   try { (window.top || window).location.href = app; } catch(e){ location.href = app; }
 });
 document.addEventListener('input', ev => { const t = ev.target; if (t.classList && t.classList.contains('mdi') && t.tagName !== 'SELECT') matInput(t); });
-document.addEventListener('change', ev => { const t = ev.target; if (t.classList && t.classList.contains('mdi') && t.tagName === 'SELECT') matInput(t); if (/^(mi|dc|rn)_file$/.test(t.id || '')) matFile(t); });
+document.addEventListener('change', ev => { const t = ev.target; if (t.classList && t.classList.contains('mdi') && t.tagName === 'SELECT') matInput(t); if (/^(mi|dc|rn)_file$/.test(t.id || '')) matFile(t); if (/^imp_(cust|sup)$/.test(t.id || '')) impFile(t); });
 document.addEventListener('input', ev => { const t = ev.target; if (t.id === 'mto') F.mto = t.value; else if (t.id === 'mcc') F.mcc = t.value; });
 document.addEventListener('change', ev => { const t = ev.target;
   if (t.id === 'mparty'){ const v = t.value.trim(); const hit = custParties().find(x => x.toLowerCase() === v.toLowerCase()); F.matt = []; F.mperson = null; F.mparty = hit || ''; F.mpq = hit ? '' : v; F.msel = null; F.mthread = ''; F.mto = F.mcc = undefined; if (v && !hit) toast('Customer not found. Pick a name from the list.'); setTimeout(() => { forceRender = true; render(); }, 0); return; }

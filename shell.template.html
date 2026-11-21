@@ -388,8 +388,9 @@ function buildNav(){
   // Admin: Create + Users & Access
   const cr = get('create'); let ai = '';
   if (cr) ai += itemHTML('outstanding', cr);
+  const im = get('imp'); if (im) ai += itemHTML('outstanding', im);
   if (isAdmin()) ai += `<button class="si ${current === 'access' ? 'on' : ''}" data-v="access">Users &amp; Access</button>`;
-  if (ai) h += groupHTML('admin', 'Admin', ai, on('outstanding', cr) || current === 'access');
+  if (ai) h += groupHTML('admin', 'Admin', ai, on('outstanding', cr) || on('outstanding', im) || current === 'access');
   // Send Alert: WhatsApp + payment mail
   const al = ['wa', 'mail'].map(get).filter(Boolean);
   if (al.length) h += groupHTML('alert', 'Send Alert', al.map(it => itemHTML('outstanding', it)).join(''), al.some(it => on('outstanding', it)));
