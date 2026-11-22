@@ -331,6 +331,29 @@ input[type=search]:not(:placeholder-shown){background:#fff4c2;border:2px solid #
 .xlink{display:block;border:0;background:none;padding:0;font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:3px;text-align:left}.xlink:hover{opacity:.75}
 .annclock{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;color:#fff;background:#14163a;padding:6px 18px;border-radius:12px;letter-spacing:.02em}
 tr.clk{cursor:pointer;outline:none}tr.clk:hover td{background:#fff7d6}tr.clk.sel td,tr.clk:focus td{background:#fcd34d!important;color:#111}tr.dim td{color:#9ca3af}.stkt th.c{text-align:center}.stkt td,.stkt th{white-space:nowrap}.stkt .gl{border-left:1.5px solid #c7c9d9}.stkt thead th{border-bottom:1px solid #c7c9d9}.stkt tfoot td{border-top:1.5px solid #c7c9d9}
+
+/* ---------- Phone layout: tables become cards, 16px inputs (no iPhone zoom), bigger tap targets ---------- */
+@media (max-width:640px){
+  input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px!important}
+  .btn.sm,.pgb,.pager button{min-height:38px;padding-left:12px;padding-right:12px}
+  .head{flex-wrap:wrap;gap:10px}.head>div:last-child{display:flex;flex-wrap:wrap;gap:8px}
+  .tw:has(>table.rc){background:transparent;border:0;box-shadow:none;overflow:visible}
+  table.rc,table.rc tbody,table.rc tfoot,table.rc tr,table.rc td{display:block;width:100%}
+  table.rc thead tr:not(.ttop){display:none}table.rc thead{display:block}
+  table.rc thead tr.ttop{display:flex;justify-content:space-between;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px 12px;margin-bottom:10px}table.rc thead tr.ttop td:empty{display:none}table.rc thead tr.ttop td{display:block;width:auto;border:0;padding:2px 0}
+  table.rc tbody tr,table.rc tfoot tr{background:var(--surface);border:1px solid var(--line);border-radius:12px;margin:0 0 10px;padding:6px 12px;box-shadow:0 2px 8px rgba(40,30,120,.05)}
+  table.rc td{display:flex;justify-content:space-between;align-items:center;gap:12px;border:0!important;padding:6px 0!important;text-align:right!important;white-space:normal!important;min-height:0}
+  table.rc td[data-label]::before{content:attr(data-label);font-family:inherit;font-family:var(--font,Manrope,system-ui,sans-serif);font-weight:600;font-size:12px;color:var(--mut,#6b7280);text-align:left;flex:0 0 38%}
+  table.rc td:not([data-label]){justify-content:flex-end;flex-wrap:wrap}table.rc td:empty{display:none}
+  table.rc td:has(input:not([type=checkbox]),select,textarea){flex-direction:column;align-items:stretch;text-align:left!important;gap:4px}
+  table.rc td:has(input:not([type=checkbox]),select,textarea)::before{flex:none}
+  table.rc td input:not([type=checkbox]),table.rc td select,table.rc td textarea{width:100%!important;max-width:none!important;text-align:left!important}
+  table.rc td.empty{justify-content:center;color:var(--mut,#6b7280)}table.rc td.empty::before{display:none}
+  table.rc tr.clk.sel td,table.rc tr.clk:focus td{background:transparent!important}table.rc tr.clk.sel,table.rc tr.clk:focus{background:#fcd34d!important}
+  .stkt td:first-child,.stkt th:first-child{position:sticky;left:0;background:var(--surface);z-index:1}
+  .modal,.mdl{max-width:calc(100vw - 20px)!important}
+}
+@media (pointer:coarse){input[type=checkbox]{width:20px;height:20px}}
 </style>
 </head>
 <body>
@@ -1465,6 +1488,19 @@ async function qrPrint(){
     @media print{.bar{display:none}}</style></head><body><div class="bar"><button onclick="window.print()">Print ${labels.length} labels</button></div>${rows}</body></html>`);
   w0.document.close(); w0.focus(); setTimeout(() => { try { w0.print(); } catch(e){} }, 500);
 }
+
+/* Phone: label each cell from its column heading so wide tables can show as cards (CSS above, ≤640px) */
+const RC_SKIP = 'table.stkt, .modal table, .mdl table, #qrgrid table';
+function rcLabel(){
+  document.querySelectorAll('#main table').forEach(t => {
+    if (t.matches(RC_SKIP) || t.dataset.rc === '1' && t.rcRows === t.rows.length) return;
+    const hr = [...(t.tHead ? t.tHead.rows : [])].filter(r => !r.classList.contains('ttop')).pop(); if (!hr || hr.querySelector('input:not([type=checkbox]),select') || [...hr.cells].some(c => c.rowSpan > 1)) return;
+    const L = []; [...hr.cells].forEach(c => { const txt = c.textContent.trim().replace(/\s*\*$/, ' *'); for (let i = 0; i < (c.colSpan || 1); i++) L.push(txt); });
+    [...t.tBodies].forEach(b => [...b.rows].forEach(r => { let i = 0; [...r.cells].forEach(c => { const lb = L[i]; if (lb && (c.colSpan || 1) === 1 && !c.classList.contains('empty')) c.setAttribute('data-label', lb); i += c.colSpan || 1; }); }));
+    t.classList.add('rc'); t.dataset.rc = '1'; t.rcRows = t.rows.length;
+  });
+}
+new MutationObserver(() => { cancelAnimationFrame(rcLabel.f); rcLabel.f = requestAnimationFrame(rcLabel); }).observe(document.documentElement, {childList:true, subtree:true});
 // Tally-style moving bar: the chosen row is yellow, ↑ ↓ move it, Enter opens it
 const stkFocus = () => setTimeout(() => { const r = document.querySelector('#main tr.clk.sel') || document.querySelector('#main table.stkt tr.clk:not(.dim)'); if (r){ r.focus({preventScroll:true}); const b = r.getBoundingClientRect(); if (b.top < 0 || b.bottom > innerHeight) r.scrollIntoView({block:'center'}); } }, 30);
 document.addEventListener('focusin', ev => { const r = ev.target; if (r.tagName === 'TR' && r.classList.contains('clk')) r.parentNode.querySelectorAll('tr.sel').forEach(x => x !== r && x.classList.remove('sel')), r.classList.add('sel'); });
