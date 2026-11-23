@@ -1210,8 +1210,8 @@ function docHTML(M){
     + `<div class="row"><span>Tax Amount (in words) :</span> <b>${inWords(taxTot)}</b></div>`;
   const logo = M.co.logo ? `<img class="logo" src="${M.co.logo}" alt="">` : `<div class="logo tl">${esc(M.co.short || '')}</div>`;
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(M.tag + ' ' + (M.no || ''))}</title><style>
-  @page{size:A4;margin:9mm}*{box-sizing:border-box}html,body{margin:0}body{font:11px/1.32 Arial,Helvetica,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .page{display:flex;flex-direction:column;min-height:279mm}
+  @page{size:A4;margin:0}*{box-sizing:border-box}html,body{margin:0}body{font:11px/1.32 Arial,Helvetica,sans-serif;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .page{display:flex;flex-direction:column;padding:9mm;min-height:296mm}
   .ttl{display:flex;justify-content:center;position:relative;padding:2px 0 6px}.ttl b{font-size:16px;letter-spacing:.04em}.ttl i{position:absolute;right:0;top:4px;font-size:10.5px}
   .doc{border:1px solid #000;flex:1;display:flex;flex-direction:column}
   .top{display:flex;border-bottom:1px solid #000}.lft{width:52%;border-right:1px solid #000;display:flex;flex-direction:column}.rgt{width:48%;display:flex;flex-direction:column}
