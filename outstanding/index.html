@@ -354,6 +354,12 @@ tr.clk{cursor:pointer;outline:none}tr.clk:hover td{background:#fff7d6}tr.clk.sel
   .modal,.mdl{max-width:calc(100vw - 20px)!important}
 }
 @media (pointer:coarse){input[type=checkbox]{width:20px;height:20px}}
+.scanw{display:grid;grid-template-columns:minmax(260px,1fr) minmax(280px,1.3fr);gap:12px;align-items:start;margin:12px 0 10px;padding:12px;border:2px dashed #a5b4fc;border-radius:12px;background:#f5f7ff}
+.scanf input{height:46px;font-size:16px;font-weight:700;border:2px solid #6366f1!important}.scanf input:focus{outline:3px solid #c7d2fe}
+.sug{display:flex;flex-direction:column;gap:4px;min-height:46px;justify-content:center}.sug p{margin:0;font-size:13px}
+.sgi{display:flex;flex-direction:column;align-items:flex-start;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px;cursor:pointer;font:inherit;font-size:13px;color:inherit}.sgi span{font-size:12px;color:var(--mut,#6b7280)}.sgi.on,.sgi:hover{border-color:#6366f1;background:#eef2ff}
+tr.flash td{background:#fef08a!important;transition:background .3s}
+@media (max-width:760px){.scanw{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -1036,6 +1042,7 @@ function rnFormHTML(){
       <label class="f">Customer *${mInp('rn', 'party', d.party, {list:'rn_parties'})}</label>
       <label class="f">Remarks${mInp('rn', 'remarks', d.remarks)}</label>
     </div><datalist id="rn_parties">${dcParties().map(s => `<option value="${esc(s)}">`).join('')}</datalist>
+    ${scanBox('rn')}
     ${dcTable}
     ${sel ? `<h3 style="margin:14px 0 6px">Items coming back against ${esc(sel.no)}</h3><div class="tw"><table class="mtab"><thead><tr><th>Stock item</th><th class="r">Pending</th><th class="r">Qty back *</th><th class="r">Rate</th><th class="r">Value</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="4" class="r"><b>Total value</b></td><td class="r num" id="rn_tot"><b>${inr(tot)}</b></td></tr></tfoot></table></div>
     <p class="mut" style="margin:6px 0 0">Type 0 for an item that has not come back; the DC stays pending for it.</p>` : ''}
@@ -1047,6 +1054,53 @@ function sampleRows(){
   D.mat_dc.forEach(x => dcKind(x) === 'rdc' && dcPending(x).forEach(l => out.push({dc:x, l, exec:x.exec, party:x.party, item:l.item, outQ:+l.qty || 0, inQ:l.back, left:l.left, rate:+l.rate || 0})));
   return out;
 }
+/* ---------- Scan box for DC / Returnable DC / Receipt Note: scan a GRN QR label (or type part no / name) and the item drops in as the next row ---------- */
+const scanBox = m => `<div class="scanw"><label class="f scanf">Scan QR code or type stock item<input id="${m}_scan" class="scan" data-m="${m}" type="search" autocomplete="off" spellcheck="false" enterkeyhint="done" placeholder="Click here, then scan · or type part no / name" aria-describedby="${m}_sughelp" aria-controls="${m}_sug"></label><div class="sug" id="${m}_sug" role="listbox" aria-label="Matching stock items"><p class="mut" id="${m}_sughelp">Each scan adds the item below with all of its ${m === 'rn' ? 'pending quantity' : 'available stock'}; change the quantity if needed.</p></div></div>`;
+// what can be picked: DC → items in stock; RN → items still out with customers on returnable DCs
+function scanCands(m){
+  if (m === 'dc'){ const st = stockMap(F.dc.id); return [...D.inv_items.values()].map(x => { const s = st.get(x.id); return {x, q:s ? s.q : 0, rate:s ? s.rate : 0}; }).filter(c => c.q > 0); }
+  const d = F.rn, out = new Map();
+  D.mat_dc.forEach(dc => { if (dcKind(dc) !== 'rdc' || (d.party && normName(dc.party) !== normName(d.party)) || (d.dc && dc.id !== d.dc)) return;
+    dcPending(dc, d.id).forEach(l => { if (l.left > 0){ const x = D.inv_items.get(l.item); if (!x) return; const c = out.get(l.item) || {x, q:0, rate:+l.rate || 0, dcs:[]}; c.q += l.left; c.dcs.push({dc, left:l.left, rate:+l.rate || 0}); out.set(l.item, c); } }); });
+  return [...out.values()];
+}
+function scanFind(m, text){
+  const t = String(text || '').trim(); if (!t) return {list:[]};
+  const code = t.includes('|') ? t.split('|')[0].trim() : t, lc = code.toLowerCase(), C = scanCands(m);
+  const exact = C.filter(c => String(c.x.part || '').toLowerCase() === lc || String(c.x.code || '').toLowerCase() === lc);
+  if (exact.length === 1) return {hit:exact[0], list:exact};
+  const words = lc.split(/\s+/).filter(Boolean);
+  const list = C.filter(c => { const h = [c.x.part, c.x.code, c.x.name].join(' ').toLowerCase(); return words.every(w => h.includes(w)); }).slice(0, 8);
+  if (!list.length){ const any = [...D.inv_items.values()].find(x => String(x.part || '').toLowerCase() === lc || String(x.code || '').toLowerCase() === lc); return {list, known:any}; }
+  return {list};
+}
+function scanSug(m){
+  const el = document.getElementById(m + '_sug'), inp = document.getElementById(m + '_scan'); if (!el || !inp) return;
+  const r = scanFind(m, inp.value), u = c => D.inv_units.get(c.x.unit)?.unit || '';
+  if (!inp.value.trim()){ el.innerHTML = `<p class="mut">Each scan adds the item below with all of its ${m === 'rn' ? 'pending quantity' : 'available stock'}; change the quantity if needed.</p>`; return; }
+  el.innerHTML = r.list.length ? r.list.map((c, i) => `<button type="button" role="option" class="sgi${i === 0 ? ' on' : ''}" data-act="scanPick" data-m="${m}" data-id="${esc(c.x.id)}"><div><b>${esc(c.x.part)}</b> · ${esc(c.x.name)}</div><span>${qtyF(c.q)} ${esc(u(c))} ${m === 'rn' ? 'pending' : 'in stock'} · ₹${pn(r2(c.rate))}</span></button>`).join('')
+    : `<p style="color:#b42318;font-weight:700;margin:0">${r.known ? `${esc(r.known.part + ' · ' + r.known.name)}: ${m === 'rn' ? 'nothing pending to come back' + (F.rn.party ? ' from ' + esc(F.rn.party) : '') : 'no stock left'}.` : 'No stock item matches “' + esc(inp.value.trim()) + '”.'}</p>`;
+}
+function scanAdd(m, id){
+  const c = scanCands(m).find(c => c.x.id === id), d = F[m]; if (!c) return scanMsg(m, 'This item cannot be added here.', 1);
+  const ex = d.lines.findIndex(l => l.item === id);
+  if (ex >= 0){ scanMsg(m, `${c.x.part} · ${c.x.name} is already in the list (row ${ex + 1}).`, 1); return scanRefocus(m, ex); }
+  if (m === 'dc'){ d.lines = d.lines.filter(l => l.item); d.lines.push({item:id, qty:c.q, rate:r2(c.rate), value:r2(c.q * c.rate), note:''}); }
+  else {
+    const pk = c.dcs.slice().sort((a, b) => String(a.dc.date).localeCompare(String(b.dc.date)))[0];   // the oldest challan that still has this item out
+    if (d.dc && pk.dc.id !== d.dc) return scanMsg(m, 'This item is on another challan.', 1);
+    if (!d.dc){ d.dc = pk.dc.id; d.party = pk.dc.party; d.lines = []; }
+    d.lines.push({item:id, qty:pk.left, rate:r2(pk.rate), value:r2(pk.left * pk.rate)});
+  }
+  scanMsg(m, `Added ${c.x.part} · ${c.x.name}`); forceRender = true; render(); scanRefocus(m);
+}
+function scanMsg(m, t, bad){ F.scanMsg = {m, t, bad}; const el = document.getElementById(m + '_sug'); if (el) el.innerHTML = `<p style="margin:0;font-weight:700;color:${bad ? '#b42318' : '#0c7d70'}">${esc(t)}</p>`; }
+function scanRefocus(m, row){ setTimeout(() => { const i = document.getElementById(m + '_scan'); if (i){ i.value = ''; i.focus({preventScroll:true}); } if (F.scanMsg && F.scanMsg.m === m) scanMsg(m, F.scanMsg.t, F.scanMsg.bad); if (row != null){ const r = document.querySelectorAll('#mform table.mtab tbody tr')[row]; if (r){ r.classList.add('flash'); setTimeout(() => r.classList.remove('flash'), 1400); } } }, 40); }
+document.addEventListener('input', ev => { const t = ev.target; if (t.classList && t.classList.contains('scan')){ F.scanMsg = null; scanSug(t.dataset.m); } });
+document.addEventListener('keydown', ev => { const t = ev.target; if (!t.classList || !t.classList.contains('scan')) return;
+  if (ev.key === 'Enter'){ ev.preventDefault(); const m = t.dataset.m, r = scanFind(m, t.value); if (r.hit || r.list.length === 1) scanAdd(m, (r.hit || r.list[0]).x.id); else if (r.list.length){ const on = document.querySelector(`#${m}_sug .sgi.on`); if (on) scanAdd(m, on.dataset.id); } else { scanSug(m); t.select(); } }
+  else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp'){ const L = [...document.querySelectorAll(`#${t.dataset.m}_sug .sgi`)]; if (!L.length) return; ev.preventDefault(); let i = L.findIndex(e => e.classList.contains('on')); L[i]?.classList.remove('on'); i = (i + (ev.key === 'ArrowDown' ? 1 : -1) + L.length) % L.length; L[i].classList.add('on'); }
+  else if (ev.key === 'Escape'){ t.value = ''; scanSug(t.dataset.m); } });
 /* ---------- companies on our documents ---------- */
 const COINFO = {
   Excoso:{name:'BRANDITUDE CORPORATE PRIVATE LIMITED', lines:['Plot No.1,2,3,4, First Floor', 'Sree Mahalakshmi Nagar', 'Noombal, Chennai - 600077'], mob:'9994699776', gstin:'33AAHCB4086D1ZX', state:'Tamil Nadu', code:'33', cin:'U74999TN2017PTC118273', email:'sales@branditude.in', pan:'AAHCB4086D'},
@@ -1078,7 +1132,7 @@ function dcFormHTML(){
   const d = F.dc, st = stockMap(d.id), k = dcKind(d);
   const only = new Set([...st.entries()].filter(([, s]) => s.q > 0).map(([x]) => x));
   const rows = d.lines.map((l, i) => { const s = st.get(l.item);
-    return `<tr><td><select class="mdi" id="dc_l${i}_item" data-m="dc" data-l="${i}" data-k="item" aria-label="Stock item">${itemOpts(l.item, only)}</select></td><td class="mut">${l.item ? qtyF(s ? s.q : 0) + ' in stock' : ''}</td><td>${lInp('dc', i, 'qty', l.qty, {num:1, al:'Quantity'})}</td><td>${lInp('dc', i, 'rate', l.rate, {num:1, al:'Rate'})}</td><td>${lInp('dc', i, 'value', l.value, {num:1, al:'Value'})}</td><td>${lInp('dc', i, 'note', l.note, {al:'Item note'})}</td><td><button class="btn sm dng" data-act="matDelL" data-m="dc" data-i="${i}" aria-label="Remove row ${i + 1}">✕</button></td></tr>`; }).join('');
+    return `<tr><td class="wrap">${l.item ? `<b>${esc(itemLbl(l.item))}</b>` : `<select class="mdi" id="dc_l${i}_item" data-m="dc" data-l="${i}" data-k="item" aria-label="Stock item">${itemOpts(l.item, only)}</select>`}</td><td class="mut">${l.item ? qtyF(s ? s.q : 0) + ' in stock' : ''}</td><td>${lInp('dc', i, 'qty', l.qty, {num:1, al:'Quantity'})}</td><td>${lInp('dc', i, 'rate', l.rate, {num:1, al:'Rate'})}</td><td>${lInp('dc', i, 'value', l.value, {num:1, al:'Value'})}</td><td>${lInp('dc', i, 'note', l.note, {al:'Item note'})}</td><td><button class="btn sm dng" data-act="matDelL" data-m="dc" data-i="${i}" aria-label="Remove row ${i + 1}">✕</button></td></tr>`; }).join('');
   const tot = d.lines.reduce((a, l) => a + (+l.value || 0), 0), team = d.party ? partyTeam(d.party) : {};
   const exs = execs().sort((a, b) => a.name.localeCompare(b.name)), mgs = managers();
   return `<div class="card" id="mform">
@@ -1096,15 +1150,14 @@ function dcFormHTML(){
       <label class="f">Customer GSTIN${mInp('dc', 'gstin', d.gstin)}</label>
     </div>
     <datalist id="mat_parties">${matParties().map(s => `<option value="${esc(s)}">`).join('')}</datalist>
-    <div class="tw" style="margin-top:10px"><table class="mtab"><thead><tr><th>Stock item *</th><th>Available</th><th class="r">Qty *</th><th class="r">Rate</th><th class="r">Value</th><th>Item note (printed)</th><th></th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="4" class="r"><b>Total value</b></td><td class="r num" id="dc_tot"><b>${inr(tot)}</b></td><td colspan="2"></td></tr></tfoot></table></div>
-    <button class="btn" data-act="matAddL" data-m="dc" style="margin-top:8px">+ Add item</button>
+    <div class="tw" style="margin-top:10px">${scanBox('dc')}<table class="mtab"><thead><tr><th>Stock item *</th><th>Available</th><th class="r">Qty *</th><th class="r">Rate</th><th class="r">Value</th><th>Item note (printed)</th><th></th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="4" class="r"><b>Total value</b></td><td class="r num" id="dc_tot"><b>${inr(tot)}</b></td><td colspan="2"></td></tr></tfoot></table></div>
     <div class="err" id="dc_err"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="matSave" data-m="dc">${d.id ? 'Save changes' : 'Save ' + DCT[k]}</button><button class="btn" data-act="matCancel" data-m="dc">Cancel</button></div>
     <p class="mut" style="margin:6px 0 0">The rate is the value the item came in at; you can change it. Stock goes down when you save${k === 'rdc' ? '; it comes back with a Receipt Note' : ''}.</p></div>`;
 }
 function viewMatOut(m, mode){
   const col = MATCOL[m];
   if (mode === 'dc' || mode === 'rdc'){
-    if (!F.dc || (!F.dc.id && dcKind(F.dc) !== mode)) F.dc = {kind:mode, no:vno('mat_dc', mode === 'dc' ? 'DC' : 'RDC'), date:TODAY, comp:'Expert', party:'', exec:'', mgr:'', remarks:'', lines:[blankLine('dc')]};
+    if (!F.dc || (!F.dc.id && dcKind(F.dc) !== mode)) F.dc = {kind:mode, no:vno('mat_dc', mode === 'dc' ? 'DC' : 'RDC'), date:TODAY, comp:'Expert', party:'', exec:'', mgr:'', remarks:'', lines:[]};
     const k = dcKind(F.dc);
     return `<div class="head"><div><h1>${F.dc.id ? 'Edit ' : 'Create '}${k === 'dc' ? 'DC' : 'Returnable DC'}</h1><p class="sub">${k === 'dc' ? 'Stock going out (not samples)' : 'Samples an executive takes to a customer and brings back'}</p></div><button class="btn" data-act="go" data-k="mat_dc">Delivery Challan Register</button></div>${dcFormHTML()}`;
   }
@@ -1650,7 +1703,7 @@ const MATACT = {
   moTab:t => { F.moTab = t.dataset.t; forceRender = true; render(); },
   matNew:t => { const m = t.dataset.m; F[m + 'Ais'] = ''; F[m] = m === 'mi' ? {invNo:'', invDate:TODAY, supName:'', supGst:'', comp:'Excoso', lines:[blankLine('mi')]} : {no:vno(MATCOL[m], m === 'dc' ? 'RDC' : 'RN'), date:TODAY, party:'', exec:'', dc:'', remarks:'', lines:m === 'rn' ? [] : [blankLine(m)]}; forceRender = true; render(); },
   matAddL:t => { const m = t.dataset.m; F[m].lines.push(blankLine(m)); forceRender = true; render(); },
-  matDelL:t => { const m = t.dataset.m; F[m].lines.splice(+t.dataset.i, 1); if (!F[m].lines.length && m !== 'rn') F[m].lines.push(blankLine(m)); forceRender = true; render(); },
+  matDelL:t => { const m = t.dataset.m; F[m].lines.splice(+t.dataset.i, 1); if (!F[m].lines.length && m !== 'rn' && m !== 'dc') F[m].lines.push(blankLine(m)); forceRender = true; render(); },
   matNiCreate:async t => { const i = +t.dataset.i, l = F.mi.lines[i], nw = F.mi.lines.filter(x => x.item === '__new'), e = niCheck(l, nw.indexOf(l)), er = document.getElementById('mi_nierr' + i);
     if (e){ if (er) er.textContent = e; toast(e); return; }
     t.disabled = true; try { const nm = await niCreate(l); toastOk('Created stock item ' + nm); } catch(x){ t.disabled = false; toast('Could not create: ' + (x.message || x)); return; } forceRender = true; render(); },
@@ -1674,6 +1727,7 @@ const MATACT = {
   csAll:t => { F.csall = !F.csall; forceRender = true; render(); },
   qrOpen:t => qrDialog(t.dataset.m, t.dataset.id),
   qrPrint:() => qrPrint(),
+  scanPick:t => scanAdd(t.dataset.m, t.dataset.id),
   bkGo:t => bkRun(t.dataset.k),
   qrSel:t => qrDialog(t.dataset.m, [...qsel(t.dataset.m)]),
   qrSelClr:t => { qsel(t.dataset.m).clear(); forceRender = true; render(); },
