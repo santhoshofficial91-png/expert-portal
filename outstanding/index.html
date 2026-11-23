@@ -882,7 +882,7 @@ function viewInvItems(){
   const items = [...D.inv_items.values()].sort((a, b) => (+b.part || 0) - (+a.part || 0)).filter(x => !q || [x.name, x.part, x.code, x.hsn, x.comp, nm('inv_brands', x.brand, y => y.name), nm('inv_cats', x.cat, y => y.name)].join(' ').toLowerCase().includes(q));
   const P = pg(items, 'inv', 25);
   const rows = P.items.map(x => `<tr><td class="mono">${esc(x.part)}</td><td class="wrap">${esc(x.name)}</td><td>${esc(x.code || '')}</td><td>${esc(x.comp ? compOf(x.comp) : '')}</td><td>${esc(nm('inv_brands', x.brand, y => y.name))}</td><td>${esc(nm('inv_cats', x.cat, y => y.name))}</td><td>${esc(nm('inv_subs', x.sub, y => y.name))}</td><td>${esc(nm('inv_units', x.unit, y => y.unit))}</td><td>${esc(x.hsn || '')}</td><td class="r">${esc(nm('inv_gst', x.gst, y => y.rate + '%'))}</td><td><button class="btn sm" data-act="invEdit" data-id="${esc(x.id)}">Edit</button> ${isAdm() ? `<button class="btn sm dng" data-act="invDel" data-id="${esc(x.id)}">Delete</button>` : ''}</td></tr>`).join('');
-  return `<div class="head"><div><h1>Create Stock Item</h1><p class="sub">Inventory · ${D.inv_items.size} stock item${D.inv_items.size === 1 ? '' : 's'}</p></div>${XB('xItems')}</div>${form}
+  return `<div class="head"><div><h1>Create Stock Item</h1><p class="sub">Inventory · ${D.inv_items.size} stock item${D.inv_items.size === 1 ? '' : 's'}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${XB('xItems')}</div></div>${form}${itImpBox()}
   <div class="bar sfb" style="margin-top:12px"><label class="sf"><span>Search</span><input id="invq" data-f="invq" type="search" placeholder="Name, part no, code, HSN, brand" value="${esc(F.invq || '')}" autocomplete="off"></label></div>
   <div class="tw"><table><thead><tr><th>Part no</th><th>Stock name</th><th>Product code</th><th>Company</th><th>Brand</th><th>Category</th><th>Sub category</th><th>Unit</th><th>HSN</th><th class="r">GST</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="11" class="empty">No stock items yet.</td></tr>'}</tbody></table></div>${P.html}`;
 }
@@ -1120,6 +1120,75 @@ document.addEventListener('input', ev => { const t = ev.target; if (!t.classList
   const q = document.getElementById(`rn_l${i}_qty`), val = document.getElementById(`rn_l${i}_value`); if (q) q.value = v; if (val) val.value = l.value;
   matRecalc('rn');
 });
+/* ---------- Bulk import of stock items from Excel: brand, category, sub category, unit and GST % that are not there yet are created; existing ones are reused ---------- */
+const IT_COLS = ['Stock name *', 'Product code', 'Product company (Excoso / Expert)', 'Brand *', 'Category *', 'Sub category *', 'Unit *', 'HSN code', 'GST %'];
+let ITIMP = null;   // {rows, file, msg, busy}
+function itImpBox(){
+  const R = ITIMP && ITIMP.rows, ok = R ? R.filter(r => !r.err && !r.dup) : [];
+  const nw = k => R ? [...new Set(ok.map(r => r.new[k]).filter(Boolean))] : [];
+  return `<div class="card" style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><b>Import stock items from Excel</b><p class="mut" style="margin:4px 0 0">Fill the sample format, one stock item per row. Brands, categories, sub categories, units and GST % that are not in the lists are created; ones already there are reused. Part numbers are given automatically.</p></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="xItemSample">Download sample format</button><label class="btn pri" style="cursor:pointer">Import Excel<input type="file" id="itimp" accept=".xlsx,.xls,.csv" hidden></label></div></div>
+    ${ITIMP && ITIMP.msg ? `<p role="status" style="margin:10px 0 0;font-weight:700;color:${ITIMP.bad ? '#b42318' : '#0c7d70'}">${esc(ITIMP.msg)}</p>` : ''}
+    ${R ? `<div style="margin-top:10px"><p style="margin:0 0 6px"><b>${esc(ITIMP.file)}</b>: ${R.length} rows · <b>${ok.length}</b> to create${R.filter(r => r.dup).length ? ` · ${R.filter(r => r.dup).length} already in the stock list (skipped)` : ''}${R.filter(r => r.err).length ? ` · <span style="color:#b42318">${R.filter(r => r.err).length} with problems (skipped)</span>` : ''}</p>
+      ${['brand', 'cat', 'sub', 'unit', 'gst'].some(k => nw(k).length) ? `<p class="mut" style="margin:0 0 6px">New in the lists: ${[['brand', 'brands'], ['cat', 'categories'], ['sub', 'sub categories'], ['unit', 'units'], ['gst', 'GST %']].filter(([k]) => nw(k).length).map(([k, l]) => `${l}: ${esc(nw(k).join(', '))}`).join(' · ')}</p>` : ''}
+      <div class="tw" style="max-height:320px;overflow:auto"><table><thead><tr><th>Row</th><th>Stock name</th><th>Company</th><th>Brand</th><th>Category</th><th>Sub category</th><th>Unit</th><th>HSN</th><th>GST %</th><th>Status</th></tr></thead><tbody>${R.slice(0, 300).map(r => `<tr><td class="num">${r.row}</td><td class="wrap">${esc(r.name)}</td><td>${esc(r.comp)}</td><td>${esc(r.brand)}${r.new.brand ? ' <span class="pill">new</span>' : ''}</td><td>${esc(r.cat)}${r.new.cat ? ' <span class="pill">new</span>' : ''}</td><td>${esc(r.sub)}${r.new.sub ? ' <span class="pill">new</span>' : ''}</td><td>${esc(r.unit)}${r.new.unit ? ' <span class="pill">new</span>' : ''}</td><td>${esc(r.hsn)}</td><td>${esc(r.gst)}${r.new.gst ? ' <span class="pill">new</span>' : ''}</td><td class="wrap" style="color:${r.err ? '#b42318' : r.dup ? '#92400e' : '#0c7d70'};font-weight:600">${esc(r.err || (r.dup ? 'Already in stock list' : 'Will be created'))}</td></tr>`).join('')}</tbody></table></div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">${ok.length ? `<button class="btn pri" data-act="itImpGo" ${ITIMP.busy ? 'disabled' : ''}>${ITIMP.busy ? 'Importing…' : `Create ${ok.length} stock item${ok.length === 1 ? '' : 's'}`}</button>` : ''}<button class="btn" data-act="itImpClr">Cancel</button></div></div>` : ''}</div>`;
+}
+async function itImpRead(f){
+  const X = await loadXlsx(), wb = X.read(await f.arrayBuffer(), {type:'array'}), aoa = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, defval:'', raw:false});
+  const hi = aoa.findIndex(r => r.some(c => /stock name|item name|product name|^name/i.test(String(c).trim()))); if (hi < 0) throw new Error('No "Stock name" heading found. Use the sample format.');
+  const h = aoa[hi].map(c => String(c).toLowerCase().replace(/\*/g, '').trim()), ci = re => h.findIndex(c => re.test(c));
+  const I = {name:ci(/stock name|item name|product name|^name/), code:ci(/product code|^code/), comp:ci(/company/), brand:ci(/brand/), cat:ci(/^category|^cat/), sub:ci(/sub/), unit:ci(/unit|uom/), hsn:ci(/hsn/), gst:ci(/gst|tax/)};
+  const g = (r, k) => I[k] < 0 ? '' : String(r[I[k]] ?? '').trim();
+  const names = new Set([...D.inv_items.values()].map(x => normName(x.name))), codes = new Set([...D.inv_items.values()].map(x => normName(x.code)).filter(Boolean)), seen = new Set();
+  const nb = new Set(), nc = new Set(), ns = new Set(), nu = new Set(), ngs = new Set();
+  return aoa.slice(hi + 1).map((r, i) => ({r, row:hi + i + 2})).filter(o => o.r.some(c => String(c).trim())).map(({r, row}) => {
+    const o = {row, name:g(r, 'name'), code:g(r, 'code'), comp:g(r, 'comp'), brand:g(r, 'brand'), cat:g(r, 'cat'), sub:g(r, 'sub'), unit:g(r, 'unit'), hsn:g(r, 'hsn').replace(/\s+/g, ''), gst:g(r, 'gst').replace(/%/g, '').trim(), new:{}};
+    o.comp = !o.comp || /excoso|brand/i.test(o.comp) ? 'Excoso' : /expert/i.test(o.comp) ? 'Expert' : o.comp;   // empty = Excoso, the default company
+    const miss = [['name', 'stock name'], ['brand', 'brand'], ['cat', 'category'], ['sub', 'sub category'], ['unit', 'unit']].filter(([k]) => !o[k]).map(x => x[1]);
+    if (miss.length) o.err = 'Missing ' + miss.join(', ');
+    else if (!COMPS.includes(o.comp)) o.err = 'Product company must be Excoso or Expert';
+    else if (o.hsn && !/^\d{4,8}$/.test(o.hsn)) o.err = 'HSN must be 4 to 8 digits (or leave it empty)';
+    else if (o.gst && !(+o.gst >= 0 && +o.gst <= 40)) o.err = 'GST % must be a number like 5 or 18';
+    const nk = normName(o.name);
+    if (!o.err && (names.has(nk) || (o.code && codes.has(normName(o.code))))) o.dup = true;
+    else if (!o.err && seen.has(nk)) o.err = 'Same stock name appears twice in this file';
+    if (!o.err && !o.dup){ seen.add(nk);
+      const c = findM('inv_cats', 'name', o.cat);
+      if (!findM('inv_brands', 'name', o.brand)) o.new.brand = o.brand;
+      if (!c) o.new.cat = o.cat;
+      if (!(c && findSub(c.id, o.sub))) o.new.sub = o.cat + ' › ' + o.sub;
+      if (!findUnit(o.unit)) o.new.unit = o.unit.toUpperCase();
+      if (o.gst && ![...D.inv_gst.values()].some(x => +x.rate === +o.gst)) o.new.gst = (+o.gst) + '%';
+    }
+    return o;
+  });
+}
+async function itImpGo(){
+  if (!ITIMP || ITIMP.busy) return; const L = ITIMP.rows.filter(r => !r.err && !r.dup); if (!L.length) return;
+  ITIMP.busy = true; forceRender = true; render();
+  const mk = async (col, x) => { const nid = uid(col.slice(4, 7)); await Store.set(col, nid, {...x, id:nid, by:S.me, at:nowISO()}); return D[col].get(nid) || {...x, id:nid}; };
+  let done = 0, made = 0, part = nextPart();
+  try {
+    for (const r of L){
+      const b = findM('inv_brands', 'name', r.brand) || (made++, await mk('inv_brands', {name:r.brand}));
+      const c = findM('inv_cats', 'name', r.cat) || (made++, await mk('inv_cats', {name:r.cat}));
+      const su = findSub(c.id, r.sub) || (made++, await mk('inv_subs', {cat:c.id, name:r.sub}));
+      const u = findUnit(r.unit) || (made++, await mk('inv_units', {name:r.unit, unit:r.unit.toUpperCase()}));
+      const gs = r.gst === '' ? null : ([...D.inv_gst.values()].find(x => +x.rate === +r.gst) || (made++, await mk('inv_gst', {rate:+r.gst})));
+      const id = uid('it');
+      await Store.set('inv_items', id, {id, name:r.name, part:String(part++), code:r.code, comp:r.comp, brand:b.id, cat:c.id, sub:su.id, unit:u.id, hsn:r.hsn, gst:gs ? gs.id : '', by:S.me, at:nowISO()});
+      done++;
+    }
+    ITIMP = {msg:`Created ${done} stock item${done === 1 ? '' : 's'}${made ? ` and ${made} new list entr${made === 1 ? 'y' : 'ies'} (brand / category / sub category / unit / GST)` : ''}.`};
+    logAct('inv_import', `Imported ${done} stock items from Excel`).catch(() => {});
+  } catch(e){ ITIMP = {msg:`Stopped after ${done} item${done === 1 ? '' : 's'}: ${e.message}. Import the same file again to add the rest; the ones already created are skipped.`, bad:true}; }
+  forceRender = true; render();
+}
+document.addEventListener('change', async ev => { const t = ev.target; if (t.id !== 'itimp' || !t.files || !t.files[0]) return; const f = t.files[0]; t.value = '';
+  ITIMP = {msg:'Reading ' + f.name + '…'}; forceRender = true; render();
+  try { const rows = await itImpRead(f); ITIMP = rows.length ? {rows, file:f.name} : {msg:'No stock items found in ' + f.name + '.', bad:true}; } catch(e){ ITIMP = {msg:e.message, bad:true}; }
+  forceRender = true; render(); });
 /* ---------- Scan box for DC / Returnable DC / Receipt Note: scan a GRN QR label (or type part no / name) and the item drops in as the next row ---------- */
 const scanBox = m => `<div class="scanw"><label class="f scanf">Scan QR code or type stock item<input id="${m}_scan" class="scan" data-m="${m}" type="search" autocomplete="off" spellcheck="false" enterkeyhint="done" placeholder="Click here, then scan · or type part no / name" aria-describedby="${m}_sughelp" aria-controls="${m}_sug"></label><div class="sug" id="${m}_sug" role="listbox" aria-label="Matching stock items"><p class="mut" id="${m}_sughelp">Each scan adds the item below with all of its ${m === 'rn' ? 'pending quantity' : 'available stock'}; change the quantity if needed.</p></div></div>`;
 // what can be picked: DC → items in stock; RN → items still out with customers on returnable DCs
@@ -2767,6 +2836,10 @@ const XACT2 = {
   xStock:() => { const nm = (col, id) => D[col].get(id)?.name || ''; if (F.stkI){ const x = D.inv_items.get(F.stkI), L = itemMoves(F.stkI); let q = 0, v = 0; return exportSheet('Stock_' + (x?.part || '') + '_' + TODAY, 'Stock vouchers', ['Date','Particulars','Voucher type','Voucher no','In qty','In value','Out qty','Out value','Closing qty','Closing value'], L.map(r => { q += r.inQ - r.outQ; v += r.inV - r.outV; return [r.date, r.party, r.type, r.no, r.inQ || '', r.inV ? r2(r.inV) : '', r.outQ || '', r.outV ? r2(r.outV) : '', r2(q), r2(v)]; }), [12,36,18,16,10,14,10,14,12,14]); }
     return exportSheet('Stock_List_' + TODAY, 'Stock List', ['Part no','Product','Brand','Category','Sub category'],
     [...D.inv_items.values()].sort((a, b) => String(a.part).localeCompare(String(b.part))).map(x => [x.part, x.name, nm('inv_brands', x.brand), nm('inv_cats', x.cat), nm('inv_subs', x.sub)]), [10,40,18,18,18]); },
+  xItemSample:() => exportSheet('Stock_item_import_sample', 'Stock items', IT_COLS,
+    [['MILTON STEEL THERMOWARE INNER TUFF JUG', 'MT-JUG-1L', 'Expert', 'Milton', 'Kitchen Appliances', 'Water jug', 'NOS', '70109010', '5'], ['Prestige OTG 19 Ltr PCR', '', 'Excoso', 'Prestige', 'Kitchen Appliances', 'OTG', 'NOS', '85166000', '18'], ['POLO T SHIRT COLOUR- BLACK', '', 'Excoso', 'Puma', 'Apparel', 'T Shirts', 'NOS', '', '']], [40,14,16,16,20,18,8,12,8]),
+  itImpGo:() => itImpGo(),
+  itImpClr:() => { ITIMP = null; forceRender = true; render(); },
   xItems:() => exportSheet('Stock_Items', 'Stock Items', ['Part no','Stock name','Product code','Company','Brand','Category','Sub category','Unit','HSN','GST %'],
     [...D.inv_items.values()].sort((a, b) => String(a.part).localeCompare(String(b.part))).map(x => [x.part, x.name, x.code || '', x.comp ? compOf(x.comp) : '', xnm('inv_brands', x.brand), xnm('inv_cats', x.cat), xnm('inv_subs', x.sub), D.inv_units.get(x.unit)?.unit || '', x.hsn || '', D.inv_gst.get(x.gst)?.rate ?? '']), [10,36,16,10,18,18,18,8,12,8]),
   xMaster:t => { const k = t.dataset.k, M = INVM[k]; return exportSheet(M.title.replace(/\s+/g, '_'), M.title.slice(0, 31), k === 'sub' ? ['Category', 'Sub category', 'Stock items'] : [M.title, 'Stock items'],
