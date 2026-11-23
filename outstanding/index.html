@@ -1192,6 +1192,75 @@ document.addEventListener('change', async ev => { const t = ev.target; if (t.id 
   ITIMP = {msg:'Reading ' + f.name + '…'}; forceRender = true; render();
   try { const rows = await itImpRead(f); ITIMP = rows.length ? {rows, file:f.name} : {msg:'No stock items found in ' + f.name + '.', bad:true}; } catch(e){ ITIMP = {msg:e.message, bad:true}; }
   forceRender = true; render(); });
+/* ---------- Physical Stock from Excel: each row is a stock item + quantity + value per piece. Items not in the stock list are created (with any missing brand / category / sub category / unit / GST %) ---------- */
+const PS_COLS = ['Part no', 'Stock name *', 'Physical stock quantity *', 'Taxable value / piece *', 'Product code', 'Product company (Excoso / Expert)', 'Brand', 'Category', 'Sub category', 'Unit', 'HSN code', 'GST %'];
+let PSIMP = null;   // {rows, file, msg, bad, busy}
+function psImpBox(){
+  if (!PSIMP) return ''; const R = PSIMP.rows, ok = R ? R.filter(r => !r.err) : [];
+  if (!R) return `<p role="status" style="margin:10px 0 0;font-weight:700;color:${PSIMP.bad ? '#b42318' : '#0c7d70'}">${esc(PSIMP.msg || '')}</p>`;
+  const tq = ok.reduce((a, r) => a + r.qty, 0), tv = ok.reduce((a, r) => a + r.qty * r.rate, 0), nn = ok.filter(r => !r.item).length;
+  return `<div class="nibox" style="margin-top:10px"><p style="margin:0 0 6px"><b>${esc(PSIMP.file)}</b>: ${R.length} rows · <b>${ok.length}</b> ready (${qtyF(tq)} pcs, ${inr(tv)})${nn ? ` · ${nn} new stock item${nn === 1 ? '' : 's'} will be created` : ''}${R.length - ok.length ? ` · <span style="color:#b42318">${R.length - ok.length} with problems (skipped)</span>` : ''}</p>
+    <div class="tw" style="max-height:300px;overflow:auto"><table><thead><tr><th>Row</th><th>Stock item</th><th class="r">Qty</th><th class="r">Value / piece</th><th class="r">Taxable value</th><th>Status</th></tr></thead><tbody>${R.slice(0, 300).map(r => `<tr><td class="num">${r.row}</td><td class="wrap">${esc(r.item ? itemLbl(r.item) : (r.part ? r.part + ' · ' : '') + r.name)}</td><td class="r num">${r.err ? '' : qtyF(r.qty)}</td><td class="r num">${r.err ? '' : inr(r.rate)}</td><td class="r num">${r.err ? '' : inr(r2(r.qty * r.rate))}</td><td class="wrap" style="font-weight:600;color:${r.err ? '#b42318' : r.item ? '#0c7d70' : '#4338ca'}">${esc(r.err || (r.item ? 'Found in stock list' : 'New stock item — created when added'))}</td></tr>`).join('')}</tbody></table></div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">${ok.length ? `<button class="btn pri" data-act="psImpGo" ${PSIMP.busy ? 'disabled' : ''}>${PSIMP.busy ? 'Adding…' : `Add ${ok.length} item${ok.length === 1 ? '' : 's'} to this Physical Stock`}</button>` : ''}<button class="btn" data-act="psImpClr">Cancel import</button></div>
+    <p class="mut" style="margin:6px 0 0">The items are added to the table above; check them and press Save Physical Stock.</p></div>`;
+}
+async function psImpRead(f){
+  const X = await loadXlsx(), wb = X.read(await f.arrayBuffer(), {type:'array'}), aoa = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, defval:'', raw:false});
+  const hi = aoa.findIndex(r => r.some(c => /stock name|item name|product name|part no/i.test(String(c).trim()))); if (hi < 0) throw new Error('No "Stock name" or "Part no" heading found. Use the sample format.');
+  const h = aoa[hi].map(c => String(c).toLowerCase().replace(/\*/g, '').trim()), ci = re => h.findIndex(c => re.test(c));
+  const I = {part:ci(/part/), name:ci(/stock name|item name|product name|^name/), qty:ci(/qty|quantity/), rate:ci(/per piece|\/ piece|\/piece|rate|value \/|cost/), code:ci(/product code|^code/), comp:ci(/company/), brand:ci(/brand/), cat:ci(/^category|^cat/), sub:ci(/sub/), unit:ci(/unit|uom/), hsn:ci(/hsn/), gst:ci(/gst|tax %/)};
+  const g = (r, k) => I[k] < 0 ? '' : String(r[I[k]] ?? '').trim(), num = v => +String(v).replace(/[₹,\s]/g, '');
+  const byPart = new Map(), byCode = new Map(), byName = new Map();
+  D.inv_items.forEach(x => { if (x.part) byPart.set(String(x.part).trim(), x); if (x.code) byCode.set(normName(x.code), x); byName.set(normName(x.name), x); });
+  const seenNew = new Set();
+  return aoa.slice(hi + 1).map((r, i) => ({r, row:hi + i + 2})).filter(o => o.r.some(c => String(c).trim())).map(({r, row}) => {
+    const o = {row, part:g(r, 'part'), name:g(r, 'name'), qty:num(g(r, 'qty')), rate:num(g(r, 'rate')), code:g(r, 'code'), comp:g(r, 'comp'), brand:g(r, 'brand'), cat:g(r, 'cat'), sub:g(r, 'sub'), unit:g(r, 'unit'), hsn:g(r, 'hsn').replace(/\s+/g, ''), gst:g(r, 'gst').replace(/%/g, '').trim()};
+    const it = (o.part && byPart.get(o.part)) || (o.code && byCode.get(normName(o.code))) || (o.name && byName.get(normName(o.name)));
+    if (it) o.item = it.id;
+    if (!(o.qty > 0)) o.err = 'Quantity must be more than 0';
+    else if (!(o.rate >= 0) || g(r, 'rate') === '') o.err = 'Taxable value / piece is missing';
+    else if (!it){
+      if (o.part && !o.name) o.err = 'Part no ' + o.part + ' is not in the stock list';
+      else { const miss = [['name', 'stock name'], ['brand', 'brand'], ['cat', 'category'], ['sub', 'sub category'], ['unit', 'unit']].filter(([k]) => !o[k]).map(x => x[1]);
+        if (miss.length) o.err = 'Not in the stock list; to create it fill ' + miss.join(', ');
+        else if (o.hsn && !/^\d{4,8}$/.test(o.hsn)) o.err = 'HSN must be 4 to 8 digits (or leave it empty)';
+        else if (o.gst && !(+o.gst >= 0 && +o.gst <= 40)) o.err = 'GST % must be a number like 5 or 18';
+        else if (seenNew.has(normName(o.name))) o.err = 'Same new stock item appears twice in this file';
+        else seenNew.add(normName(o.name)); }
+    }
+    o.comp = !o.comp || /excoso|brand/i.test(o.comp) ? 'Excoso' : /expert/i.test(o.comp) ? 'Expert' : o.comp;
+    if (!o.err && !o.item && !COMPS.includes(o.comp)) o.err = 'Product company must be Excoso or Expert';
+    return o;
+  });
+}
+async function psImpGo(){
+  if (!PSIMP || PSIMP.busy || !F.ps) return; const L = PSIMP.rows.filter(r => !r.err); if (!L.length) return;
+  PSIMP.busy = true; forceRender = true; render();
+  const mk = async (col, x) => { const nid = uid(col.slice(4, 7)); await Store.set(col, nid, {...x, id:nid, by:S.me, at:nowISO()}); return D[col].get(nid) || {...x, id:nid}; };
+  let made = 0, part = nextPart();
+  try {
+    for (const r of L){
+      if (!r.item){
+        const b = findM('inv_brands', 'name', r.brand) || await mk('inv_brands', {name:r.brand});
+        const c = findM('inv_cats', 'name', r.cat) || await mk('inv_cats', {name:r.cat});
+        const su = findSub(c.id, r.sub) || await mk('inv_subs', {cat:c.id, name:r.sub});
+        const u = findUnit(r.unit) || await mk('inv_units', {name:r.unit, unit:r.unit.toUpperCase()});
+        const gs = r.gst === '' ? null : ([...D.inv_gst.values()].find(x => +x.rate === +r.gst) || await mk('inv_gst', {rate:+r.gst}));
+        const id = uid('it'); await Store.set('inv_items', id, {id, name:r.name, part:String(part++), code:r.code, comp:r.comp, brand:b.id, cat:c.id, sub:su.id, unit:u.id, hsn:r.hsn, gst:gs ? gs.id : '', by:S.me, at:nowISO()});
+        r.item = id; made++;
+      }
+      const d = F.ps; d.lines = d.lines.filter(l => l.item); const ex = d.lines.find(l => l.item === r.item);
+      if (ex){ ex.qty = (+ex.qty || 0) + r.qty; ex.rate = r2(r.rate); ex.value = r2(ex.qty * ex.rate); }
+      else d.lines.push({item:r.item, qty:r.qty, rate:r2(r.rate), value:r2(r.qty * r.rate)});
+    }
+    PSIMP = {msg:`Added ${L.length} item${L.length === 1 ? '' : 's'} to the table${made ? ` (${made} new stock item${made === 1 ? '' : 's'} created)` : ''}. Check them and press Save Physical Stock.`};
+  } catch(e){ PSIMP = {msg:'Stopped: ' + e.message, bad:true}; }
+  forceRender = true; render();
+}
+document.addEventListener('change', async ev => { const t = ev.target; if (t.id !== 'psimp' || !t.files || !t.files[0]) return; const f = t.files[0]; t.value = '';
+  PSIMP = {msg:'Reading ' + f.name + '…'}; forceRender = true; render();
+  try { const rows = await psImpRead(f); PSIMP = rows.length ? {rows, file:f.name} : {msg:'No rows found in ' + f.name + '.', bad:true}; } catch(e){ PSIMP = {msg:e.message, bad:true}; }
+  forceRender = true; render(); });
 /* ---------- Scan box for DC / Returnable DC / Receipt Note: scan a GRN QR label (or type part no / name) and the item drops in as the next row ---------- */
 const scanBox = m => `<div class="scanw"><label class="f scanf">Scan QR code or type stock item<input id="${m}_scan" class="scan" data-m="${m}" type="search" autocomplete="off" spellcheck="false" enterkeyhint="done" placeholder="Click here, then scan · or type part no / name" aria-describedby="${m}_sughelp" aria-controls="${m}_sug"></label><div class="sug" id="${m}_sug" role="listbox" aria-label="Matching stock items"><p class="mut" id="${m}_sughelp">Each scan adds the item below with all of its ${m === 'rn' ? 'pending quantity' : 'available stock'}; change the quantity if needed.</p></div></div>`;
 // what can be picked: DC → items in stock; RN → items still out with customers on returnable DCs
@@ -1426,13 +1495,14 @@ function psFormHTML(){
   return `<div class="card" id="mform">
     <div class="igrid"><label class="f">Physical stock no<input id="ps_no" value="${esc(d.no)}" readonly aria-readonly="true" title="Given automatically" style="background:var(--soft,#f3f4f6);font-weight:700"></label><label class="f">Date *${mInp('ps', 'date', d.date, {type:'date'})}</label><label class="f">Remarks${mInp('ps', 'remarks', d.remarks)}</label></div>
     <div class="tw" style="margin-top:10px"><table class="mtab"><thead><tr><th>Stock item *</th><th>In stock</th><th>Physical stock quantity *</th><th>Taxable value / piece *</th><th>Taxable value</th><th></th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="2" class="r"><b>Total</b></td><td><b>${qtyF(tq)}</b></td><td></td><td class="num" id="ps_tot"><b>${inr(tot)}</b></td><td></td></tr></tfoot></table></div>
-    <button class="btn" data-act="matAddL" data-m="ps" style="margin-top:8px">+ Add item</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn" data-act="matAddL" data-m="ps">+ Add item</button><button class="btn" data-act="xPsSample">Download sample format</button><label class="btn" style="cursor:pointer">Import Excel<input type="file" id="psimp" accept=".xlsx,.xls,.csv" hidden></label></div>
+    ${psImpBox()}
     <div class="err" id="ps_err"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="matSave" data-m="ps">${d.id ? 'Save changes' : 'Save Physical Stock'}</button><button class="btn" data-act="matCancel" data-m="ps">Cancel</button></div>
     <p class="mut" style="margin:6px 0 0">For stock we already have. Saving adds these quantities and values to the closing stock.</p></div>`;
 }
 function viewPS(mode){
   if (mode === 'new'){
-    if (!F.ps) F.ps = {no:vno('mat_ps', 'PS'), date:TODAY, remarks:'', lines:[blankLine('ps')]};
+    if (!F.ps){ PSIMP = null; F.ps = {no:vno('mat_ps', 'PS'), date:TODAY, remarks:'', lines:[blankLine('ps')]}; }
     return `<div class="head"><div><h1>${F.ps.id ? 'Edit' : 'Create'} Physical Stock</h1><p class="sub">Register the stock that is physically with us</p></div><button class="btn" data-act="go" data-k="mat_ps">Physical Stock Register</button></div>${psFormHTML()}`;
   }
   return regHTML('ps', 'Physical Stock Register', `${D.mat_ps.size} entr${D.mat_ps.size === 1 ? 'y' : 'ies'} of stock we already had`, '<button class="btn pri" data-act="go" data-k="ps_new">+ Create Physical Stock</button>');
@@ -2842,6 +2912,10 @@ const XACT2 = {
   xItemSample:() => exportSheet('Stock_item_import_sample', 'Stock items', IT_COLS,
     [['MILTON STEEL THERMOWARE INNER TUFF JUG', 'MT-JUG-1L', 'Expert', 'Milton', 'Kitchen Appliances', 'Water jug', 'NOS', '70109010', '5'], ['Prestige OTG 19 Ltr PCR', '', 'Excoso', 'Prestige', 'Kitchen Appliances', 'OTG', 'NOS', '85166000', '18'], ['POLO T SHIRT COLOUR- BLACK', '', 'Excoso', 'Puma', 'Apparel', 'T Shirts', 'NOS', '', '']], [40,14,16,16,20,18,8,12,8]),
   itImpGo:() => itImpGo(),
+  xPsSample:() => exportSheet('Physical_stock_import_sample', 'Physical stock', PS_COLS,
+    [['10001', 'MILTON STEEL THERMOWARE INNER TUFF JUG', '12', '585', '', '', '', '', '', '', '', ''], ['', 'Prestige OTG 19 Ltr PCR', '3', '3807.5', '', 'Excoso', 'Prestige', 'Kitchen Appliances', 'OTG', 'NOS', '85166000', '18']], [10,40,14,14,14,16,16,20,18,8,12,8]),
+  psImpGo:() => psImpGo(),
+  psImpClr:() => { PSIMP = null; forceRender = true; render(); },
   itImpClr:() => { ITIMP = null; forceRender = true; render(); },
   xItems:() => exportSheet('Stock_Items', 'Stock Items', ['Part no','Stock name','Product code','Company','Brand','Category','Sub category','Unit','HSN','GST %'],
     [...D.inv_items.values()].sort((a, b) => String(a.part).localeCompare(String(b.part))).map(x => [x.part, x.name, x.code || '', x.comp ? compOf(x.comp) : '', xnm('inv_brands', x.brand), xnm('inv_cats', x.cat), xnm('inv_subs', x.sub), D.inv_units.get(x.unit)?.unit || '', x.hsn || '', D.inv_gst.get(x.gst)?.rate ?? '']), [10,36,16,10,18,18,18,8,12,8]),
