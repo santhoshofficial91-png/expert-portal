@@ -360,6 +360,10 @@ tr.clk{cursor:pointer;outline:none}tr.clk:hover td{background:#fff7d6}tr.clk.sel
 .sgi{display:flex;flex-direction:column;align-items:flex-start;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px;cursor:pointer;font:inherit;font-size:13px;color:inherit}.sgi span{font-size:12px;color:var(--mut,#6b7280)}.sgi.on,.sgi:hover{border-color:#6366f1;background:#eef2ff}
 tr.flash td{background:#fef08a!important;transition:background .3s}
 @media (max-width:760px){.scanw{grid-template-columns:1fr}}
+.cbx{position:relative;display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink2)}.cbx>label{display:block}.cbx input{font-size:14px;color:var(--ink)}.cbl{position:absolute;left:0;right:0;top:100%;z-index:30;margin-top:4px;max-height:240px;overflow:auto;background:var(--surface,#fff);border:1px solid #a5b4fc;border-radius:10px;box-shadow:0 12px 28px rgba(40,30,120,.16);padding:4px}
+.cbo{display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;border:0;background:transparent;border-radius:7px;padding:8px 10px;font:inherit;font-size:14px;cursor:pointer;color:inherit}.cbo span{color:var(--mut,#6b7280);font-size:12px}.cbo.on,.cbo:hover{background:#eef2ff}.cbo.new{color:#4338ca;font-weight:700;border-top:1px dashed #c7d2fe}.cbl p{margin:6px 10px;font-size:13px}
+.cbl.cbr{left:calc(100% + 8px);right:auto;top:18px;width:280px;margin-top:0}
+.cbn{display:block;min-height:0;color:#4338ca;font-size:12px;font-weight:600;margin-top:3px}
 </style>
 </head>
 <body>
@@ -809,6 +813,43 @@ function viewMaster(k){
   <div class="tw" style="margin-top:12px"><table><thead><tr><th>${M.title}</th><th class="r">Items</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="empty">No ${M.one} yet.</td></tr>`}</tbody></table></div>`;
 }
 const nextPart = () => { let m = 10000; D.inv_items.forEach(x => { const n = parseInt(x.part, 10); if (n > m) m = n; }); return m + 1; };
+/* ---------- Type-and-pick field (brand, category, sub category, unit): matches list under the box; a new name is created on save ---------- */
+const CBX = {it_brand:{col:'inv_brands', what:'brand'}, it_cat:{col:'inv_cats', what:'category'}, it_sub:{col:'inv_subs', what:'sub category'}, it_unit:{col:'inv_units', what:'unit'}};
+const cbx = (id, label, cur) => `<div class="f cbx"><label for="${id}">${label}</label><input id="${id}" class="cbi" value="${esc(cur || '')}" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="${id}_l" placeholder="Type to search or add"><div class="cbl" id="${id}_l" role="listbox" hidden></div><small class="cbn" id="${id}_n" aria-live="polite"></small></div>`;
+function cbxList(id){
+  const c = CBX[id], q = normName(val(id));
+  let L = [...D[c.col].values()];
+  if (id === 'it_sub'){ const cat = findM('inv_cats', 'name', val('it_cat')); L = L.filter(x => !cat || x.cat === cat.id); }
+  const nm = x => id === 'it_unit' ? x.unit : x.name, sub = x => id === 'it_unit' ? x.name : id === 'it_sub' ? (D.inv_cats.get(x.cat)?.name || '') : '';
+  const words = q.split(' ').filter(Boolean);
+  L = L.filter(x => { const h = normName(nm(x) + ' ' + sub(x)); return words.every(w => h.includes(w)); }).sort((a, b) => String(nm(a)).localeCompare(String(nm(b)))).slice(0, 30);
+  return {L, nm, sub, exact:L.some(x => normName(nm(x)) === q || (id === 'it_unit' && normName(x.name) === q))};
+}
+function cbxShow(id){
+  const el = document.getElementById(id + '_l'), inp = document.getElementById(id); if (!el || !inp) return;
+  const r = cbxList(id), raw = inp.value.trim();
+  el.innerHTML = r.L.map((x, i) => `<button type="button" role="option" class="cbo${i === 0 ? ' on' : ''}" data-act="cbxPick" data-f="${id}" data-v="${esc(r.nm(x))}"><b>${esc(r.nm(x))}</b>${r.sub(x) ? `<span>${esc(r.sub(x))}</span>` : ''}</button>`).join('')
+    + (raw && !r.exact ? `<button type="button" role="option" class="cbo new${r.L.length ? '' : ' on'}" data-act="cbxPick" data-f="${id}" data-v="${esc(raw)}">＋ Create new ${CBX[id].what} “${esc(raw)}”</button>` : '')
+    + (!r.L.length && !raw ? `<p class="mut">No ${CBX[id].what} yet. Type a name to create one.</p>` : '');
+  el.hidden = false; inp.setAttribute('aria-expanded', 'true'); cbxNote(id);
+  // show the matches on the right of the box when there is room (desktop), under it on narrow screens
+  const r0 = inp.getBoundingClientRect(), right = innerWidth - r0.right > 290 && innerWidth > 760;
+  el.classList.toggle('cbr', right);
+}
+function cbxHide(id){ const el = document.getElementById(id + '_l'), inp = document.getElementById(id); if (el) el.hidden = true; if (inp) inp.setAttribute('aria-expanded', 'false'); cbxNote(id); }
+function cbxNote(id){ const n = document.getElementById(id + '_n'), raw = val(id); if (!n) return; n.textContent = raw && !cbxList(id).exact ? `New ${CBX[id].what} — will be created when you save` : ''; }
+function cbxPick(id, v){ const inp = document.getElementById(id); if (!inp) return; inp.value = v; cbxHide(id);
+  if (id === 'it_cat') cbxNote('it_sub');
+  const order = ['it_brand', 'it_cat', 'it_sub', 'it_unit', 'it_hsn'], nx = document.getElementById(order[order.indexOf(id) + 1]); if (nx) nx.focus(); }
+document.addEventListener('input', ev => { const t = ev.target; if (t.classList && t.classList.contains('cbi')) cbxShow(t.id); });
+document.addEventListener('mousedown', ev => { if (ev.target.closest && ev.target.closest('.cbo')) ev.preventDefault(); });   // keep focus in the box so the click always lands
+document.addEventListener('focusin', ev => { const t = ev.target; if (t.classList && t.classList.contains('cbi')) cbxShow(t.id); });
+document.addEventListener('focusout', ev => { const t = ev.target; if (t.classList && t.classList.contains('cbi')) setTimeout(() => { const a = document.activeElement; if (!a || !a.closest || a.closest('.cbx') !== t.closest('.cbx')) cbxHide(t.id); }, 150); });
+document.addEventListener('keydown', ev => { const t = ev.target; if (!t.classList || !t.classList.contains('cbi')) return; const el = document.getElementById(t.id + '_l'); if (!el) return;
+  const L = [...el.querySelectorAll('.cbo')]; let i = L.findIndex(e => e.classList.contains('on'));
+  if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp'){ ev.preventDefault(); if (el.hidden) return cbxShow(t.id); if (!L.length) return; L[i]?.classList.remove('on'); i = (i + (ev.key === 'ArrowDown' ? 1 : -1) + L.length) % L.length; L[i].classList.add('on'); L[i].scrollIntoView({block:'nearest'}); }
+  else if (ev.key === 'Enter'){ if (!el.hidden && L[i]){ ev.preventDefault(); cbxPick(t.id, L[i].dataset.v); } }
+  else if (ev.key === 'Escape'){ cbxHide(t.id); } });
 function viewInvItems(){
   const ed = F.invEdit && D.inv_items.get(F.invEdit) ? D.inv_items.get(F.invEdit) : null, v = f => esc(ed ? ed[f] ?? '' : '');
   const sel = (id, label, list, cur, txt, empty) => `<label class="f">${label}<select id="${id}"><option value="">${empty}</option>${list.map(x => `<option value="${esc(x.id)}" ${cur === x.id ? 'selected' : ''}>${esc(txt(x))}</option>`).join('')}</select></label>`;
@@ -820,15 +861,15 @@ function viewInvItems(){
       <label class="f">Part number<input id="it_part" value="${ed ? esc(ed.part) : nextPart()}" readonly aria-readonly="true" title="Created automatically"></label>
       <label class="f">Product code<input id="it_code" value="${v('code')}" autocomplete="off"></label>
       <label class="f">Product company *<select id="it_comp"><option value="">Select</option>${COMPS.map(c => `<option ${(ed ? compOf(ed.comp) : 'Excoso') === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
-      ${sel('it_brand', 'Brand *', invList('inv_brands'), ed ? ed.brand : '', x => x.name, 'Select brand')}
-      ${sel('it_cat', 'Category *', invList('inv_cats'), cat, x => x.name, 'Select category')}
-      ${sel('it_sub', 'Sub category *', subs, ed ? ed.sub : '', x => x.name, cat ? 'Select sub category' : 'Select category first')}
-      ${sel('it_unit', 'Unit *', invList('inv_units'), ed ? ed.unit : '', x => `${x.name} (${x.unit})`, 'Select unit')}
+      ${cbx('it_brand', 'Brand *', ed ? D.inv_brands.get(ed.brand)?.name : '')}
+      ${cbx('it_cat', 'Category *', ed ? D.inv_cats.get(ed.cat)?.name : '')}
+      ${cbx('it_sub', 'Sub category *', ed ? D.inv_subs.get(ed.sub)?.name : '')}
+      ${cbx('it_unit', 'Unit *', ed ? D.inv_units.get(ed.unit)?.unit : '')}
       <label class="f">HSN code<input id="it_hsn" value="${v('hsn')}" inputmode="numeric" autocomplete="off"></label>
       ${sel('it_gst', 'GST %', invList('inv_gst'), ed ? ed.gst : '', x => x.rate + '%', 'Select GST %')}
     </div>
     <div class="err" id="iterr"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="invSave">${ed ? 'Save changes' : 'Create stock item'}</button>${ed ? '<button class="btn" data-act="invCancel">Cancel</button>' : ''}</div>
-    <p class="mut" style="margin:6px 0 0">Brand, category, sub category, units and GST % come from the Inventory lists. HSN code and GST % can be left empty and filled later with Edit. The part number is created automatically, starting at 10001. All fields marked * are required. The product code is optional.</p></div>`;
+    <p class="mut" style="margin:6px 0 0">Type in Brand, Category, Sub category and Unit: matching names show up to pick. A name that is not in the list yet is created when you save the stock item. HSN code and GST % can be left empty and filled later with Edit. The part number is created automatically, starting at 10001. All fields marked * are required. The product code is optional.</p></div>`;
   const q = (F.invq || '').trim().toLowerCase();
   const nm = (col, id, f) => { const x = D[col].get(id); return x ? f(x) : ''; };
   const items = [...D.inv_items.values()].sort((a, b) => (+b.part || 0) - (+a.part || 0)).filter(x => !q || [x.name, x.part, x.code, x.hsn, x.comp, nm('inv_brands', x.brand, y => y.name), nm('inv_cats', x.cat, y => y.name)].join(' ').toLowerCase().includes(q));
@@ -1750,6 +1791,7 @@ const MATACT = {
   csAll:t => { F.csall = !F.csall; forceRender = true; render(); },
   qrOpen:t => qrDialog(t.dataset.m, t.dataset.id),
   qrPrint:() => qrPrint(),
+  cbxPick:t => cbxPick(t.dataset.f, t.dataset.v),
   scanPick:t => scanAdd(t.dataset.m, t.dataset.id),
   bkGo:t => bkRun(t.dataset.k),
   qrSel:t => qrDialog(t.dataset.m, [...qsel(t.dataset.m)]),
@@ -2789,6 +2831,17 @@ const ACT = {
     if (o.hsn && !/^\d{4,8}$/.test(o.hsn)){ err.textContent = 'HSN code must be 4 to 8 digits.'; return; }
     const ed = F.invEdit && D.inv_items.get(F.invEdit);
     if (o.code && [...D.inv_items.values()].some(x => x.id !== (ed && ed.id) && String(x.code || '').toLowerCase() === o.code.toLowerCase())){ err.textContent = 'This product code is already used.'; return; }
+    if (!COMPS.includes(o.comp)){ err.textContent = 'Choose the product company.'; return; }
+    // brand, category, sub category and unit are typed: use the existing one, or create it now
+    const mk = async (col, x) => { const nid = uid(col.slice(4, 7)), y = {...x, id:nid, by:S.me, at:nowISO()}; await Store.set(col, nid, y); return D[col].get(nid) || y; }, made = [];
+    try {
+      const b = findM('inv_brands', 'name', o.brand) || (made.push('brand ' + o.brand), await mk('inv_brands', {name:o.brand}));
+      const c = findM('inv_cats', 'name', o.cat) || (made.push('category ' + o.cat), await mk('inv_cats', {name:o.cat}));
+      const su = findSub(c.id, o.sub) || (made.push('sub category ' + o.sub), await mk('inv_subs', {cat:c.id, name:o.sub}));
+      const u = findUnit(o.unit) || (made.push('unit ' + o.unit), await mk('inv_units', {name:o.unit, unit:o.unit.toUpperCase()}));
+      Object.assign(o, {brand:b.id, cat:c.id, sub:su.id, unit:u.id});
+      if (made.length) await logAct('Inventory', 'Created ' + made.join(', ') + ' while creating stock item ' + o.name);
+    } catch(e){ err.textContent = 'Could not create the brand / category / unit: ' + e.message; return; }
     const id = ed ? ed.id : uid('it'), part = ed ? ed.part : String(nextPart());
     await Store.set('inv_items', id, {...(ed || {}), ...o, id, part, by:S.me, at:nowISO()});
     await logAct('Inventory', `Stock item ${ed ? 'updated' : 'created'}: ${part} ${o.name}`);
@@ -2944,7 +2997,7 @@ document.addEventListener('change', ev => { const t = ev.target;
   if (t.id === 'mparty'){ const v = t.value.trim(); const hit = custParties().find(x => x.toLowerCase() === v.toLowerCase()); F.matt = []; F.mperson = null; F.mparty = hit || ''; F.mpq = hit ? '' : v; F.msel = null; F.mthread = ''; F.mto = F.mcc = undefined; if (v && !hit) toast('Customer not found. Pick a name from the list.'); setTimeout(() => { forceRender = true; render(); }, 0); return; }
   if (t.id === 'matt'){ const files = [...t.files]; Promise.all(files.map(f => new Promise(res => { const r = new FileReader(); r.onload = () => res({name:f.name, size:f.size, type:f.type || 'application/pdf', b64:String(r.result).split(',')[1] || ''}); r.onerror = () => res(null); r.readAsDataURL(f); })))
       .then(list => { F.matt = [...(F.matt || []), ...list.filter(Boolean)]; forceRender = true; render(); }); return; }
-  if (t.id === 'it_cat'){ F.invCat = t.value; const keep = {}; ['it_name','it_code','it_comp','it_brand','it_unit','it_hsn','it_gst'].forEach(i => keep[i] = val(i)); setTimeout(() => { forceRender = true; render(); Object.keys(keep).forEach(i => { const e = document.getElementById(i); if (e && keep[i]) e.value = keep[i]; }); }, 0); return; }
+  if (t.id === 'it_cat' && t.tagName === 'SELECT'){ F.invCat = t.value; const keep = {}; ['it_name','it_code','it_comp','it_brand','it_unit','it_hsn','it_gst'].forEach(i => keep[i] = val(i)); setTimeout(() => { forceRender = true; render(); Object.keys(keep).forEach(i => { const e = document.getElementById(i); if (e && keep[i]) e.value = keep[i]; }); }, 0); return; }
   if (t.id === 'mperson'){ F.mperson = t.value; F.mto = F.mcc = undefined; setTimeout(() => { forceRender = true; render(); }, 0); return; }
   if (t.id === 'mall'){ F.msel = new Set(t.checked ? [...document.querySelectorAll('.msel')].map(x => x.value) : []); setTimeout(() => { forceRender = true; render(); }, 0); return; }
   if (t.classList && t.classList.contains('msel')){ if (!F.msel) F.msel = new Set(); t.checked ? F.msel.add(t.value) : F.msel.delete(t.value); setTimeout(() => { forceRender = true; render(); }, 0); }
