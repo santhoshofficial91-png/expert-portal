@@ -1030,8 +1030,8 @@ function rnFormHTML(){
   const list = d.party ? pendDCs(d.party).concat(sel && !pendDCs(d.party).includes(sel) ? [sel] : []) : [];
   const dcTable = !d.party ? `<p class="mut" style="margin:10px 0 0">Type or pick the customer. Their delivery challans with samples still out show here.</p>`
     : !list.length ? `<p style="margin:10px 0 0;color:#b42318;font-weight:700">No delivery challan with pending samples for ${esc(d.party)}.</p>`
-    : `<h3 style="margin:12px 0 6px">Pending delivery challans · ${esc(d.party)}</h3><div class="tw"><table class="pdc"><thead><tr><th>DC no</th><th>Date</th><th>Executive</th><th>Stock item</th><th class="r">Out</th><th class="r">Returned</th><th class="r">Pending</th><th></th></tr></thead><tbody>${list.map(x => { const ls = dcPending(x, d.id).filter(l => l.left > 0 || x.id === d.dc);
-        return ls.map((l, j) => `<tr class="${x.id === d.dc ? 'pon' : ''}">${j === 0 ? `<td rowspan="${ls.length}" class="mono"><b>${esc(x.no)}</b></td><td rowspan="${ls.length}">${esc(fmtD(x.date))}<div class="mut" style="font-size:12px">${daysOut(x.date)} days out</div></td><td rowspan="${ls.length}">${esc(exName(x.exec))}</td>` : ''}<td class="wrap">${esc(itemLbl(l.item))}</td><td class="r num">${qtyF(l.qty)}</td><td class="r num">${qtyF(l.back)}</td><td class="r num" style="color:#b42318;font-weight:700">${qtyF(l.left)}</td>${j === 0 ? `<td rowspan="${ls.length}">${x.id === d.dc ? '<b style="color:#0c7d70">Selected</b>' : `<button class="btn sm pri" data-act="rnPick" data-id="${esc(x.id)}">Receive against this DC</button>`}</td>` : ''}</tr>`).join(''); }).join('')}</tbody></table></div>`;
+    : `<h3 style="margin:12px 0 6px">Pending delivery challans · ${esc(d.party)}</h3><div class="tw"><table class="pdc"><thead><tr><th>DC no</th><th>Date</th><th>Executive</th><th>Stock item</th><th class="r">Out</th><th class="r">Returned</th><th class="r">Pending</th><th class="r">Qty back now</th><th></th></tr></thead><tbody>${list.map(x => { const ls = dcPending(x, d.id).filter(l => l.left > 0 || x.id === d.dc);
+        return ls.map((l, j) => `<tr class="${x.id === d.dc ? 'pon' : ''}">${j === 0 ? `<td rowspan="${ls.length}" class="mono"><b>${esc(x.no)}</b></td><td rowspan="${ls.length}">${esc(fmtD(x.date))}<div class="mut" style="font-size:12px">${daysOut(x.date)} days out</div></td><td rowspan="${ls.length}">${esc(exName(x.exec))}</td>` : ''}<td class="wrap">${esc(itemLbl(l.item))}</td><td class="r num">${qtyF(l.qty)}</td><td class="r num">${qtyF(l.back)}</td><td class="r num" style="color:#b42318;font-weight:700">${qtyF(l.left)}</td><td class="r"><input class="rnq num" id="rnq_${esc(x.id)}_${esc(l.item)}" data-dc="${esc(x.id)}" data-item="${esc(l.item)}" data-max="${l.left}" type="number" inputmode="decimal" min="0" max="${l.left}" step="any" style="width:90px;text-align:right" aria-label="Quantity coming back now, ${esc(itemLbl(l.item))}, ${esc(x.no)}" value="${x.id === d.dc ? esc(String((d.lines.find(z => z.item === l.item) || {}).qty ?? '')) : ''}" placeholder="0"></td>${j === 0 ? `<td rowspan="${ls.length}">${x.id === d.dc ? '<b style="color:#0c7d70">Selected</b>' : `<button class="btn sm pri" data-act="rnPick" data-id="${esc(x.id)}">Receive against this DC</button>`}</td>` : ''}</tr>`).join(''); }).join('')}</tbody></table></div>`;
   const rows = d.lines.map((l, i) => { const p = pend.find(x => x.item === l.item);
     return `<tr><td class="wrap">${esc(itemLbl(l.item))}</td><td class="r num mut">${p ? qtyF(p.left) : ''}</td><td>${lInp('rn', i, 'qty', l.qty, {num:1, al:'Quantity back'})}</td><td>${lInp('rn', i, 'rate', l.rate, {num:1, al:'Rate'})}</td><td>${lInp('rn', i, 'value', l.value, {num:1, al:'Value'})}</td></tr>`; }).join('');
   const tot = d.lines.reduce((a, l) => a + (+l.value || 0), 0);
@@ -1054,6 +1054,24 @@ function sampleRows(){
   D.mat_dc.forEach(x => dcKind(x) === 'rdc' && dcPending(x).forEach(l => out.push({dc:x, l, exec:x.exec, party:x.party, item:l.item, outQ:+l.qty || 0, inQ:l.back, left:l.left, rate:+l.rate || 0})));
   return out;
 }
+
+// Receipt Note: type the quantity coming back straight into the pending challan table
+document.addEventListener('input', ev => { const t = ev.target; if (!t.classList || !t.classList.contains('rnq') || !F.rn) return;
+  const d = F.rn, dc = D.mat_dc.get(t.dataset.dc); if (!dc) return; const max = +t.dataset.max || 0; let v = t.value === '' ? 0 : +t.value;
+  const er = document.getElementById('rn_err'); if (er) er.textContent = '';
+  if (!(v >= 0)) v = 0; if (v > max){ v = max; t.value = max; if (er) er.textContent = `Only ${qtyF(max)} pending for this item, so the quantity back is set to ${qtyF(max)}.`; }
+  if (d.dc !== dc.id){
+    if (d.dc && d.lines.some(l => +l.qty > 0)){ t.value = ''; if (er) er.textContent = 'One receipt note is for one delivery challan. Save this one first, then make another for ' + dc.no + '.'; return; }
+    d.dc = dc.id; d.party = dc.party; d.lines = dcPending(dc, d.id).filter(l => l.left > 0).map(l => ({item:l.item, qty:0, rate:l.rate, value:0}));
+    const ln = d.lines.find(l => l.item === t.dataset.item); if (ln){ ln.qty = v; ln.value = r2(v * (+ln.rate || 0)); }
+    const id = t.id, pos = t.value.length; forceRender = true; render();
+    const msg = er ? er.textContent : ''; setTimeout(() => { const n = document.getElementById(id); if (n){ n.focus(); try { n.setSelectionRange(pos, pos); } catch(e){} } const e2 = document.getElementById('rn_err'); if (e2 && msg) e2.textContent = msg; }, 20); return;
+  }
+  const i = d.lines.findIndex(l => l.item === t.dataset.item); if (i < 0) return; const l = d.lines[i];
+  l.qty = v; l.value = r2(v * (+l.rate || 0));
+  const q = document.getElementById(`rn_l${i}_qty`), val = document.getElementById(`rn_l${i}_value`); if (q) q.value = v; if (val) val.value = l.value;
+  matRecalc('rn');
+});
 /* ---------- Scan box for DC / Returnable DC / Receipt Note: scan a GRN QR label (or type part no / name) and the item drops in as the next row ---------- */
 const scanBox = m => `<div class="scanw"><label class="f scanf">Scan QR code or type stock item<input id="${m}_scan" class="scan" data-m="${m}" type="search" autocomplete="off" spellcheck="false" enterkeyhint="done" placeholder="Click here, then scan · or type part no / name" aria-describedby="${m}_sughelp" aria-controls="${m}_sug"></label><div class="sug" id="${m}_sug" role="listbox" aria-label="Matching stock items"><p class="mut" id="${m}_sughelp">Each scan adds the item below with all of its ${m === 'rn' ? 'pending quantity' : 'available stock'}; change the quantity if needed.</p></div></div>`;
 // what can be picked: DC → items in stock; RN → items still out with customers on returnable DCs
@@ -1659,6 +1677,7 @@ function matInput(t){
   } else {
     if (k === 'item' && v){ const s = stockMap(d.id).get(v); if (m === 'rn' && d.dc){ const p = dcPending(D.mat_dc.get(d.dc) || {lines:[]}, d.id).find(x => x.item === v); if (p) set('rate', r2(p.rate)); } else if (s) set('rate', r2(s.rate)); if (+l.qty) set('value', r2(+l.qty * (+l.rate || 0))); forceRender = true; render(); return; }
     if (k === 'qty' || k === 'rate') set('value', r2((+l.qty || 0) * (+l.rate || 0)));
+    if (m === 'rn' && k === 'qty' && d.dc){ const e = document.getElementById(`rnq_${d.dc}_${l.item}`); if (e) e.value = l.qty; }
   }
   matRecalc(m);
 }
