@@ -540,7 +540,10 @@ const isMgrUp = () => role() !== 'Executive';
 const uname = id => D.users.get(id)?.name || '';
 const teamExecs = m => [...D.users.values()].filter(x => x.role === 'Executive' && x.managerId === m);
 const mgrSubs = u => { const s = new Set(); teamExecs(u.id).forEach(x => (x.subs || []).forEach(v => s.add(v))); return s; };
-const execs = () => [...D.users.values()].filter(u => u.role === 'Executive' && u.active !== false);
+// sales people only: an executive with areas or a sales manager, and a manager with executives under them (purchase / delivery / HR staff are left out)
+const isSalesExec = u => u.role === 'Executive' && u.active !== false && (((u.subs || []).length > 0) || !!(u.managerId && D.users.get(u.managerId)?.role === 'Manager'));
+const isSalesMgr = u => u.role === 'Manager' && u.active !== false && [...D.users.values()].some(x => x.role === 'Executive' && x.active !== false && x.managerId === u.id);
+const execs = () => [...D.users.values()].filter(isSalesExec);
 function visible(e){ return visibleFor(me(), e); }
 function visibleFor(u, e){
   if (!u) return false;
@@ -551,7 +554,7 @@ function visibleFor(u, e){
 const scoped = () => [...D.entries.values()].filter(visible);
 /* ---------- WhatsApp alerts: opens WhatsApp with a ready message; the sender presses Send ---------- */
 const waNum = p => { let d = String(p || '').replace(/\D/g, ''); if (d.length === 11 && d[0] === '0') d = d.slice(1); if (d.length === 10) d = '91' + d; return d.length >= 11 && d.length <= 15 ? d : ''; };
-const waPeople = () => { const u = me(); if (!u || !isTop()) return []; const all = [...D.users.values()].filter(x => x.active !== false && (x.role === 'Executive' || x.role === 'Manager'));
+const waPeople = () => { const u = me(); if (!u || !isTop()) return []; const all = [...D.users.values()].filter(x => isSalesExec(x) || isSalesMgr(x));
   return (isTop() ? all : all.filter(x => x.role === 'Executive' && x.managerId === u.id)).sort((a, b) => (a.role === b.role ? 0 : a.role === 'Manager' ? -1 : 1) || (a.name || '').localeCompare(b.name || '')); };
 const waRows = u => [...D.entries.values()].filter(e => e.status !== 'Paid' && visibleFor(u, e));
 const waNoExp = rows => rows.filter(e => e.due && e.due < TODAY && !e.expectedDate);   // due crossed, no expected date filled yet
@@ -1174,7 +1177,7 @@ const DCT = {dc:'Delivery Challan', rdc:'Returnable Delivery Challan'};
 // customer -> area (from their latest invoice) -> executive -> manager
 const custAddr = party => { const n = normName(party); if (!n) return null; const c = D.cust_addr.get(mapKey(party)); if (c) return c; const l = lastDcFor(party); return l && (l.addr1 || l.gstin) ? l : null; };
 const lastDcFor = party => [...D.mat_dc.values()].filter(x => normName(x.party) === normName(party)).sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))[0];
-const managers = () => [...D.users.values()].filter(u => u.role === 'Manager' && u.active !== false).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+const managers = () => [...D.users.values()].filter(isSalesMgr).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
 function viewMatIn(mode){
   loadSupl();
