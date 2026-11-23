@@ -824,11 +824,11 @@ function viewInvItems(){
       ${sel('it_cat', 'Category *', invList('inv_cats'), cat, x => x.name, 'Select category')}
       ${sel('it_sub', 'Sub category *', subs, ed ? ed.sub : '', x => x.name, cat ? 'Select sub category' : 'Select category first')}
       ${sel('it_unit', 'Unit *', invList('inv_units'), ed ? ed.unit : '', x => `${x.name} (${x.unit})`, 'Select unit')}
-      <label class="f">HSN code *<input id="it_hsn" value="${v('hsn')}" inputmode="numeric" autocomplete="off"></label>
-      ${sel('it_gst', 'GST % *', invList('inv_gst'), ed ? ed.gst : '', x => x.rate + '%', 'Select GST %')}
+      <label class="f">HSN code<input id="it_hsn" value="${v('hsn')}" inputmode="numeric" autocomplete="off"></label>
+      ${sel('it_gst', 'GST %', invList('inv_gst'), ed ? ed.gst : '', x => x.rate + '%', 'Select GST %')}
     </div>
     <div class="err" id="iterr"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="invSave">${ed ? 'Save changes' : 'Create stock item'}</button>${ed ? '<button class="btn" data-act="invCancel">Cancel</button>' : ''}</div>
-    <p class="mut" style="margin:6px 0 0">Brand, category, sub category, units and GST % come from the Inventory lists. The part number is created automatically, starting at 10001. All fields marked * are required. The product code is optional.</p></div>`;
+    <p class="mut" style="margin:6px 0 0">Brand, category, sub category, units and GST % come from the Inventory lists. HSN code and GST % can be left empty and filled later with Edit. The part number is created automatically, starting at 10001. All fields marked * are required. The product code is optional.</p></div>`;
   const q = (F.invq || '').trim().toLowerCase();
   const nm = (col, id, f) => { const x = D[col].get(id); return x ? f(x) : ''; };
   const items = [...D.inv_items.values()].sort((a, b) => (+b.part || 0) - (+a.part || 0)).filter(x => !q || [x.name, x.part, x.code, x.hsn, x.comp, nm('inv_brands', x.brand, y => y.name), nm('inv_cats', x.cat, y => y.name)].join(' ').toLowerCase().includes(q));
@@ -915,7 +915,7 @@ function niCheck(l, i){
   if (!String(n.name || '').trim()) return r + ': fill the stock name.';
   const miss = [['comp', 'company'], ['brand', 'brand'], ['cat', 'category'], ['sub', 'sub category'], ['unit', 'unit']].filter(([k]) => !String(n[k] || '').trim()).map(x => x[1]);
   if (miss.length) return `${r} (${n.name}): fill ${miss.join(', ')}.`;
-  if (!/^\d{4,8}$/.test(String(l.hsn || ''))) return `${r} (${n.name}): the HSN code must be 4 to 8 digits.`;
+  if (String(l.hsn || '').trim() && !/^\d{4,8}$/.test(String(l.hsn).trim())) return `${r} (${n.name}): the HSN code must be 4 to 8 digits, or leave it empty.`;
   if (!GSTR.includes(+l.gst)) return `${r} (${n.name}): GST % must be 5 or 18.`;
   if (findM('inv_items', 'name', n.name)) return `${r}: a stock item named "${n.name}" already exists. Choose it under "Or use an existing item".`;
   if (n.code && [...D.inv_items.values()].some(x => normName(x.code) === normName(n.code))) return `${r} (${n.name}): product code ${n.code} is already used.`;
@@ -930,7 +930,7 @@ async function niCreate(l){
   const u = findUnit(n.unit) || await mk('inv_units', {name:String(n.unit).trim(), unit:String(n.unit).trim().toUpperCase()});
   const g = [...D.inv_gst.values()].find(x => +x.rate === +l.gst) || await mk('inv_gst', {rate:+l.gst});
   const iid = uid('it'), pn = String(nextPart());
-  await Store.set('inv_items', iid, {id:iid, name:nm, part:pn, code:String(n.code || '').trim(), comp:n.comp || 'Excoso', brand:b.id, cat:c.id, sub:su.id, unit:u.id, hsn:String(l.hsn), gst:g.id, by:S.me, at:nowISO()});
+  await Store.set('inv_items', iid, {id:iid, name:nm, part:pn, code:String(n.code || '').trim(), comp:n.comp || 'Excoso', brand:b.id, cat:c.id, sub:su.id, unit:u.id, hsn:String(l.hsn || '').trim(), gst:g.id, by:S.me, at:nowISO()});
   await logAct('Inventory', `Stock item created from GRN: ${pn} ${nm}`);
   l.item = iid; delete l.ni; return pn + ' ' + nm;
 }
@@ -950,7 +950,7 @@ function niCards(d){
         ${fi('cat', 'Category *', 'mi_cats', !n.cat || c)}
         ${fi('sub', 'Sub category *', 'mi_subs', !n.sub || findSub(c && c.id, n.sub))}
         ${fi('unit', 'Unit *', 'mi_units', !n.unit || findUnit(n.unit))}
-        ${rf('hsn', 'HSN code *')}
+        ${rf('hsn', 'HSN code')}
         <label class="f">GST % *<select class="mdi" id="mi_l${i}_c_gst" data-m="mi" data-l="${i}" data-k="gst">${GSTR.map(g => `<option value="${g}" ${+l.gst === g ? 'selected' : ''}>${g}%</option>`).join('')}</select></label>
         ${rf('qty', 'Quantity *', {num:1})}
         ${rf('rate', 'Rate / piece', {num:1})}
@@ -2784,7 +2784,7 @@ const ACT = {
     await Store.del('inv_items', x.id); await logAct('Inventory', `Stock item deleted: ${x.part} ${x.name}`); forceRender = true; render(); },
   invSave:async () => {
     const err = $('#iterr'), o = {name:val('it_name'), code:val('it_code'), comp:val('it_comp'), brand:val('it_brand'), cat:val('it_cat'), sub:val('it_sub'), unit:val('it_unit'), hsn:val('it_hsn'), gst:val('it_gst')};
-    const need = [['name','Stock name'],['comp','Product company'],['brand','Brand'],['cat','Category'],['sub','Sub category'],['unit','Unit'],['hsn','HSN code'],['gst','GST %']].filter(f => !o[f[0]]).map(f => f[1]);
+    const need = [['name','Stock name'],['comp','Product company'],['brand','Brand'],['cat','Category'],['sub','Sub category'],['unit','Unit']].filter(f => !o[f[0]]).map(f => f[1]);
     if (need.length){ err.textContent = 'Fill in: ' + need.join(', ') + '.'; return; }
     if (o.hsn && !/^\d{4,8}$/.test(o.hsn)){ err.textContent = 'HSN code must be 4 to 8 digits.'; return; }
     const ed = F.invEdit && D.inv_items.get(F.invEdit);
