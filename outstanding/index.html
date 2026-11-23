@@ -364,6 +364,7 @@ tr.flash td{background:#fef08a!important;transition:background .3s}
 .cbo{display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;border:0;background:transparent;border-radius:7px;padding:8px 10px;font:inherit;font-size:14px;cursor:pointer;color:inherit}.cbo span{color:var(--mut,#6b7280);font-size:12px}.cbo.on,.cbo:hover{background:#eef2ff}.cbo.new{color:#4338ca;font-weight:700;border-top:1px dashed #c7d2fe}.cbl p{margin:6px 10px;font-size:13px}
 .cbl.cbr{left:calc(100% + 8px);right:auto;top:18px;width:280px;margin-top:0}
 .cbn{display:block;min-height:0;color:#4338ca;font-size:12px;font-weight:600;margin-top:3px}
+.pill.sent{background:var(--good-bg);color:#111;font-weight:700}
 </style>
 </head>
 <body>
@@ -636,6 +637,8 @@ const n2 = n => (n || 0).toLocaleString('en-IN', {minimumFractionDigits:2, maxim
 const custParties = () => [...new Set([...D.entries.values()].filter(e => e.status !== 'Paid' && e.party).map(e => e.party.trim()))].sort((a, b) => a.localeCompare(b));
 const contactOf = p => D.contacts.get(pkey(p)) || {};
 const threadOf = id => (id && D.mailthread.get(id)) || null;
+// has a payment mail gone out for this invoice? (any mail thread that lists the invoice id or its ref no)
+const mailSentFor = e => [...D.mailthread.values()].some(t => (t.ids || []).includes(e.id) || (e.ref && (t.invs || []).some(r => String(r).trim() === String(e.ref).trim())));
 const partyThreads = p => [...D.mailthread.values()].filter(t => (t.party || '').trim() === p).sort((a, b) => (b.lastAt || '') < (a.lastAt || '') ? -1 : 1);
 const threadRows = t => [...D.entries.values()].filter(e => (e.party || '').trim() === (t.party || '').trim() && ((t.ids || []).includes(e.id) || (!(t.ids || []).length && (t.invs || []).includes(e.ref))));
 // Payment mail body. Used by the app preview (outstanding/index.html) and by the mail service (supabase/send-mail). Keep both copies identical.
@@ -2056,7 +2059,7 @@ function viewDashboard(){
     wallet:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H5a2 2 0 0 1-2-2z"/><circle cx="16" cy="14.5" r="1.2"/></svg>'};
   const ms = isTop() ? scoped().filter(missed).sort((a, b) => a.expectedDate < b.expectedDate ? -1 : 1) : [];
   const MP = pg(ms, 'miss', 5);
-  const missCard = ms.length ? `<div class="card mcard" role="alert"><h2>Expected date missed · ${ms.length} invoice${ms.length > 1 ? 's' : ''}</h2><p class="mut" style="margin:0 0 8px">Payment was promised by a date that has passed and the invoice is not Paid.</p><div class="tw"><table><thead><tr><th>Area</th><th>Party Name</th><th>Ref No</th><th class="r">Pending Amount</th><th>Expected Date</th><th>Late by</th><th></th></tr></thead><tbody>${MP.items.map(e => `<tr><td>${esc(e.sub)}</td><td class="wrap">${esc(e.party)}</td><td><span class="mono">${esc(e.ref || '—')}</span></td><td class="r"><span class="num">${money(e.amount)}</span></td><td>${fmtD(e.expectedDate)}</td><td><span class="pill bad">${dn(TODAY) - dn(e.expectedDate)} d</span></td><td><button class="btn sm" data-act="goSub" data-k="${esc(e.sub)}">Open area</button></td></tr>`).join('')}</tbody></table></div>${MP.html}</div>` : '';
+  const missCard = ms.length ? `<div class="card mcard" role="alert"><h2>Expected date missed · ${ms.length} invoice${ms.length > 1 ? 's' : ''}</h2><p class="mut" style="margin:0 0 8px">Payment was promised by a date that has passed and the invoice is not Paid.</p><div class="tw"><table><thead><tr><th>Area</th><th>Party Name</th><th>Ref No</th><th>Mail sent</th><th class="r">Pending Amount</th><th>Expected Date</th><th>Late by</th><th></th></tr></thead><tbody>${MP.items.map(e => `<tr><td>${esc(e.sub)}</td><td class="wrap">${esc(e.party)}</td><td><span class="mono">${esc(e.ref || '—')}</span></td><td>${mailSentFor(e) ? '<span class="pill sent">Sent</span>' : '<span class="pill bad">Not sent</span>'}</td><td class="r"><span class="num">${money(e.amount)}</span></td><td>${fmtD(e.expectedDate)}</td><td><span class="pill bad">${dn(TODAY) - dn(e.expectedDate)} d</span></td><td><button class="btn sm" data-act="goSub" data-k="${esc(e.sub)}">Open area</button></td></tr>`).join('')}</tbody></table></div>${MP.html}</div>` : '';
   return `<div class="head"><div><h1>Dashboard</h1><p class="sub">${isTop() ? 'All areas' : isMgrUp() ? 'Your areas' : 'Your invoices'} · as of ${fmtD(TODAY)}</p></div></div>${annAdminHTML()}
   ${missCard}
   <div class="grid kp4">
