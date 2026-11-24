@@ -3,8 +3,8 @@ import nodemailer from 'npm:nodemailer@6.9.14';
 import { ImapFlow } from 'npm:imapflow@1.0.164';
 
 // Payment mail service.
-// One thread = one customer + the invoices of its first mail. Reminders go into the same Gmail thread (Reply All).
-// Called by the app (user JWT) or by pg_cron every 5 minutes (x-cron-key) for automatic reminders and reply checks.
+// One thread = one customer (or one person of a customer) + the invoices of its first mail. Later mails go into the same Gmail thread (Reply All).
+// Called by the app (user JWT) or by pg_cron every 5 minutes (x-cron-key) for automatic mails and reply checks.
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-key',
@@ -18,39 +18,35 @@ const esc = (s: string) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&a
 const MAIL_USER = Deno.env.get('GMAIL_USER') || 'finance@expertcorporatesolutions.com';
 const MAIL_PASS = (Deno.env.get('GMAIL_APP_PASSWORD') || '').replace(/\s+/g, '');
 const IST = 330 * 60000;
-const istNow = () => new Date(Date.now() + IST);           // shifted clock: read with getUTC*
+const istNow = () => new Date(Date.now() + IST);
 const TODAY = () => istNow().toISOString().slice(0, 10);
 const dn = (s: string) => { const [y, m, d] = s.split('-').map(Number); return Math.floor(Date.UTC(y, m - 1, d) / 864e5); };
 
-/* ---------- mail body: generated from supabase/mailtpl.js (same as the app preview) ---------- */
-// deno-lint-ignore-file no-explicit-any
-// Payment mail body. Used by the app preview (outstanding/index.html) and by the mail service (supabase/send-mail). Keep both copies identical.
-// kind: 'inv' = invoice copy mail (first mail), 'out' = outstanding mail (first mail, overdue),
-//       'fu'  = follow-up before the due date, 'rem' = Reminder N after the due date.
+/* ---------- mail body: same as supabase/mailtpl.js (the app preview) ---------- */
 function mailBody(party: string, rows: any[], kind: string, remN: number, today: string): string {
-  const E = (s: any) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const E = (s: any) => String(s == null ? '' : s).replace(/[&<>"]/g, (c: string) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'} as any)[c]);
   const M3 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const DS = (s: any) => { if (!s) return '—'; const [y, m, d] = s.split('-'); return d + '-' + M3[+m - 1] + '-' + y.slice(2); };
   const DN = (s: string) => { const [y, m, d] = s.split('-').map(Number); return Math.floor(Date.UTC(y, m - 1, d) / 864e5); };
   const N2 = (n: number) => (n || 0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
   const RS = (n: number) => '₹' + Math.trunc(n || 0).toLocaleString('en-IN');
   const T = DN(today), od = (e: any) => e.due ? T - DN(e.due) : null, left = (e: any) => e.due ? DN(e.due) - T : null;
-  const total = rows.reduce((a, e) => a + (e.amount || 0), 0), over = rows.some(e => e.due && e.due < today);
+  const total = rows.reduce((a: number, e: any) => a + (e.amount || 0), 0), over = rows.some((e: any) => e.due && e.due < today);
   if (kind === 'out' && !over) kind = 'fu';
   if (kind === 'fu' && over) kind = 'rem';
   const td = 'border:1px solid #000;padding:5px 10px;';
   const th = (t: string, x?: string) => `<th style="${td}font-weight:normal;text-align:center${x || ''}">${t}</th>`;
   const lastCol = kind === 'inv' ? '' : (over ? 'Overdue' : 'Due');
-  const cell = (e: any) => kind === 'inv' ? '' : `<td style="${td}text-align:center">${!e.due ? '—' : over ? (od(e) > 0 ? od(e) : '—') : (left(e) === 0 ? 'Today' : left(e))}</td>`;
+  const cell = (e: any) => kind === 'inv' ? '' : `<td style="${td}text-align:center">${!e.due ? '—' : over ? ((od(e) as number) > 0 ? od(e) : '—') : (left(e) === 0 ? 'Today' : left(e))}</td>`;
   const cols = kind === 'inv' ? 4 : 5;
-  const body = rows.map(e => `<tr><td style="${td}text-align:center">${DS(e.date)}</td><td style="${td}text-align:center">${E(e.ref || '—')}</td><td style="${td}text-align:right">${N2(e.amount)}</td><td style="${td}text-align:center">${DS(e.due)}</td>${cell(e)}</tr>`).join('');
+  const body = rows.map((e: any) => `<tr><td style="${td}text-align:center">${DS(e.date)}</td><td style="${td}text-align:center">${E(e.ref || '—')}</td><td style="${td}text-align:right">${N2(e.amount)}</td><td style="${td}text-align:center">${DS(e.due)}</td>${cell(e)}</tr>`).join('');
   const tot = rows.length > 1 ? `<tr><td style="${td}font-weight:bold" colspan="2">Total</td><td style="${td}text-align:right;font-weight:bold">${N2(total)}</td><td style="${td}" colspan="${cols - 3}"></td></tr>` : '';
   const table = `<table style="border-collapse:collapse;font-family:Verdana,Arial,sans-serif;font-size:13px;margin:10px 0"><tr><td colspan="${cols}" style="${td}text-align:center;font-weight:bold">${E(party)}</td></tr><tr>${th('Date')}${th('Inv Num')}${th(kind === 'inv' ? 'Amount' : 'Pending Amt')}${th('Due Date')}${lastCol ? th(lastCol, ';font-style:italic') : ''}</tr>${body}${tot}</table>`;
   const p = (t: string) => `<p style="margin:0 0 12px">${t}</p>`;
   const sign = (kind === 'inv' ? p('Thank you for your business.') : p('Thank you for your cooperation.')) + `<p style="margin:0">Best Regards,<br>Accounts Department<br>Expert Corporate Solutions</p>`;
   const inv = rows.length > 1 ? 'invoices' : 'invoice', are = rows.length > 1 ? 'are' : 'is';
-  const odDays = rows.map(od).filter(x => x > 0), maxOd = odDays.length ? Math.max(...odDays) : 0;
-  const dd = rows.map(left).filter(x => x != null), dmin = dd.length ? Math.min(...dd) : null;
+  const odDays = rows.map(od).filter((x: any) => x > 0) as number[], maxOd = odDays.length ? Math.max(...odDays) : 0;
+  const dd = rows.map(left).filter((x: any) => x != null) as number[], dmin = dd.length ? Math.min(...dd) : null;
   if (kind === 'inv') return p('Dear Customer,') + p(`Please find attached our ${inv} for your reference. Kindly account the same in your books.`) + table +
     p('Kindly arrange the payment on or before the due date as per the agreed payment terms.') + sign;
   if (kind === 'rem') return `<div style="text-align:center;font-weight:bold;font-size:15px;margin:0 0 12px">Reminder ${remN || 1}</div>` + p('Dear Customer,') +
@@ -62,10 +58,9 @@ function mailBody(party: string, rows: any[], kind: string, remN: number, today:
   return p('Dear Customer,') + p(`This is a gentle reminder that the payment of ${RS(total)} will become due ${dmin === 0 ? 'today' : dmin == null ? 'soon' : 'in ' + dmin + ' day' + (dmin === 1 ? '' : 's')}, as per the agreed payment terms.`) + table +
     p('We kindly request you to arrange the payment on or before the due date to ensure timely settlement.') + sign;
 }
-// What the next mail of a thread is: before the due date a follow-up, after it Reminder N.
 function nextKind(t: any, rows: any[], today: string): any {
   if (!t) return null;
-  const over = rows.some(e => e.due && e.due < today);
+  const over = rows.some((e: any) => e.due && e.due < today);
   return over ? {kind:'rem', remN:(t.remCount != null ? t.remCount : Math.max(0, (t.count || 1) - 1)) + 1} : {kind:'fu', remN:0};
 }
 
@@ -85,8 +80,9 @@ async function sendInThread(o: { t: any; id: string; party: string; to: string[]
   const firstSubject = (o.type === 'inv' ? 'Invoice - ' : 'Payment Reminder - ') + o.party + (o.inv.length ? ' - ' + o.inv[0] + (o.inv.length > 1 ? ' & ' + (o.inv.length - 1) + ' more' : '') : '');
   const baseSubject = t ? String(t.subject).replace(/^Re: /, '') : firstSubject;
   const msgId = `<${crypto.randomUUID()}@expertone.org>`;
-  const quoted = t?.lastHtml ? `<br><div style="color:#555">On ${esc(when(new Date(t.lastAt)))}, Accounts Department &lt;${esc(MAIL_USER)}&gt; wrote:</div><blockquote style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex">${t.lastHtml}</blockquote>` : '';
-  const full = `<div style="font-family:Verdana,Arial,sans-serif;font-size:13px;color:#000">${o.html}</div>${quoted}`;
+  // earlier mail quoted the way Gmail's own Reply All does it (gmail_quote), so Gmail folds it behind the "…" button
+  const quoted = t?.lastHtml ? `<br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On ${esc(when(new Date(t.lastAt)))}, Accounts Department &lt;${esc(MAIL_USER)}&gt; wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${t.lastHtml}</blockquote></div>` : '';
+  const full = `<div dir="ltr"><div style="font-family:Verdana,Arial,sans-serif;font-size:13px;color:#000">${o.html}</div></div>${quoted}`;
   const refs: string[] = t?.refs ?? [];
   const tr = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 465, secure: true, auth: { user: MAIL_USER, pass: MAIL_PASS } });
   await tr.sendMail({
@@ -171,13 +167,13 @@ async function runCron() {
     if (!rows.length) { await putDoc('mailthread', id, { ...t, lastDay: today, allPaid: true }); continue; }
     const dd = rows.filter((e: any) => e.due).map((e: any) => dn(e.due) - dn(today)), dmin = dd.length ? Math.min(...dd) : null;
     const k = nextKind(t, rows, today);
-    if (k.kind === 'fu' && (dmin == null || dmin > 7)) continue;          // follow-ups start 7 days before the due date
+    if (k.kind === 'fu' && (dmin == null || dmin > 7)) continue;
     const to = emails(t.to), cc = [...new Map([...emails(t.cc), ...defCc].map((x) => [x.toLowerCase(), x])).values()];
     if (!to.length) { skipped.push(t.party + ' (no mail ID)'); continue; }
     try {
       const amt = rows.reduce((a: number, e: any) => a + (e.amount || 0), 0);
       await sendInThread({ t, id, party: t.party, to, cc, html: mailBody(t.party, rows, k.kind, k.remN, today), n: t.count ?? 0, kind: k.kind, inv: rows.map((e: any) => e.ref), ids: rows.map((e: any) => e.id), amount: amt, by: 'auto', byName: 'Automatic', auto: true });
-      await admin.from('docs').upsert({ col: 'activity', id: 'a_auto_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), data: { at: new Date().toISOString(), by: 'auto', byName: 'Automatic mail', action: 'Payment mail', detail: `${t.party} \u00b7 ${k.kind === 'rem' ? 'Reminder ' + k.remN : 'Follow-up (due in ' + dmin + ' days)'} (automatic) \u00b7 ${rows.length} invoice(s) \u20b9${Math.trunc(amt).toLocaleString('en-IN')}` } });
+      await admin.from('docs').upsert({ col: 'activity', id: 'a_auto_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), data: { at: new Date().toISOString(), by: 'auto', byName: 'Automatic mail', action: 'Payment mail', detail: `${t.party}${t.contactName && t.contactName !== 'Main contact' ? ' (' + t.contactName + ')' : ''} · ${k.kind === 'rem' ? 'Reminder ' + k.remN : 'Follow-up (due in ' + dmin + ' days)'} (automatic) · ${rows.length} invoice(s) ₹${Math.trunc(amt).toLocaleString('en-IN')}` } });
       sent++;
     } catch (e) { errs.push(t.party + ': ' + (e as Error).message); await putDoc('mailthread', id, { ...t, lastDay: today, autoErr: (e as Error).message }); }
   }
@@ -233,10 +229,9 @@ Deno.serve(async (req) => {
     const to = emails(body.to), cc = emails(body.cc);
     if (!to.length) return json({ error: 'Add at least one valid To email ID' }, 400);
     const n = Number(body.n ?? 0), expected = t ? Number(t.count || 0) : 0;
-    if (n !== expected) return json({ error: 'This mail thread changed (someone else just sent a reminder). Refresh and try again.' }, 409);
+    if (n !== expected) return json({ error: 'This mail thread changed (someone else just sent a mail). Refresh and try again.' }, 409);
     const html = String(body.html ?? '');
     if (!html) return json({ error: 'Mail body is empty' }, 400);
-    // invoice copies: first mail only, picked from the user's PC, sent straight to Gmail (not stored)
     const files = t ? [] : (Array.isArray(body.files) ? body.files : []).filter((f: any) => f && f.filename && f.content).map((f: any) => ({ filename: String(f.filename).slice(0, 150), content: String(f.content), contentType: f.contentType ? String(f.contentType) : undefined }));
     if (files.reduce((a: number, f: any) => a + f.content.length * 0.75, 0) > 15 * 1024 * 1024) return json({ error: 'Attachments are too big. Keep them under 15 MB in total.' }, 400);
     const id = threadId || pkey(party) + '_' + Date.now().toString(36);
