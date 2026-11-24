@@ -639,7 +639,18 @@ const contactOf = p => D.contacts.get(pkey(p)) || {};
 const threadOf = id => (id && D.mailthread.get(id)) || null;
 // has a payment mail gone out for this invoice? (any mail thread that lists the invoice id or its ref no)
 const mailSentFor = e => [...D.mailthread.values()].some(t => (t.ids || []).includes(e.id) || (e.ref && (t.invs || []).some(r => String(r).trim() === String(e.ref).trim())));
-const partyThreads = p => [...D.mailthread.values()].filter(t => (t.party || '').trim() === p).sort((a, b) => (b.lastAt || '') < (a.lastAt || '') ? -1 : 1);
+// a thread whose invoices are all Paid is finished: hidden from Open mail threads at once, and closed (archived) by the next Admin / alert Sub Admin session
+const threadEntries = t => [...D.entries.values()].filter(e => (t.ids || []).includes(e.id) || (!(t.ids || []).length && (t.invs || []).includes(e.ref)));
+const threadAllPaid = t => { const L = threadEntries(t); return L.length > 0 && L.every(e => e.status === 'Paid'); };
+async function autoCloseThreads(){
+  if (autoCloseThreads.busy || !canAlert()) return; autoCloseThreads.busy = true;
+  try { for (const [id, t] of [...D.mailthread.entries()]){ if (!threadAllPaid(t)) continue;
+      const r = await mailCall({action:'reset', party:t.party, threadId:id}).catch(e => ({error:e.message}));
+      if (r && !r.error){ D.mailthread.delete(id); logAct('Payment mail thread closed', (t.party || '') + ' · all invoices paid · ' + (t.invs || []).join(', ')).catch(() => {}); } } }
+  finally { autoCloseThreads.busy = false; }
+}
+setInterval(() => { if (D.mailthread && D.mailthread.size) autoCloseThreads(); }, 60000);
+const partyThreads = p => [...D.mailthread.values()].filter(t => (t.party || '').trim() === p && !threadAllPaid(t)).sort((a, b) => (b.lastAt || '') < (a.lastAt || '') ? -1 : 1);
 const threadRows = t => [...D.entries.values()].filter(e => (e.party || '').trim() === (t.party || '').trim() && ((t.ids || []).includes(e.id) || (!(t.ids || []).length && (t.invs || []).includes(e.ref))));
 // Payment mail body. Used by the app preview (outstanding/index.html) and by the mail service (supabase/send-mail). Keep both copies identical.
 // kind: 'inv' = invoice copy mail (first mail), 'out' = outstanding mail (first mail, overdue),
@@ -783,7 +794,8 @@ function personPick(P, th){
   return `<div class="frow"><label class="f" style="max-width:360px">Send to (person)<select id="mperson"><option value="">Main contact</option>${ppl.map(x => `<option value="${esc(x.id)}" ${x.id === pid ? 'selected' : ''}>${esc(x.name || x.to || 'Person')}</option>`).join('')}</select></label></div>`;
 }
 function mailThreadsHTML(){
-  const ts = [...D.mailthread.values()].sort((a, b) => (!!b.repliedAt - !!a.repliedAt) || ((b.lastAt || '') < (a.lastAt || '') ? -1 : 1));
+  setTimeout(autoCloseThreads, 500);
+  const ts = [...D.mailthread.values()].filter(t => !threadAllPaid(t)).sort((a, b) => (!!b.repliedAt - !!a.repliedAt) || ((b.lastAt || '') < (a.lastAt || '') ? -1 : 1));
   if (!ts.length) return '<div class="card"><p class="mut" style="margin:0">No payment mails sent yet. Pick a customer to start.</p></div>';
   return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 8px"><h2 style="margin:0">Open mail threads</h2><button class="btn sm" data-act="mailCheck">Check customer replies now</button></div><div class="tw"><table><thead><tr><th>Customer</th><th>Invoices</th><th>Status</th><th class="r">Mails sent</th><th>Last sent</th><th>By</th><th></th></tr></thead><tbody>${ts.map(t => `<tr><td class="wrap">${esc(t.party)}${t.contactName && t.contactName !== 'Main contact' ? `<div class="mut">→ ${esc(t.contactName)}</div>` : ''}</td><td class="mono" style="white-space:normal;max-width:260px">${esc((t.invs || []).join(', '))}</td><td>${t.repliedAt ? '<span class="pill" style="background:#e7f6ec;color:#0b5d22">✉ Customer replied</span>' : contactOf(t.party).autoPaused ? '<span class="pill" style="background:#fff7e0;color:#6b4e00">Paused</span>' : '<span class="pill" style="background:#e8f0fe;color:#1a4fb5">Auto</span>'}</td><td class="r num">${t.count}</td><td>${fmtD((t.lastAt || '').slice(0, 10))} ${t.lastAt ? new Date(t.lastAt).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', hour12:true}) : ''}</td><td>${esc((t.log || []).slice(-1)[0]?.byName || '')}</td><td><button class="btn sm" data-act="mailOpen" data-k="${esc(t.party)}" data-t="${esc(t.id)}">Open</button></td></tr>`).join('')}</tbody></table></div></div>`;
 }
