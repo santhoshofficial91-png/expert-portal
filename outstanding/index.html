@@ -553,6 +553,9 @@ function visibleFor(u, e){
   return e.assignedTo === u.id || (!e.assignedTo && (u.subs || []).includes(e.sub));
 }
 const scoped = () => [...D.entries.values()].filter(visible);
+// managers marked "dashAll" (all managers except Jayaraj) see the Admin dashboard: every area, billing and outstanding (view only)
+const dashTop = () => isTop() || !!(me() && me().role === 'Manager' && me().dashAll === true);
+const dScoped = () => dashTop() ? [...D.entries.values()] : scoped();
 /* ---------- WhatsApp alerts: opens WhatsApp with a ready message; the sender presses Send ---------- */
 const waNum = p => { let d = String(p || '').replace(/\D/g, ''); if (d.length === 11 && d[0] === '0') d = d.slice(1); if (d.length === 10) d = '91' + d; return d.length >= 11 && d.length <= 15 ? d : ''; };
 const waPeople = () => { const u = me(); if (!u || !isTop()) return []; const all = [...D.users.values()].filter(x => isSalesExec(x) || isSalesMgr(x));
@@ -626,7 +629,7 @@ const canStock = () => isAdm() || (me() && me().canInv === true);
 // stock-only staff: an Executive with Inventory access and no sales areas sees only Inventory, documents and registers
 const invOnly = () => role() === 'Executive' && canStock() && !((me() && me().subs) || []).length;
 // no sales work: an Executive with no areas, or a Manager with no sales executives under them (purchase, delivery, HR...): Dashboard and Sales stay hidden
-const noSales = () => (role() === 'Executive' && !((me() && me().subs) || []).length) || (role() === 'Manager' && !teamExecs(S.me).length);
+const noSales = () => (role() === 'Executive' && !((me() && me().subs) || []).length) || (role() === 'Manager' && !teamExecs(S.me).length && !(me() && me().dashAll === true));
 // Pending Samples: Admin, Sub Admin, inventory staff and managers marked "all samples" see everything; a manager sees their team; an executive sees only their own
 const smpSees = ex => isTop() || canStock() || !!(me() && me().smpAll) || (role() === 'Manager' ? ex === S.me || D.users.get(ex)?.managerId === S.me : ex === S.me);
 const canAlert = () => isAdm() || (me() && me().role === 'Sub Admin' && me().canAlert === true);
@@ -2113,17 +2116,17 @@ function hbars(items, act, cls = ''){
   return items.map(i => `<div class="hb" data-act="${act}" data-k="${esc(i.k)}" data-tip="${esc(i.l)}: ${money(i.v)} · ${i.n} invoice${i.n === 1 ? '' : 's'}"><div class="hbl">${esc(i.l)}</div><div class="hbt"><div class="hbf ${cls}" style="width:${i.v/max*100}%"></div></div><div class="hbv">${compact(i.v)}</div></div>`).join('');
 }
 function viewDashboard(){
-  const rows = active(scoped()), total = sum(rows);
+  const rows = active(dScoped()), total = sum(rows);
   const over = rows.filter(e => od(e) > 0), overAmt = sum(over);
   const parties = new Set(rows.map(e => e.party)).size;
   const fuToday = rows.filter(e => e.nextFu && e.nextFu <= TODAY).length;
   const weekEnd = addDays(TODAY, 7);
   const prom = rows.filter(e => e.status === 'Promised' && e.promiseDate && e.promiseDate >= TODAY && e.promiseDate <= weekEnd);
   const month = TODAY.slice(0,7);
-  const vis = new Set(scoped().map(e => e.id));
-  const collected = sum([...D.payments.values()].filter(p => vis.has(p.entryId) && (p.date||'').startsWith(month)), p => p.amount) + sum(scoped().filter(e => e.status === 'Paid' && (e.paidOn || '').startsWith(month)));
+  const vis = new Set(dScoped().map(e => e.id));
+  const collected = sum([...D.payments.values()].filter(p => vis.has(p.entryId) && (p.date||'').startsWith(month)), p => p.amount) + sum(dScoped().filter(e => e.status === 'Paid' && (e.paidOn || '').startsWith(month)));
   const dow = (new Date(dn(TODAY) * 864e5).getUTCDay() + 6) % 7, wkS = addDays(TODAY, -dow), wkE = addDays(wkS, 6);
-  const wk = scoped().filter(e => e.expectedDate && e.expectedDate >= wkS && e.expectedDate <= wkE);
+  const wk = dScoped().filter(e => e.expectedDate && e.expectedDate >= wkS && e.expectedDate <= wkE);
   S.wkS = wkS; S.wkE = wkE;
   const xTotal = sum(wk), xRecv = sum(wk.filter(e => e.status === 'Paid')), xPend = sum(wk.filter(e => e.status !== 'Paid')), xBal = xTotal - xRecv;
   const tp = {}; over.forEach(e => { const g = tp[e.party] = tp[e.party] || {party:e.party, amt:0, subs:new Set(), sm:new Set()}; g.amt += e.amount; g.subs.add(e.sub); const o = uname(ownerOf(e)); if (o) g.sm.add(o); });
@@ -2142,13 +2145,13 @@ function viewDashboard(){
     bell:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
     hand:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 11h18M9 16l2 2 4-4"/></svg>',
     wallet:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H5a2 2 0 0 1-2-2z"/><circle cx="16" cy="14.5" r="1.2"/></svg>'};
-  const ms = isTop() ? scoped().filter(missed).sort((a, b) => a.expectedDate < b.expectedDate ? -1 : 1) : [];
+  const ms = dashTop() ? dScoped().filter(missed).sort((a, b) => a.expectedDate < b.expectedDate ? -1 : 1) : [];
   const MP = pg(ms, 'miss', 5);
   const missCard = ms.length ? `<div class="card mcard" role="alert"><h2>Expected date missed · ${ms.length} invoice${ms.length > 1 ? 's' : ''}</h2><p class="mut" style="margin:0 0 8px">Payment was promised by a date that has passed and the invoice is not Paid.</p><div class="tw"><table><thead><tr><th>Area</th><th>Party Name</th><th>Ref No</th><th>Mail sent</th><th>Last mail</th><th class="r">Pending Amount</th><th>Expected Date</th><th>Late by</th><th></th></tr></thead><tbody>${MP.items.map(e => `<tr><td>${esc(e.sub)}</td><td class="wrap">${esc(e.party)}</td><td><span class="mono">${esc(e.ref || '—')}</span></td><td>${mailSentFor(e) ? '<span class="pill sent">Sent</span>' : '<span class="pill bad">Not sent</span>'}</td><td class="nowrap">${(m => m ? fmtD(new Date(new Date(m).getTime() + 330 * 60000).toISOString().slice(0, 10)) : '—')(mailLastFor(e))}</td><td class="r"><span class="num">${money(e.amount)}</span></td><td>${fmtD(e.expectedDate)}</td><td><span class="pill bad">${dn(TODAY) - dn(e.expectedDate)} d</span></td><td><button class="btn sm" data-act="goSub" data-k="${esc(e.sub)}">Open area</button></td></tr>`).join('')}</tbody></table></div>${MP.html}</div>` : '';
-  return `<div class="head"><div><h1>Dashboard</h1><p class="sub">${isTop() ? 'All areas' : isMgrUp() ? 'Your areas' : 'Your invoices'} · as of ${fmtD(TODAY)}</p></div></div>${annAdminHTML()}
+  return `<div class="head"><div><h1>Dashboard</h1><p class="sub">${dashTop() ? 'All areas' : isMgrUp() ? 'Your areas' : 'Your invoices'} · as of ${fmtD(TODAY)}</p></div></div>${annAdminHTML()}
   ${missCard}
   <div class="grid kp4">
-    <div class="hero"><div class="hflex"><div><div class="hk">Total outstanding${!isTop() && mySubs().length ? `<span class="har">${esc(mySubs().join(' / '))}</span>` : ''}</div><div class="hv">${compact(total)}</div><div class="hs">${rows.length} invoices · ${parties} parties</div></div><div class="hline" aria-hidden="true"></div>${billHeroHTML()}</div>
+    <div class="hero"><div class="hflex"><div><div class="hk">Total outstanding${!dashTop() && mySubs().length ? `<span class="har">${esc(mySubs().join(' / '))}</span>` : ''}</div><div class="hv">${compact(total)}</div><div class="hs">${rows.length} invoices · ${parties} parties</div></div><div class="hline" aria-hidden="true"></div>${billHeroHTML()}</div>
       <div><div class="hseg" role="img" aria-label="Not yet due ${compact(ndAmt)}, overdue ${compact(overAmt)}, no due date ${compact(noAmt)}"><i style="width:${pc(ndAmt)}%;background:#7dd3fc"></i><i style="width:${pc(overAmt)}%;background:#fb7185"></i><i style="width:${pc(noAmt)}%;background:rgba(255,255,255,.55)"></i></div>
       <div class="hleg"><span><u style="background:#7dd3fc"></u>Not yet due <b>${compact(ndAmt)}</b></span><span><u style="background:#fb7185"></u>Overdue <b>${compact(overAmt)}</b></span><span><u style="background:rgba(255,255,255,.55)"></u>No due date <b>${compact(noAmt)}</b></span></div></div></div>
     <div class="card kpi bad" style="--c:#e5484d"><div class="ic">${I.over}</div><div class="l">Overdue</div><div class="v">${compact(overAmt)}</div><div class="s">${over.length} invoices · ${total ? Math.round(overAmt/total*100) : 0}% of total</div></div>
@@ -2690,7 +2693,7 @@ const inr2 = n => '₹' + (n || 0).toLocaleString('en-IN', {minimumFractionDigit
 const canBill = () => isAdm();
 const canExp = () => !isTop() || canInv();
 const billAreas = () => role() === 'Executive' ? [...(me()?.subs || [])] : role() === 'Manager' ? [...mgrSubs(me())].sort((a, b) => a.localeCompare(b, undefined, {numeric:true})) : allSubs();
-const billRows = () => { if (isTop()) return [...D.billing.values()]; const ok = new Set(billAreas()); return [...D.billing.values()].filter(b => ok.has(b.sub)); };
+const billRows = () => { if (dashTop()) return [...D.billing.values()]; const ok = new Set(billAreas()); return [...D.billing.values()].filter(b => ok.has(b.sub)); };
 const bval = b => b.amount || 0;
 const fyStart = (() => { const [y, m] = TODAY.split('-').map(Number); return m >= 4 ? y : y - 1; })();
 const FYL = String(fyStart).slice(2) + '-' + String(fyStart + 1).slice(2);
