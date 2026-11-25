@@ -77,7 +77,28 @@ const PO_SCHEMA = {
   },
   required: ['po_no', 'po_date', 'enq', 'supplier_name', 'supplier_gstin', 'lines', 'total'],
 };
-const KINDS: Record<string, [string, unknown]> = { supplier: [PROMPT, schema], purchase: [PURCHASE, PURCHASE_SCHEMA], dc: [DC, DC_SCHEMA], po: [PO, PO_SCHEMA] };
+const SALE = `This is an Indian GST SALES invoice issued BY one of our own companies TO a customer (usually printed from Tally). ${OUR}
+Extract:
+- inv_no: the invoice number (for example ECS/1639/26-27). inv_date: the invoice date as YYYY-MM-DD.
+- enq: the enquiry number if printed (often under "Other References", written like "ENQ-8478"); digits only, else "".
+- order_no: the "Buyer's Order No." or "Reference No." if printed, else "".
+- buyer_name: the customer under "Buyer (Bill to)" (never our own companies). buyer_gstin. buyer_addr1, buyer_addr2, buyer_addr3: the buyer's address in up to 3 short lines (city and pincode in the last used line).
+- ship_name and ship_addr1, ship_addr2, ship_addr3: the "Consignee (Ship to)" if it is printed and different, else "".
+- lines: one entry per product row of the goods table, in order. For each: name (the full description as printed, keep any trailing enquiry number such as "-8478"), hsn, qty (number), unit, rate (price per unit before tax), amount (row amount before tax).
+- total: the grand total.
+Numbers must be plain numbers without commas or currency signs. Skip tax, round-off and total rows. Return only JSON.`;
+const SALE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    inv_no: { type: 'STRING' }, inv_date: { type: 'STRING' }, enq: { type: 'STRING' }, order_no: { type: 'STRING' },
+    buyer_name: { type: 'STRING' }, buyer_gstin: { type: 'STRING' }, buyer_addr1: { type: 'STRING' }, buyer_addr2: { type: 'STRING' }, buyer_addr3: { type: 'STRING' },
+    ship_name: { type: 'STRING' }, ship_addr1: { type: 'STRING' }, ship_addr2: { type: 'STRING' }, ship_addr3: { type: 'STRING' },
+    lines: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, hsn: { type: 'STRING' }, qty: { type: 'NUMBER' }, unit: { type: 'STRING' }, rate: { type: 'NUMBER' }, amount: { type: 'NUMBER' } }, required: ['name', 'hsn', 'qty', 'unit', 'rate', 'amount'] } },
+    total: { type: 'NUMBER' },
+  },
+  required: ['inv_no', 'inv_date', 'enq', 'order_no', 'buyer_name', 'buyer_gstin', 'buyer_addr1', 'buyer_addr2', 'buyer_addr3', 'lines', 'total'],
+};
+const KINDS: Record<string, [string, unknown]> = { supplier: [PROMPT, schema], purchase: [PURCHASE, PURCHASE_SCHEMA], dc: [DC, DC_SCHEMA], po: [PO, PO_SCHEMA], sale: [SALE, SALE_SCHEMA] };
 
 async function ask(model: string, mime: string, data: string, ms: number, prompt = PROMPT, sch: unknown = schema) {
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {

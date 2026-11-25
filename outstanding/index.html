@@ -367,6 +367,7 @@ tr.flash td{background:#fef08a!important;transition:background .3s}
 .pill.sent{background:var(--good-bg);color:#111;font-weight:700}
 .poi{font-size:12px;color:#4338ca;margin-top:3px}.poex{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:3px;font-size:12px;color:#b42318}.poex select{font-size:12px;padding:3px 6px;height:auto}
 .note.warn{background:#fffbeb;border-color:#fcd34d}.pill.warn{background:#fef3c7;color:#92400e}
+.chok{display:inline-block;margin:1px 6px 1px 0;color:#0c7d70;font-weight:700}.chno{display:inline-block;margin:1px 6px 1px 0;color:#b42318;font-weight:700}
 </style>
 </head>
 <body>
@@ -1408,6 +1409,58 @@ const POACT = {
   xPoRep:() => exportSheet('PO_vs_Received_' + TODAY, 'PO vs Received', ['PO no', 'PO date', 'Supplier', 'ENQ', 'Stock item', 'Product as on PO', 'PO qty', 'Received', 'Difference', 'Diff value', 'GRN no', 'Reason', 'Status'],
     poRepRows().map(r => [r.po.no, r.po.date, r.po.supName, r.l.enq || r.po.enq || '', r.l.item ? itemLbl(r.l.item) : '', r.l.name, +r.l.qty || 0, r.l.recv, r.diff, r.dv, r.l.grns.join(', '), r.l.why.join(', '), r.lst]), [16, 12, 28, 10, 34, 34, 10, 10, 10, 12, 18, 18, 16]),
 };
+
+/* ---------- Sales invoice → Delivery Challan: each line is matched by ENQ number + similar name + stock on hand ---------- */
+function enqItems(enq){ const S = new Set(); enq = String(enq || '').trim(); if (!enq) return S;
+  D.mat_in.forEach(g => (g.lines || []).forEach(l => { if (String(l.enq || '') === enq && l.item && l.item !== '__new') S.add(l.item); }));
+  D.mat_po.forEach(po => poLinesX(po).forEach(l => { if (String(l.enq || po.enq || '') === enq && l.item) S.add(l.item); }));
+  D.inv_items.forEach(x => { if (enqOf(x.name) === enq) S.add(x.id); });
+  D.mat_ps.forEach(d => (d.lines || []).forEach(l => { if (String(l.enq || '') === enq && l.item) S.add(l.item); }));
+  return S; }
+function itemNames(id){ const N = [D.inv_items.get(id)?.name || ''];
+  D.mat_in.forEach(g => (g.lines || []).forEach(l => { if (l.item === id && l.name) N.push(l.name); }));
+  D.mat_po.forEach(po => poLinesX(po).forEach(l => { if (l.item === id && l.name) N.push(l.name); }));
+  D.mat_map.forEach(m => { if (m.item === id && m.name) N.push(m.name); }); return [...new Set(N.filter(Boolean))]; }
+function saleMatch(l, enqHead, st, used){
+  const enq = enqOf(l.name) || String(enqHead || '').split(/[,\s]+/).filter(Boolean)[0] || '', C = [...enqItems(enq)];
+  const score = id => Math.max(0, ...itemNames(id).map(n => poNameScore(String(l.name || '').replace(/[\s\-–]*\d{3,6}\s*$/, ''), n)));
+  let item = '', sc = 0;
+  if (C.length){ const R = C.map(id => [id, score(id)]).sort((a, b) => b[1] - a[1]); [item, sc] = R[0]; }
+  else { item = guessItem(l.name, l.hsn) || ''; sc = item ? score(item) : 0; }
+  const have = item ? Math.max(0, (st.get(item)?.q || 0) - (used[item] || 0)) : 0, need = +l.qty || 0;
+  return {enq, enqOk:C.length > 0, item, nameOk:!!item && sc >= 2, stockOk:!!item && need > 0 && have >= need - 1e-9, have, score:sc};
+}
+async function saleFile(t){
+  const file = t.files && t.files[0]; if (!file) return; t.value = '';
+  if (!SB && !window.__testAi){ toast('Reading files works only on the live site.'); return; }
+  const say = x => { F.slAis = x; const e = document.getElementById('sl_ais'); if (e) e.textContent = x; };
+  const t0 = Date.now(), tick = setInterval(() => say('Reading the sales invoice with AI… ' + Math.round((Date.now() - t0) / 1000) + ' s'), 1000);
+  try { say('Reading the sales invoice with AI…'); const x = await aiDoc(file, 'sale'); clearInterval(tick);
+    const st = stockMap(), used = {}, inv = String(x.inv_no || '').trim(), enqH = String(x.enq || '').replace(/[^\d,\s]/g, '').trim();
+    const L = (x.lines || []).filter(l => l && String(l.name || '').trim() && +l.qty > 0).map(l => { const nm = String(l.name).replace(/\s+/g, ' ').trim(), m = saleMatch({...l, name:nm}, enqH, st, used); if (m.item) used[m.item] = (used[m.item] || 0) + (+l.qty || 0);
+      const rate = m.item ? r2(st.get(m.item)?.rate || 0) : 0; return {chk:{...m, name:nm, qty:+l.qty, saleRate:+l.rate || 0}, line:{item:m.item, qty:r2(l.qty), rate, value:r2((+l.qty || 0) * rate), saleName:nm, enq:m.enq}}; });
+    let g = String(x.buyer_gstin || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); if (OUR_GSTS.includes(g)) g = '';
+    const parties = matParties(), party = parties.find(y => normName(y) === normName(x.buyer_name)) || String(x.buyer_name || '').replace(/\s+/g, ' ').trim(), tm = partyTeam(party), ca = custAddr(party);
+    const dup = [...D.mat_dc.values()].find(d => inv && normName(d.refNo) === normName(inv));
+    F.dc = {kind:'dc', no:vno('mat_dc', 'DC'), date:ymdOk(x.inv_date) || TODAY, comp:'Expert', party, exec:tm.exec || '', mgr:tm.mgr || '', remarks:'Against sales invoice ' + inv,
+      addr1:(ca && ca.addr1) || String(x.buyer_addr1 || '').trim(), addr2:(ca && ca.addr2) || String(x.buyer_addr2 || '').trim(), addr3:(ca && ca.addr3) || String(x.buyer_addr3 || '').trim(), gstin:(ca && ca.gstin) || g, addrFor:party,
+      refNo:inv, otherRef:[...new Set(L.map(r => r.chk.enq).filter(Boolean))].map(e => 'ENQ-' + e).join(', ') || (enqH ? 'ENQ-' + enqH : ''), orderNo:String(x.order_no || '').trim(),
+      lines:L.map(r => r.line), sale:{inv, file:file.name, dup:dup ? dup.no : '', checks:L.map(r => r.chk)}};
+    const ok = L.filter(r => r.chk.enqOk && r.chk.nameOk && r.chk.stockOk).length;
+    say(dup ? `This sales invoice already has ${dup.no}. Check before saving again.` : !L.length ? 'No product rows were read. Type the DC instead.' : ok === L.length ? `All ${L.length} line${L.length === 1 ? '' : 's'} matched (ENQ, name and stock). Check and press Save DC.` : `${ok} of ${L.length} lines matched. Fix the red lines, then save.`);
+    forceRender = true; render(); document.getElementById('slchk')?.scrollIntoView({block:'start'});
+  } catch(e){ clearInterval(tick); say((e.message || 'Could not read the file.') + ' You can type the DC instead.'); }
+}
+function saleBox(d){
+  const bar = `<div class="mai"><label class="btn pri" for="sl_file" style="cursor:pointer">📄 Make DC from sales invoice (PDF / photo)</label><input id="sl_file" type="file" accept="image/*,application/pdf" style="position:absolute;opacity:0;width:1px;height:1px"><span id="sl_ais" class="mut" role="status" aria-live="polite">${esc(F.slAis || 'Each line is matched by the ENQ number, a similar product name and the stock on hand.')}</span></div>`;
+  if (!d || !d.sale || d.id) return d && d.id ? '' : bar;
+  const C = d.sale.checks || [], mk = (ok, t) => `<span class="${ok ? 'chok' : 'chno'}">${ok ? '✓' : '✗'} ${esc(t)}</span>`, all = C.length && C.every(c => c.enqOk && c.nameOk && c.stockOk);
+  return bar + `<div class="card" id="slchk" style="margin:10px 0;border:2px solid ${all ? '#86efac' : '#fca5a5'}"><h3 style="margin:0 0 6px">Sales invoice ${esc(d.sale.inv)} · ${esc(d.party)}</h3>
+    ${d.sale.dup ? `<p class="chno" style="margin:0 0 6px">This invoice already has ${esc(d.sale.dup)}.</p>` : ''}
+    <div class="tw"><table><thead><tr><th>Invoice line</th><th>ENQ</th><th>Stock item</th><th class="r">Qty</th><th>Checks</th></tr></thead><tbody>${C.map((c, i) => `<tr><td class="wrap">${esc(c.name)}</td><td class="mono">${esc(c.enq || '—')}</td><td class="wrap">${esc(d.lines[i] && d.lines[i].item ? itemLbl(d.lines[i].item) : 'Not found: pick it in the table below')}</td><td class="r num">${qtyF(c.qty)}</td><td class="wrap">${mk(c.enqOk, c.enq ? 'ENQ ' + c.enq + (c.enqOk ? ' found' : ' not in stock') : 'No ENQ on the line')} ${mk(c.nameOk, c.nameOk ? 'Name similar' : 'Name differs')} ${mk(c.stockOk, c.item ? (c.stockOk ? 'Stock ' : 'Only ') + qtyF(c.have) + ' in stock' : 'No stock item')}</td></tr>`).join('')}</tbody></table></div>
+    <p style="margin:8px 0 0;font-weight:700;color:${all ? '#0c7d70' : '#b42318'}">${all ? 'All three checks passed for every line. Check the DC below and press Save.' : 'Some checks failed. Pick the right stock item or change the quantity in the table below before saving.'}</p></div>`;
+}
+document.addEventListener('change', ev => { const t = ev.target; if (t.id === 'sl_file') saleFile(t); });
 /* ---------- Scan box for DC / Returnable DC / Receipt Note: scan a GRN QR label (or type part no / name) and the item drops in as the next row ---------- */
 const scanBox = m => `<div class="scanw"><label class="f scanf">Scan QR code or type stock item<input id="${m}_scan" class="scan" data-m="${m}" type="search" autocomplete="off" spellcheck="false" enterkeyhint="done" placeholder="Click here, then scan · or type part no / name" aria-describedby="${m}_sughelp" aria-controls="${m}_sug"></label><div class="sug" id="${m}_sug" role="listbox" aria-label="Matching stock items"><p class="mut" id="${m}_sughelp">Each scan adds the item below with all of its ${m === 'rn' ? 'pending quantity' : 'available stock'}; change the quantity if needed.</p></div></div>`;
 // what can be picked: DC → items in stock; RN → items still out with customers on returnable DCs
@@ -1513,7 +1566,7 @@ function viewMatOut(m, mode){
   if (mode === 'dc' || mode === 'rdc'){
     if (!F.dc || (!F.dc.id && dcKind(F.dc) !== mode)) F.dc = {kind:mode, no:vno('mat_dc', mode === 'dc' ? 'DC' : 'RDC'), date:TODAY, comp:'Expert', party:'', exec:'', mgr:'', remarks:'', lines:[]};
     const k = dcKind(F.dc);
-    return `<div class="head"><div><h1>${F.dc.id ? 'Edit ' : 'Create '}${k === 'dc' ? 'DC' : 'Returnable DC'}</h1><p class="sub">${k === 'dc' ? 'Stock going out (not samples)' : 'Samples an executive takes to a customer and brings back'}</p></div><button class="btn" data-act="go" data-k="mat_dc">Delivery Challan Register</button></div>${dcFormHTML()}`;
+    return `<div class="head"><div><h1>${F.dc.id ? 'Edit ' : 'Create '}${k === 'dc' ? 'DC' : 'Returnable DC'}</h1><p class="sub">${k === 'dc' ? 'Stock going out (not samples)' : 'Samples an executive takes to a customer and brings back'}</p></div><button class="btn" data-act="go" data-k="mat_dc">Delivery Challan Register</button></div>${k === 'dc' ? saleBox(F.dc) : ''}${dcFormHTML()}`;
   }
   if (mode === 'new'){
     if (!F.rn) F.rn = {no:vno('mat_rn', 'RN'), date:TODAY, party:'', dc:'', remarks:'', lines:[]};
@@ -2155,6 +2208,7 @@ const MATACT = {
       d.no = String(d.no || '').trim(); d.party = String(d.party || '').trim();
       if (!d.no || !d.date || (!d.party && m !== 'ps')) return bad(m === 'ps' ? 'Fill in the number and date.' : `Fill in the ${m === 'dc' ? 'DC' : 'receipt note'} number, date and customer.`);
       if (m === 'dc' && dcKind(d) === 'rdc' && !d.exec) return bad('Pick the executive who takes the samples.');
+      if (m === 'dc' && d.refNo && d.sale && [...D.mat_dc.values()].some(x => x.id !== d.id && normName(x.refNo) === normName(d.refNo))) return bad('A DC for sales invoice ' + d.refNo + ' is already saved.');
       if ([...D[col].values()].some(x => x.id !== d.id && normName(x.no) === normName(d.no))) return bad('This number is already used.');
       if (!lines.length) return bad('Add at least one item.');
       const w = lines.findIndex(l => !l.item || !(+l.qty > 0) || (m === 'ps' && !(+l.rate > 0))); if (w >= 0) return bad(m === 'ps' ? `Row ${w + 1}: pick the stock item and fill the quantity and taxable value per piece.` : `Row ${w + 1}: pick the stock item and fill the quantity.`);
@@ -2167,7 +2221,7 @@ const MATACT = {
     const doc = {...d, id, lines:clean, by:d.by || S.me, at:d.at || nowISO(), editedBy:d.id ? S.me : undefined, editedAt:d.id ? nowISO() : undefined};
     delete doc.aiTotal; delete doc.ks; if (m === 'mi'){ const T = miTotals(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; doc.igst = T.inter; doc.comp = compOf(doc.comp); if (!doc.grnNo) doc.grnNo = vno('mat_in', 'GRN', 'grnNo', doc.at);
       const sm = (SUPL || []).find(x => (doc.supGst && x.gstin === doc.supGst) || normName(x.name) === normName(doc.supName)), sp = d.ks && d.ks.addr1 ? d.ks : sm && sm.addr1 ? sm : (d.ns && d.ns.addr1 ? d.ns : sm); if (sp) doc.supAddr = {addr1:sp.addr1 || '', addr2:sp.addr2 || '', addr3:sp.addr3 || ''}; }
-    if (m === 'dc'){ doc.kind = dcKind(doc); doc.comp = 'Expert'; }
+    if (m === 'dc'){ doc.kind = dcKind(doc); doc.comp = 'Expert'; if (doc.sale){ doc.saleInv = doc.sale.inv; delete doc.sale; } }
     if (m !== 'mi' && !d.id && isAutoNo(doc.no) && !doc.no.endsWith('/' + fyOf(doc.date))) doc.no = vno(col, doc.no.split('/')[0], 'no', doc.date);
     if (m === 'ps' && !d.id) doc.no = vno('mat_ps', 'PS', 'no', doc.date);
     if (m === 'dc' || m === 'rn'){ ['contact', 'terms', 'refNo', 'otherRef', 'orderNo', 'orderDate', 'dispDoc', 'dispatch', 'dest', 'tod'].forEach(k => { if (!doc[k]) delete doc[k]; }); }
