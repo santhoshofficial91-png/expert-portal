@@ -988,16 +988,25 @@ window.advRun=async function(files,log){var out=[];var items=[];
  for(var f of files){var nm=f.name;try{var buf=await f.arrayBuffer();
   if(/\.zip$/i.test(nm)){await lib(JSZ);var z=await window.JSZip.loadAsync(buf);var ents=Object.keys(z.files).filter(function(k){return /\.pdf$/i.test(k)&&!z.files[k].dir});if(!ents.length)out.push({f:nm,ok:false,msg:'No PDF files found in this zip.'});for(var k of ents){items.push({f:k.split('/').pop(),buf:await z.files[k].async('arraybuffer')})}}
   else if(/\.pdf$/i.test(nm))items.push({f:nm,buf:buf});else out.push({f:nm,ok:false,msg:'Not a zip or PDF file.'})}catch(e){out.push({f:nm,ok:false,msg:'Could not open: '+e.message})}}
- var used={};PAY.forEach(function(r){if(r[23])used[key(r[23])]=r[0]});
+ var used={},paidNow=[];PAY.forEach(function(r){if(r[23])used[key(r[23])]=r[0]});
  for(var it of items){if(log)log('Reading '+it.f+' ...');var a=null;try{a=await readPdf(it.buf)}catch(e){out.push({f:it.f,ok:false,msg:'Could not read the PDF: '+e.message});continue}
   if(!a){out.push({f:it.f,ok:false,msg:'This does not look like a payment advice.'});continue}
   var base={f:it.f,to:a.ben,amt:a.amt,rem:a.rem};
   if(!/success/i.test(a.st)){out.push(Object.assign(base,{ok:false,msg:'Transaction status is "'+a.st+'", not Success.'}));continue}
   var k=key(a);if(used[k]){out.push(Object.assign(base,{ok:false,msg:'Already imported for '+used[k]+'.'}));continue}
   var m=match(a);if(!m){out.push(Object.assign(base,{ok:false,msg:'No request matched (PO number "'+a.rem+'" and amount ₹'+n2(a.amt)+' must both match a request).'}));continue}
-  var r=m.r;if(m.mode==='pay'){r[13]='Paid';r[17]=Date.now();poApply(r,1)}r[23]=a;used[k]=r[0];
+  var r=m.r;if(m.mode==='pay'){r[13]='Paid';r[17]=Date.now();poApply(r,1);paidNow.push(r)}r[23]=a;used[k]=r[0];
   out.push(Object.assign(base,{ok:true,id:r[0],msg:(m.mode==='pay'?'Marked Paid':'Already Paid – advice attached')+(m.name<.5?' (supplier name differs: '+r[5]+')':'')}))}
- if(out.some(function(o){return o.ok}))save();return out};
+ if(out.some(function(o){return o.ok}))save();
+ if(paidNow.length){var sent=await advChat(paidNow);out.forEach(function(o){var x=sent[o.id];if(x)o.msg+=' · '+x})}
+ return out};
+/* each request that just became Paid: its payment advice goes to the requester's chat (the Chat box in the portal) */
+async function advChat(L){var res={};for(var r of L){var to=r[21];if(!to){res[r[0]]='no requester to send the advice to';continue}if(to===ME.id){res[r[0]]='advice not sent to chat (your own request)';continue}
+  var text='\u2705 Payment done \u2013 '+r[0]+'\nPO: '+(r[4]||'')+'\nSupplier: '+(r[5]||'')+'\nRequested: \u20b9'+n2(+r[12]||0)+'\n\nPayment Advice\n'+advText(r[23]);
+  var id='c_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  try{var q=await SB.from('docs').upsert({col:'chats',id:id,data:{id:id,from:ME.id,to:to,text:text,at:new Date().toISOString(),kind:'advice',req:r[0]}});if(q.error)throw q.error;res[r[0]]='advice sent to '+(r[1]||'requester')+' in chat'}catch(e){res[r[0]]='chat not sent: '+e.message}}
+ return res}
+window.advChat=advChat;
 function showRes(out){var ok=out.filter(function(o){return o.ok}).length;var rows=out.map(function(o){return '<tr><td>'+(o.ok?'✅':'❌')+'</td><td style="text-align:left">'+esc(o.f)+'</td><td>'+esc(o.to||'')+'</td><td>'+(o.amt!=null?'₹'+n2(o.amt):'')+'</td><td style="text-align:left">'+(o.ok?'<b>'+esc(o.id)+'</b> – ':'')+esc(o.msg)+'</td></tr>'}).join('');
  var d=dlg('<h2>Payment advice result</h2><p><b>'+ok+'</b> of '+out.length+' matched and updated.</p><div style="max-height:55vh;overflow:auto"><table class="t" style="width:100%;font-size:13px"><thead><tr><th></th><th>File</th><th>Paid to</th><th>Amount</th><th>Result</th></tr></thead><tbody>'+rows+'</tbody></table></div><div class="row"><button class="btn" type="submit">Close</button></div>');d.firstChild.onsubmit=function(e){e.preventDefault();d.remove()}}
 document.addEventListener('click',function(e){var t=e.target;
