@@ -62,17 +62,17 @@ const DC_SCHEMA = {
 const PO = `This is a PURCHASE ORDER issued BY one of our own companies TO a supplier (usually printed from Tally). ${OUR}
 Extract:
 - po_no: the purchase order / voucher number (for example PO/991/26-27). po_date: the PO date as YYYY-MM-DD.
-- enq: the enquiry number if printed (often under "Other References", or written like "ENQ-1234"); digits only, else "".
+- enq: the enquiry number if printed (often under "Other References", or written like "ENQ-1234" or "8521-D"); the number with any letter suffix (for example 8478 or 8521-D), else "".
 - supplier_name and supplier_gstin: the SUPPLIER the order is placed with (printed as "Supplier (Bill from)", "To" or "Vendor"), never our own companies. supplier_addr1, supplier_addr2, supplier_addr3: the supplier's address in up to 3 short lines (city and pincode in the last used line).
-- lines: one entry per product row of the goods table, in order. For each: name (the full description; if it wraps over several lines or is split with hyphens, join it back into one readable name, and keep any trailing enquiry number such as "-8478"), hsn, qty (number, the quantity ordered / to bill), unit, rate (price per unit before tax), amount (the row amount before tax), gst (GST rate %).
-- total: the grand total.
+- lines: one entry per product row of the goods table, in order. For each: name (the full description; if it wraps over several lines or is split with hyphens, join it back into one readable name, and keep any trailing enquiry number such as "-8478"), hsn, qty (number, the quantity ordered / to bill), unit, rate (price per unit before tax), amount (the row amount before tax), gst (GST rate %). Also suggest, from the product description, brand (the maker or brand name if written, else ""), category (a short general product group such as Drinkware, Bags, Stationery, Apparel, Electronics, Gifts) and sub_category (a narrower group such as Bottles, Backpacks, Pens, Power Banks).
+- total: the grand total (with tax).
 Numbers must be plain numbers without commas or currency signs. Skip tax, round-off and total rows. Return only JSON.`;
 const PO_SCHEMA = {
   type: 'OBJECT',
   properties: {
     po_no: { type: 'STRING' }, po_date: { type: 'STRING' }, enq: { type: 'STRING' }, supplier_name: { type: 'STRING' }, supplier_gstin: { type: 'STRING' },
     supplier_addr1: { type: 'STRING' }, supplier_addr2: { type: 'STRING' }, supplier_addr3: { type: 'STRING' },
-    lines: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, hsn: { type: 'STRING' }, qty: { type: 'NUMBER' }, unit: { type: 'STRING' }, rate: { type: 'NUMBER' }, amount: { type: 'NUMBER' }, gst: { type: 'NUMBER' } }, required: ['name', 'hsn', 'qty', 'unit', 'rate', 'amount', 'gst'] } },
+    lines: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, hsn: { type: 'STRING' }, qty: { type: 'NUMBER' }, unit: { type: 'STRING' }, rate: { type: 'NUMBER' }, amount: { type: 'NUMBER' }, gst: { type: 'NUMBER' }, brand: { type: 'STRING' }, category: { type: 'STRING' }, sub_category: { type: 'STRING' } }, required: ['name', 'hsn', 'qty', 'unit', 'rate', 'amount', 'gst', 'brand', 'category', 'sub_category'] } },
     total: { type: 'NUMBER' },
   },
   required: ['po_no', 'po_date', 'enq', 'supplier_name', 'supplier_gstin', 'lines', 'total'],
