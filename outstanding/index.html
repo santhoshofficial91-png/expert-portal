@@ -430,17 +430,31 @@ function norm(snap){
   if (!docs){ docs = []; if (snap && typeof snap.forEach === 'function') snap.forEach(d => docs.push(d)); }
   return docs.map(d => { const data = typeof d.data === 'function' ? d.data() : (d.data && typeof d.data === 'object' ? d.data : d); return {...data, id: d.id ?? data.id}; });
 }
+function applyRows(rows){
+  COLS_DB.forEach(c => { D[c] = new Map(rows.filter(r => r.col === c && (c !== 'users' || hasOut(r.data))).map(r => [r.id, {...r.data, id:r.id}])); loaded[c] = true; });
+  ALLU.clear(); rows.filter(r => r.col === 'users').forEach(r => ALLU.set(r.id, {...r.data, id:r.id}));
+}
+// a copy of the data on this computer, so the app opens without waiting for the network
+const IDB = { db:null,
+  open(){ return this.db || (this.db = new Promise((ok, no) => { try { const r = indexedDB.open('eo_cache', 1); r.onupgradeneeded = () => r.result.createObjectStore('snap'); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); } catch(e){ no(e); } })); },
+  async get(k){ try { const d = await this.open(); return await new Promise(ok => { const q = d.transaction('snap').objectStore('snap').get(k); q.onsuccess = () => ok(q.result || null); q.onerror = () => ok(null); }); } catch(e){ return null; } },
+  async put(k, v){ try { const d = await this.open(); const t = d.transaction('snap', 'readwrite'); t.objectStore('snap').clear(); t.objectStore('snap').put(v, k); } catch(e){} },
+  async clear(){ try { const d = await this.open(); d.transaction('snap', 'readwrite').objectStore('snap').clear(); } catch(e){} } };
 const Store = {
   mode: 'local', db: null, L: {}, subs: {},
   async startSB(){
     const sb = this.sb;
     const loadAll = async () => {
-      let rows = [], a = 0;
-      for (;;){ const {data, error} = await sb.from('docs').select('col,id,data').order('col').order('id').range(a, a + 999); if (error) throw error; rows = rows.concat(data); if (data.length < 1000) break; a += 1000; }
-      COLS_DB.forEach(c => { D[c] = new Map(rows.filter(r => r.col === c && (c !== 'users' || hasOut(r.data))).map(r => [r.id, {...r.data, id:r.id}])); loaded[c] = true; });
-      ALLU.clear(); rows.filter(r => r.col === 'users').forEach(r => ALLU.set(r.id, {...r.data, id:r.id}));
+      // first page tells how many rows there are; the other pages are fetched together, not one after another
+      const PG = 1000, page = (a, cnt) => sb.from('docs').select('col,id,data', cnt ? {count:'exact'} : undefined).order('col').order('id').range(a, a + PG - 1);
+      const f = await page(0, true); if (f.error) throw f.error; let rows = f.data || [];
+      const n = Math.max(f.count || 0, rows.length);
+      if (rows.length === PG){ const more = n > PG ? Math.ceil(n / PG) - 1 : 1, R = await Promise.all(Array.from({length:more}, (_, k) => page((k + 1) * PG)));
+        for (const r of R){ if (r.error) throw r.error; rows = rows.concat(r.data || []); }
+        for (let a = (more + 1) * PG; rows.length >= a; a += PG){ const r = await page(a); if (r.error) throw r.error; rows = rows.concat(r.data || []); if ((r.data || []).length < PG) break; } }   // rows added meanwhile
+      applyRows(rows);
       if (D.users.get(S.me)?.role === 'Admin') await this.loadSecrets();
-      schedule();
+      schedule(); IDB.put('docs:' + S.me, {at:Date.now(), rows});
     };
     await loadAll();
     const u = D.users.get(S.me);
@@ -460,11 +474,14 @@ const Store = {
     const {data} = await this.sb.from('docs').select('col,id,data').in('col', ['entries','meta','activity']);
     ['entries','meta','activity'].forEach(c => D[c] = new Map((data || []).filter(r => r.col === c).map(r => [r.id, {...r.data, id:r.id}])));
   },
-  async initSB(){
+  async initSB(){ /* see applyRows / IDB below */
     this.mode = 'shared'; this.sb = window.supabase.createClient(SB.url, SB.key);
     S.me = null;
-    try { const {data:{session}} = await this.sb.auth.getSession(); if (session){ S.me = session.user.id; await this.startSB(); if (!D.users.get(S.me) || D.users.get(S.me).active === false){ await this.sb.auth.signOut(); S.me = null; } } else { COLS_DB.forEach(c => loaded[c] = true); } }
-    catch(e){ loadFailed = true; }
+    try { const {data:{session}} = await this.sb.auth.getSession(); if (session){ S.me = session.user.id;
+        // show the last saved copy at once (this computer, this user), then bring it up to date
+        const c = await IDB.get('docs:' + S.me); if (c && c.rows && Date.now() - c.at < 7 * 864e5 && !loaded.users){ applyRows(c.rows); const u0 = D.users.get(S.me); if (u0 && u0.active !== false){ render(); } }
+        await this.startSB(); if (!D.users.get(S.me) || D.users.get(S.me).active === false){ await this.sb.auth.signOut(); S.me = null; } } else { COLS_DB.forEach(c => loaded[c] = true); IDB.clear(); } }
+    catch(e){ if (!loaded.users) loadFailed = true; else toast('Could not refresh the data. Showing the last saved copy.'); }
     loaded.users = loaded.users || !loadFailed; render();
   },
   async init(){
@@ -1779,12 +1796,13 @@ function viewPS(mode){
 }
 // Closing Stock Details: what we hold now, with its category, sub category, brand, quantity, rate and taxable value
 function viewClosing(){
+  if (F.csI && D.inv_items.has(F.csI)) return viewStockItem(F.csI);
   const st = stockMap(), q = (F.csq || '').trim().toLowerCase(), nm = (col, id) => D[col].get(id)?.name || '';
   const list = [...D.inv_items.values()].map(x => ({x, s:st.get(x.id) || {q:0, v:0, rate:0}})).filter(r => r.s.q > 0 || F.csall).filter(r => (!F.cscat || r.x.cat === F.cscat) && (!F.csbr || r.x.brand === F.csbr) && (!F.cscomp || compOf(r.x.comp) === F.cscomp))
     .filter(r => !q || [r.x.part, r.x.name, nm('inv_cats', r.x.cat), nm('inv_subs', r.x.sub), nm('inv_brands', r.x.brand), compOf(r.x.comp)].join(' ').toLowerCase().includes(q))
     .sort((a, b) => String(a.x.part).localeCompare(String(b.x.part)));
   const tq = list.reduce((a, r) => a + r.s.q, 0), tv = list.reduce((a, r) => a + r.s.v, 0), unit = x => D.inv_units.get(x.unit)?.unit || '';
-  const body = list.map(({x, s}) => `<tr ${s.q ? '' : 'style="opacity:.55"'}><td class="mono">${esc(x.part)}</td><td class="wrap">${esc(x.name)}</td><td>${esc(nm('inv_cats', x.cat))}</td><td>${esc(nm('inv_subs', x.sub))}</td><td>${esc(nm('inv_brands', x.brand))}</td><td>${esc(compOf(x.comp) || '—')}</td><td class="r num">${qtyF(s.q)} ${esc(unit(x))}</td><td class="r num">${inr(s.q > 0 ? s.v / s.q : s.rate)}</td><td class="r num">${inr(s.v)}</td></tr>`).join('');
+  const body = list.map(({x, s}) => `<tr class="clk${F.csLast === x.id ? ' sel' : ''}" data-act="csOpen" data-id="${esc(x.id)}" tabindex="0" title="Show month-wise in / out" ${s.q ? '' : 'style="opacity:.55"'}><td class="mono">${esc(x.part)}</td><td class="wrap">${esc(x.name)}</td><td>${esc(nm('inv_cats', x.cat))}</td><td>${esc(nm('inv_subs', x.sub))}</td><td>${esc(nm('inv_brands', x.brand))}</td><td>${esc(compOf(x.comp) || '—')}</td><td class="r num">${qtyF(s.q)} ${esc(unit(x))}</td><td class="r num">${inr(s.q > 0 ? s.v / s.q : s.rate)}</td><td class="r num">${inr(s.v)}</td></tr>`).join('');
   return `<div class="head"><div><h1>Closing Stock Details</h1><p class="sub">Stock we hold now · Physical Stock + GRN − Delivery Challan + Receipt Note</p></div>${XB('xClosing')}</div>
   <div class="bar sfb"><label class="sf"><span>Search</span><input id="csq" data-f="csq" type="search" placeholder="Part no, stock, category, brand, team" value="${esc(F.csq || '')}" autocomplete="off"></label><label class="sf"><span>Category</span><select data-f="cscat"><option value="">All</option>${invList('inv_cats').map(c => `<option value="${esc(c.id)}" ${F.cscat === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="sf"><span>Brand</span><select data-f="csbr"><option value="">All</option>${invList('inv_brands').map(c => `<option value="${esc(c.id)}" ${F.csbr === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="sf"><span>Team</span><select data-f="cscomp"><option value="">All</option>${COMPS.map(c => `<option ${F.cscomp === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label><button class="btn sm" style="align-self:end;margin-bottom:6px" data-act="csAll" aria-pressed="${!!F.csall}">${F.csall ? 'Hide items with no stock' : 'Show items with no stock'}</button></div>
   ${teamCards(TEAMS.map(t => { const L = list.filter(r => compOf(r.x.comp) === t && r.s.q > 0); return [t, L.length + ' item' + (L.length === 1 ? '' : 's') + ' · ' + qtyF(L.reduce((a, r) => a + r.s.q, 0)) + ' qty', inr(L.reduce((a, r) => a + r.s.v, 0))]; }), list.some(r => !compOf(r.x.comp) && r.s.q > 0) ? 'Items with no team yet: open Create Stock Item, press Edit and pick the team.' : '')}
@@ -2041,6 +2059,7 @@ function rcLabel(){
 new MutationObserver(() => { cancelAnimationFrame(rcLabel.f); rcLabel.f = requestAnimationFrame(rcLabel); }).observe(document.documentElement, {childList:true, subtree:true});
 // Tally-style moving bar: the chosen row is yellow, ↑ ↓ move it, Enter opens it
 const stkFocus = () => setTimeout(() => { const r = document.querySelector('#main tr.clk.sel') || document.querySelector('#main table.stkt tr.clk:not(.dim)'); if (r){ r.focus({preventScroll:true}); const b = r.getBoundingClientRect(); if (b.top < 0 || b.bottom > innerHeight) r.scrollIntoView({block:'center'}); } }, 30);
+document.addEventListener('mouseover', ev => { if (matchMedia('(hover: none)').matches) return; const r = ev.target.closest && ev.target.closest('tr.clk'); if (!r || r === document.activeElement) return; const a = document.activeElement; if (a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return; r.focus({preventScroll:true}); });
 document.addEventListener('focusin', ev => { const r = ev.target; if (r.tagName === 'TR' && r.classList.contains('clk')) r.parentNode.querySelectorAll('tr.sel').forEach(x => x !== r && x.classList.remove('sel')), r.classList.add('sel'); });
 document.addEventListener('keydown', ev => { const r = ev.target; if (r.tagName !== 'TR' || !r.classList.contains('clk') || (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp')) return; ev.preventDefault();
   let n = r; do { n = ev.key === 'ArrowDown' ? n.nextElementSibling : n.previousElementSibling; } while (n && !n.classList.contains('clk')); if (n){ n.focus({preventScroll:true}); n.scrollIntoView({block:'nearest'}); } });
@@ -2063,22 +2082,22 @@ const qvC = (q, v, u) => `<td class="r num gl"${q < 0 ? ' style="color:#b91c1c"'
 const MV_SUB = '<tr><th class="r gl">Quantity</th><th class="r">Value</th><th class="r gl">Quantity</th><th class="r">Value</th><th class="r gl">Quantity</th><th class="r">Value</th></tr>';
 const MV_HEAD = first => `<thead><tr><th rowspan="2">${first}</th><th colspan="2" class="c gl">Inwards</th><th colspan="2" class="c gl">Outwards</th><th colspan="2" class="c gl">Closing balance</th></tr>${MV_SUB}</thead>`;
 function viewStockItem(id){
-  const x = D.inv_items.get(id); if (!x) { F.stkI = ''; return viewStock(); }
+  const cs = S.view === 'cls_stock', x = D.inv_items.get(id); if (!x) { if (cs){ F.csI = ''; return viewClosing(); } F.stkI = ''; return viewStock(); }
   const u = D.inv_units.get(x.unit)?.unit || '', y = F.stkY || fyStartY(), fs = `${y}-04-01`, fe = `${y + 1}-03-31`, all = itemMoves(id);
   const op = sumMv(all.filter(r => r.date < fs)); let cq = op.inQ - op.outQ, cv = op.inV - op.outV;
-  const back = `<button class="btn sm" data-act="stkBack">← Stock List</button> <button class="btn sm" data-act="stkEdit" data-id="${esc(id)}">Edit item / team</button>`, title = `<h1 style="margin:6px 0 2px">${esc(x.name)}</h1><p class="sub">Part no ${esc(x.part)}${compOf(x.comp) ? ' · Team ' + esc(compOf(x.comp)) : ''}</p>`;
+  const back = `<button class="btn sm" data-act="stkBack">← ${cs ? 'Closing Stock' : 'Stock List'}</button>${canStock() ? ` <button class="btn sm" data-act="stkEdit" data-id="${esc(id)}">Edit item / team</button>` : ''}`, title = `<h1 style="margin:6px 0 2px">${esc(x.name)}</h1><p class="sub">Part no ${esc(x.part)}${compOf(x.comp) ? ' · Team ' + esc(compOf(x.comp)) : ''}</p>`;
   if (F.stkM != null){
     const mo = F.stkM, mm = (mo + 3) % 12, yy = mo < 9 ? y : y + 1, ms = `${yy}-${String(mm + 1).padStart(2, '0')}`;
     const pre = sumMv(all.filter(r => r.date < ms + '-01')); let rq = pre.inQ - pre.outQ, rv = pre.inV - pre.outV;
     const L = all.filter(r => r.date.slice(0, 7) === ms), T = sumMv(L);
-    const rows = L.map((r, k) => { rq += r.inQ - r.outQ; rv += r.inV - r.outV; return `<tr class="clk${(F.stkLastD ? F.stkLastD === r.id : k === 0) ? ' sel' : ''}" data-act="stkDoc" data-m="${r.m}" data-id="${esc(r.id)}" tabindex="0" title="Open this ${esc(r.type)}"><td class="nowrap">${esc(fmtD(r.date))}</td><td class="wrap"><b>${esc(r.party)}</b></td><td>${esc(r.type)}</td><td class="mono nowrap">${esc(r.no)}</td>${qv(r.inQ, r.inV, u)}${qv(r.outQ, r.outV, u)}${qvC(r2(rq), r2(rv), u)}</tr>`; }).join('');
+    const rows = L.map((r, k) => { rq += r.inQ - r.outQ; rv += r.inV - r.outV; return `<tr class="clk${(F.stkLastD ? F.stkLastD === r.id : k === 0) ? ' sel' : ''}" ${canStock() ? `data-act="stkDoc" data-m="${r.m}" data-id="${esc(r.id)}" title="Open this ${esc(r.type)}"` : ''} tabindex="0"><td class="nowrap">${esc(fmtD(r.date))}</td><td class="wrap"><b>${esc(r.party)}</b></td><td>${esc(r.type)}</td><td class="mono nowrap">${esc(r.no)}</td>${qv(r.inQ, r.inV, u)}${qv(r.outQ, r.outV, u)}${qvC(r2(rq), r2(rv), u)}</tr>`; }).join('');
     return `<div class="head"><div>${back} <button class="btn sm" data-act="stkMon" data-i="">← ${y}-${String(y + 1).slice(2)} months</button>${title}</div></div>
     <h2 style="margin:12px 0 6px">${MONF[mm]} ${yy} · vouchers</h2>
     <div class="tw"><table class="stkt"><thead><tr><th rowspan="2">Date</th><th rowspan="2">Particulars</th><th rowspan="2">Voucher type</th><th rowspan="2">Voucher no</th><th colspan="2" class="c gl">Inwards</th><th colspan="2" class="c gl">Outwards</th><th colspan="2" class="c gl">Closing</th></tr>${MV_SUB}</thead><tbody>
     <tr class="mut"><td></td><td><i>Opening balance</i></td><td></td><td></td>${E2}${E2}${qvC(r2(pre.inQ - pre.outQ), r2(pre.inV - pre.outV), u)}</tr>
     ${rows || '<tr><td colspan="10" class="empty">No movement in this month.</td></tr>'}</tbody>
     <tfoot><tr class="ttop"><td colspan="4" class="r">Total</td>${qv(T.inQ, T.inV, u)}${qv(T.outQ, T.outV, u)}${qvC(r2(rq), r2(rv), u)}</tr></tfoot></table></div>
-    <p class="mut" style="font-size:12px">Click a voucher to open its entry.</p>`;
+    <p class="mut" style="font-size:12px">${canStock() ? 'Click a voucher to open its entry. ' : ''}↑ ↓ move · Enter or Space opens.</p>`;
   }
   const curM = (() => { const [cy, cm] = TODAY.split('-').map(Number), k = (cm - 4 + 12) % 12, ky = cm >= 4 ? cy : cy - 1; return ky === y ? k : ky > y ? 11 : 0; })();
   const selM = F.stkLastM != null ? F.stkLastM : curM;
@@ -2247,11 +2266,12 @@ const MATACT = {
   dcTy:t => { F.dcty = t.dataset.t; forceRender = true; render(); },
   matPrint:t => printDoc(t.dataset.m, t.dataset.id),
   stkOpen:t => { F.stkI = F.stkLast = t.dataset.id; F.stkM = F.stkLastM = null; F.stkLastD = ''; F.stkY = fyStartY(); forceRender = true; render(); stkFocus(); },
-  stkBack:() => { F.stkI = ''; F.stkM = null; forceRender = true; render(); stkFocus(); },
+  csOpen:t => { F.csI = F.csLast = t.dataset.id; F.stkM = F.stkLastM = null; F.stkLastD = ''; F.stkY = fyStartY(); forceRender = true; render(); stkFocus(); },
+  stkBack:() => { if (S.view === 'cls_stock') F.csI = ''; else F.stkI = ''; F.stkM = null; forceRender = true; render(); stkFocus(); },
   stkY:t => { F.stkY = (F.stkY || fyStartY()) + (+t.dataset.d); F.stkM = F.stkLastM = null; forceRender = true; render(); stkFocus(); },
   stkMon:t => { if (t.dataset.i !== ''){ F.stkLastM = +t.dataset.i; F.stkLastD = ''; } F.stkM = t.dataset.i === '' ? null : +t.dataset.i; forceRender = true; render(); stkFocus(); },
-  stkDoc:t => { F.stkLastD = t.dataset.id; F.stkRet = {i:F.stkI, m:F.stkM, y:F.stkY}; ACT.matEdit(t); },
-  stkRet:() => { const r = F.stkRet; F.stkRet = null; if (!r) return; F.stkI = r.i; F.stkM = r.m; F.stkY = r.y; ['mi','dc','rn','ps'].forEach(k => { if (F[k] && F[k].id) F[k] = null; }); ACT.nav({dataset:{k:'inv_stock', keep:'1'}}); stkFocus(); },
+  stkDoc:t => { F.stkLastD = t.dataset.id; F.stkRet = {i:S.view === 'cls_stock' ? F.csI : F.stkI, m:F.stkM, y:F.stkY, v:S.view}; ACT.matEdit(t); },
+  stkRet:() => { const r = F.stkRet; F.stkRet = null; if (!r) return; if (r.v === 'cls_stock') F.csI = r.i; else F.stkI = r.i; F.stkM = r.m; F.stkY = r.y; ['mi','dc','rn','ps'].forEach(k => { if (F[k] && F[k].id) F[k] = null; }); ACT.nav({dataset:{k:r.v === 'cls_stock' ? 'cls_stock' : 'inv_stock', keep:'1'}}); stkFocus(); },
   matCancel:t => { const m = t.dataset.m; F[m] = null; ACT.nav({dataset:{k:m === 'mi' ? 'mat_in' : m === 'dc' ? 'mat_dc' : m === 'ps' ? 'mat_ps' : 'mat_rn'}}); },
   matEdit:t => { const m = t.dataset.m, d = D[MATCOL[m]].get(t.dataset.id); if (!d) return; F[m] = JSON.parse(JSON.stringify(d)); (F[m].lines || []).forEach(l => { l.rateTyped = 1; l.gstTouched = 1; }); F.justSaved = ''; ACT.nav({dataset:{k:m === 'mi' ? 'mat_in_new' : m === 'rn' ? 'rn_new' : m === 'ps' ? 'ps_new' : (dcKind(d) === 'dc' ? 'dc_new' : 'rdc_new')}}); },
   matDel:async t => { const m = t.dataset.m, col = MATCOL[m], d = D[col].get(t.dataset.id); if (!d) return;
@@ -3249,7 +3269,7 @@ async function exportX(){
 
 /* ---------- events ---------- */
 const ACT = {
-  nav:t => { S.editRow = null; if (t.dataset.k === 'inv_stock' && !t.dataset.keep){ F.stkI = ''; F.stkM = null; } if (!t.dataset.keep && !/_new$/.test(t.dataset.k)) F.stkRet = null; S.view = t.dataset.k; if (t.dataset.role){ F.cr = t.dataset.role; createMsg = ''; S.createOpen = true; } closeDrawer(); forceRender = true; render(); },
+  nav:t => { S.editRow = null; if (t.dataset.k === 'inv_stock' && !t.dataset.keep){ F.stkI = ''; F.stkM = null; } if (t.dataset.k === 'cls_stock' && !t.dataset.keep){ F.csI = ''; F.stkM = null; } if (!t.dataset.keep && !/_new$/.test(t.dataset.k)) F.stkRet = null; S.view = t.dataset.k; if (t.dataset.role){ F.cr = t.dataset.role; createMsg = ''; S.createOpen = true; } closeDrawer(); forceRender = true; render(); },
   billDelAll:() => { if (!isAdm()) return; openModal(`<h2>Delete all bill details?</h2><p>This permanently deletes all <b>${D.billing.size}</b> billing rows for every area. You can import them again from Excel afterwards. This cannot be undone.</p><div class="acts"><button class="btn" data-act="closeModal">No</button><button class="btn dng" data-act="billDelAllYes">Yes, delete all</button></div>`); },
   billDelAllYes:async t => { if (!isAdm()) return; t.disabled = true; const n = D.billing.size; const ok = await Store.delAll('billing'); if (ok) await logAct('Billing delete all', n + ' billing rows deleted'); closeModal(); forceRender = true; render(); },
   addBill:() => { if (canBill()) billModal(); },
@@ -3413,7 +3433,7 @@ const ACT = {
   saveFU:t => saveFU(t.dataset.id), savePay:t => savePay(t.dataset.id),
   editUser:t => userModal(D.users.get(t.dataset.id) || ALLU.get(t.dataset.id)),
   addSub:async () => { const v = val('newsub'); if (!v) return; const s = new Set(D.meta.get('settings')?.subgroups || []); allSubs().forEach(x => s.add(x)); s.add(v); await Store.set('meta', 'settings', {subgroups:[...s]}); await logAct('Add sub group', v); },
-  profile:() => { if (me()?.role === 'Admin') profileModal(); }, myProfile:profileViewModal, logout:() => { if (SB){ Store.sb.auth.signOut().finally(() => location.reload()); return; } S.me = null; try { sessionStorage.removeItem('cof_me'); } catch(e){} closeDrawer(); render(); },
+  profile:() => { if (me()?.role === 'Admin') profileModal(); }, myProfile:profileViewModal, logout:() => { if (SB){ IDB.clear(); Store.sb.auth.signOut().finally(() => location.reload()); return; } S.me = null; try { sessionStorage.removeItem('cof_me'); } catch(e){} closeDrawer(); render(); },
   ...Object.fromEntries(Object.entries(XACT).map(([k, f]) => [k, async t => { const l = t.textContent; t.textContent = 'Preparing…'; t.disabled = true; try { await f(); } finally { t.textContent = l; t.disabled = false; } }])),
   sampleX, applyModalImport, exportX, applyImport, cancelImport:() => { pendingImport = null; render(); }
 };
@@ -3435,7 +3455,7 @@ document.addEventListener('paste', async ev => {
   ev.preventDefault(); const f = it.getAsFile(); if (!f) return;
   try { S.chatImg = await compressImg(f); chatPrev(); $('#chtxt')?.focus(); } catch(e){}
 });
-document.addEventListener('keydown', ev => { const r = ev.target; if (ev.key === 'Enter' && r.tagName === 'TR' && r.classList.contains('clk')){ ev.preventDefault(); r.click(); } });
+document.addEventListener('keydown', ev => { const r = ev.target; if ((ev.key === 'Enter' || ev.key === ' ') && r.tagName === 'TR' && r.classList.contains('clk')){ ev.preventDefault(); r.click(); } });
 document.addEventListener('keydown', ev => { if (ev.target.id === 'chtxt' && ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); ACT.chatSend(); return; }
   if (ev.key === 'Escape'){ if (document.getElementById('lb')) ACT.closeLb(); else if ($('#ov').classList.contains('show')) closeModal(); else if (S.drawer) closeDrawer(); } });
 document.addEventListener('input', ev => { const t = ev.target; if (t.dataset.f){ S.editRow = null; F[t.dataset.f] = t.value; F.page = 1; F.pgs = {}; const id = t.id, pos = t.selectionStart; render(); if (id){ const el = document.getElementById(id); if (el){ el.focus(); try { const n = (pos == null ? el.value.length : pos); el.setSelectionRange(n, n); } catch(e){} } } } });
