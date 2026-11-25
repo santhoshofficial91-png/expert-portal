@@ -36,6 +36,7 @@ Extract the whole invoice:
 - inv_no: the invoice number. inv_date: the invoice date as YYYY-MM-DD.
 - supplier_name and supplier_gstin: the SELLER who issued the invoice (never our own companies). supplier_addr1, supplier_addr2, supplier_addr3: the seller's address in up to 3 short lines without name, GSTIN, phone or email (city and pincode in the last used line). supplier_pincode (6 digits), supplier_mobile (10 digits or ""), supplier_email (or "").
 - lines: one entry per product row of the goods table, in order. For each: name (description as printed), hsn (HSN/SAC code digits), qty (number), unit (e.g. NOS, PCS), rate (price per unit before tax, number), taxable (taxable value / amount of that row before tax, number), gst (GST rate % of that row, e.g. 18 or 5; if only CGST and SGST rates are printed, add them). Also suggest, from the product description, brand (the maker or brand name if it is written, else ""), category (a short general product group such as Drinkware, Bags, Stationery, Apparel, Electronics, Gifts) and sub_category (a narrower group such as Bottles, Backpacks, Pens, T-Shirts).
+- po_ref: the buyer's purchase order number if it is printed (labels like "PO reference", "PO No", "Your Order No", "Buyer's Order No"); if it only says something like "order by mail", use "".
 - cgst, sgst, igst: total tax amounts printed on the invoice (0 if not printed). total: the grand total of the invoice.
 Numbers must be plain numbers without commas or currency signs. Skip rows that are only totals, freight notes or blank. Return only JSON.`;
 const PURCHASE_SCHEMA = {
@@ -44,9 +45,9 @@ const PURCHASE_SCHEMA = {
     inv_no: { type: 'STRING' }, inv_date: { type: 'STRING' }, supplier_name: { type: 'STRING' }, supplier_gstin: { type: 'STRING' },
     supplier_addr1: { type: 'STRING' }, supplier_addr2: { type: 'STRING' }, supplier_addr3: { type: 'STRING' }, supplier_pincode: { type: 'STRING' }, supplier_mobile: { type: 'STRING' }, supplier_email: { type: 'STRING' },
     lines: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, hsn: { type: 'STRING' }, qty: { type: 'NUMBER' }, unit: { type: 'STRING' }, rate: { type: 'NUMBER' }, taxable: { type: 'NUMBER' }, gst: { type: 'NUMBER' }, brand: { type: 'STRING' }, category: { type: 'STRING' }, sub_category: { type: 'STRING' } }, required: ['name', 'hsn', 'qty', 'unit', 'rate', 'taxable', 'gst', 'brand', 'category', 'sub_category'] } },
-    cgst: { type: 'NUMBER' }, sgst: { type: 'NUMBER' }, igst: { type: 'NUMBER' }, total: { type: 'NUMBER' },
+    po_ref: { type: 'STRING' }, cgst: { type: 'NUMBER' }, sgst: { type: 'NUMBER' }, igst: { type: 'NUMBER' }, total: { type: 'NUMBER' },
   },
-  required: ['inv_no', 'inv_date', 'supplier_name', 'supplier_gstin', 'lines', 'cgst', 'sgst', 'igst', 'total'],
+  required: ['inv_no', 'inv_date', 'supplier_name', 'supplier_gstin', 'lines', 'po_ref', 'cgst', 'sgst', 'igst', 'total'],
 };
 const DC = `This is a delivery challan, sample DC or receipt note for goods (samples) given to or returned by a customer. ${OUR}
 Extract: doc_no (the challan / note number), doc_date (YYYY-MM-DD), party (the customer name, never our own companies), lines: one entry per product row with name, qty (number) and value (row value in rupees, number, 0 if not printed). Return only JSON.`;
@@ -58,7 +59,25 @@ const DC_SCHEMA = {
   },
   required: ['doc_no', 'doc_date', 'party', 'lines'],
 };
-const KINDS: Record<string, [string, unknown]> = { supplier: [PROMPT, schema], purchase: [PURCHASE, PURCHASE_SCHEMA], dc: [DC, DC_SCHEMA] };
+const PO = `This is a PURCHASE ORDER issued BY one of our own companies TO a supplier (usually printed from Tally). ${OUR}
+Extract:
+- po_no: the purchase order / voucher number (for example PO/991/26-27). po_date: the PO date as YYYY-MM-DD.
+- enq: the enquiry number if printed (often under "Other References", or written like "ENQ-1234"); digits only, else "".
+- supplier_name and supplier_gstin: the SUPPLIER the order is placed with (printed as "Supplier (Bill from)", "To" or "Vendor"), never our own companies. supplier_addr1, supplier_addr2, supplier_addr3: the supplier's address in up to 3 short lines (city and pincode in the last used line).
+- lines: one entry per product row of the goods table, in order. For each: name (the full description; if it wraps over several lines or is split with hyphens, join it back into one readable name, and keep any trailing enquiry number such as "-8478"), hsn, qty (number, the quantity ordered / to bill), unit, rate (price per unit before tax), amount (the row amount before tax), gst (GST rate %).
+- total: the grand total.
+Numbers must be plain numbers without commas or currency signs. Skip tax, round-off and total rows. Return only JSON.`;
+const PO_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    po_no: { type: 'STRING' }, po_date: { type: 'STRING' }, enq: { type: 'STRING' }, supplier_name: { type: 'STRING' }, supplier_gstin: { type: 'STRING' },
+    supplier_addr1: { type: 'STRING' }, supplier_addr2: { type: 'STRING' }, supplier_addr3: { type: 'STRING' },
+    lines: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, hsn: { type: 'STRING' }, qty: { type: 'NUMBER' }, unit: { type: 'STRING' }, rate: { type: 'NUMBER' }, amount: { type: 'NUMBER' }, gst: { type: 'NUMBER' } }, required: ['name', 'hsn', 'qty', 'unit', 'rate', 'amount', 'gst'] } },
+    total: { type: 'NUMBER' },
+  },
+  required: ['po_no', 'po_date', 'enq', 'supplier_name', 'supplier_gstin', 'lines', 'total'],
+};
+const KINDS: Record<string, [string, unknown]> = { supplier: [PROMPT, schema], purchase: [PURCHASE, PURCHASE_SCHEMA], dc: [DC, DC_SCHEMA], po: [PO, PO_SCHEMA] };
 
 async function ask(model: string, mime: string, data: string, ms: number, prompt = PROMPT, sch: unknown = schema) {
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {

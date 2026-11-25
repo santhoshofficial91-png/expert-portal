@@ -356,7 +356,7 @@ const GICON = {
   other:'<svg class="gi" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>'
 };
 const OUT_BASE = [{k:'dashboard',label:'Dashboard'},{k:'outstanding',label:'Outstanding'},{k:'billing',label:'Billing'},{k:'collection',label:'Collection'},{k:'chat',label:'Chat'},{k:'edits',label:'Edit History'},{k:'activity',label:'Activity log'}];
-const OUT_INV = [{k:'inv_stock',label:'Stock List'},{k:'inv_item',label:'Create Stock Item'},{k:'inv_brand',label:'Brand'},{k:'inv_cat',label:'Category'},{k:'inv_sub',label:'Sub Category'},{k:'inv_unit',label:'Units'},{k:'inv_gst',label:'GST Percentage'},{k:'mat_in_new',label:'Create GRN'},{k:'dc_new',label:'Create Delivery Challan'},{k:'rdc_new',label:'Create Returnable DC'},{k:'rn_new',label:'Create Receipt Note'},{k:'ps_new',label:'Create Physical Stock'},{k:'cls_stock',label:'Closing Stock Details'},{k:'mat_in',label:'GRN Register'},{k:'mat_dc',label:'Delivery Challan Register'},{k:'mat_rn',label:'Receipt Note Register'},{k:'mat_ps',label:'Physical Stock Register'},{k:'smp_pend',label:'Pending Samples'}];
+const OUT_INV = [{k:'inv_stock',label:'Stock List'},{k:'inv_item',label:'Create Stock Item'},{k:'inv_brand',label:'Brand'},{k:'inv_cat',label:'Category'},{k:'inv_sub',label:'Sub Category'},{k:'inv_unit',label:'Units'},{k:'inv_gst',label:'GST Percentage'},{k:'po_new',label:'Create Purchase Order'},{k:'mat_in_new',label:'Create GRN'},{k:'dc_new',label:'Create Delivery Challan'},{k:'rdc_new',label:'Create Returnable DC'},{k:'rn_new',label:'Create Receipt Note'},{k:'ps_new',label:'Create Physical Stock'},{k:'cls_stock',label:'Closing Stock Details'},{k:'mat_in',label:'GRN Register'},{k:'mat_dc',label:'Delivery Challan Register'},{k:'mat_rn',label:'Receipt Note Register'},{k:'mat_ps',label:'Physical Stock Register'},{k:'smp_pend',label:'Pending Samples'}];
 // menu shown before the Sales module has loaded once (it then sends its exact menu)
 const outFallback = () => { const adm = P && P.role === 'Admin', invOnly = P && P.role === 'Executive' && P.canInv === true && Array.isArray(P.subs) && !P.subs.length, items = invOnly ? OUT_BASE.filter(i => !['dashboard','outstanding','billing','collection'].includes(i.k)) : OUT_BASE.slice(); if (adm || (P && P.role === 'Sub Admin' && P.canAlert)) items.splice(1, 0, {k:'mail', label:'Send Payment Mail'}); if (adm || (P && (P.role === 'Sub Admin' || P.role === 'Manager'))) items.splice(items.findIndex(i => i.k === 'collection') + 1, 0, {k:'cust_list', label:'Customer List'}); if (adm || (P && P.canInv)) items.push(...OUT_INV); if (adm) items.push({k:'backup', label:'Backup Download'}); return items; };
 const RENAME = {outstanding:{outstanding:'Customer Outstanding'}};  // Purchase labels are set by the module (they depend on the role)
@@ -430,9 +430,9 @@ function buildNav(){
   // GRN / Delivery Challan / Receipt Note: a group each (create + list), right under Expenses
   // Create Documents, then Physical Stock, then Document Registers
   const grp = (g, lab, ks) => { const its = ks.map(get).filter(Boolean); if (its.length) h += groupHTML(g, lab, its.map(it => itemHTML('outstanding', it)).join(''), its.some(it => on('outstanding', it))); };
-  grp('cdoc', 'Create Documents', ['mat_in_new', 'dc_new', 'rdc_new', 'rn_new', 'ps_new']);
+  grp('cdoc', 'Create Documents', ['po_new', 'mat_in_new', 'dc_new', 'rdc_new', 'rn_new', 'ps_new']);
   const cs = get('cls_stock'); if (cs) h += topBtn('outstanding', cs);
-  grp('dreg', 'Document Registers', ['mat_in', 'mat_dc', 'mat_rn', 'mat_ps']);
+  grp('dreg', 'Document Registers', ['mat_po', 'mat_in', 'mat_dc', 'mat_rn', 'mat_ps', 'po_rep']);
   ['smp_pend'].forEach(k => { const it = get(k); if (it) h += topBtn('outstanding', it); });
   ['chat', 'edits', 'activity'].forEach(k => { const it = get(k); if (it) h += topBtn('outstanding', it); });
   oi.filter(it => !used.has(it.k)).forEach(it => { h += it.children ? itemHTML('outstanding', it) : topBtn('outstanding', it); });
