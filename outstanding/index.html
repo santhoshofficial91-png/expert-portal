@@ -558,6 +558,8 @@ function issuesOf(e){
 const me = () => D.users.get(S.me);
 const role = () => me()?.role;
 const isAdm = () => role() === 'Admin';
+// stock items and their lists (brand, category, sub category, unit, GST): Admin and Abinaya change them, everyone else only sees them
+const canMEdit = () => isAdm() || /^abinaya$/i.test(String(me()?.name || '').trim());
 const canInv = () => isAdm() || (role() === 'Sub Admin' && !!me()?.canStatus);
 const isTop = () => role() === 'Admin' || role() === 'Sub Admin';
 const isMgrUp = () => role() !== 'Executive';
@@ -858,9 +860,9 @@ function viewMaster(k){
   const inp = f => f[2] === 'cat' ? `<label class="f">${f[1]}<select id="im_${f[0]}"><option value="">Select category</option>${invList('inv_cats').map(c => `<option value="${esc(c.id)}" ${ed && ed.cat === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>`
     : `<label class="f">${f[1]}<input id="im_${f[0]}" type="${f[2]}" ${f[2] === 'number' ? 'min="0" max="100" step="0.01"' : ''} value="${esc(ed ? ed[f[0]] ?? '' : '')}" autocomplete="off"></label>`;
   const used = x => k === 'cat' ? [...D.inv_subs.values()].some(y => y.cat === x.id) || [...D.inv_items.values()].some(y => y.cat === x.id) : [...D.inv_items.values()].some(y => y[k] === x.id);
-  const rows = list.map(x => `<tr><td>${k === 'sub' ? esc(D.inv_cats.get(x.cat)?.name || '—') + ' › ' : ''}${esc(mLabel(k, x))}</td><td class="r">${[...D.inv_items.values()].filter(y => y[k] === x.id).length || ''}</td><td><button class="btn sm" data-act="invMEdit" data-k="${k}" data-id="${esc(x.id)}">Edit</button> ${isAdm() ? `<button class="btn sm dng" data-act="invMDel" data-k="${k}" data-id="${esc(x.id)}">Delete</button>` : ''}</td></tr>`).join('');
+  const rows = list.map(x => `<tr><td>${k === 'sub' ? esc(D.inv_cats.get(x.cat)?.name || '—') + ' › ' : ''}${esc(mLabel(k, x))}</td><td class="r">${[...D.inv_items.values()].filter(y => y[k] === x.id).length || ''}</td><td>${canMEdit() ? `<button class="btn sm" data-act="invMEdit" data-k="${k}" data-id="${esc(x.id)}">Edit</button> ` : ''}${isAdm() ? `<button class="btn sm dng" data-act="invMDel" data-k="${k}" data-id="${esc(x.id)}">Delete</button>` : ''}</td></tr>`).join('');
   return `<div class="head"><div><h1>${M.title}</h1><p class="sub">Inventory · create the ${M.one} list used in Create Stock Item.</p></div><button class="btn" data-act="xMaster" data-k="${k}">Export Excel</button></div>
-  <div class="card"><h2 style="margin:0 0 8px">${ed ? 'Edit ' + M.one : 'Create ' + M.one}</h2><div class="frow" style="align-items:flex-end;flex-wrap:wrap">${M.fields.map(inp).join('')}<div style="display:flex;gap:8px;padding-bottom:2px"><button class="btn pri" data-act="invMSave" data-k="${k}">${ed ? 'Save' : 'Create'}</button>${ed ? `<button class="btn" data-act="invMCancel">Cancel</button>` : ''}</div></div><div class="err" id="imerr"></div></div>
+  ${canMEdit() ? `<div class="card"><h2 style="margin:0 0 8px">${ed ? 'Edit ' + M.one : 'Create ' + M.one}</h2><div class="frow" style="align-items:flex-end;flex-wrap:wrap">${M.fields.map(inp).join('')}<div style="display:flex;gap:8px;padding-bottom:2px"><button class="btn pri" data-act="invMSave" data-k="${k}">${ed ? 'Save' : 'Create'}</button>${ed ? `<button class="btn" data-act="invMCancel">Cancel</button>` : ''}</div></div><div class="err" id="imerr"></div></div>` : '<p class="mut">View only. Admin and Abinaya can create or change these.</p>'}
   <div class="tw" style="margin-top:12px"><table><thead><tr><th>${M.title}</th><th class="r">Items</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="3" class="empty">No ${M.one} yet.</td></tr>`}</tbody></table></div>`;
 }
 const nextPart = () => { let m = 10000; D.inv_items.forEach(x => { const n = parseInt(x.part, 10); if (n > m) m = n; }); return m + 1; };
@@ -925,8 +927,8 @@ function viewInvItems(){
   const nm = (col, id, f) => { const x = D[col].get(id); return x ? f(x) : ''; };
   const items = [...D.inv_items.values()].sort((a, b) => (+b.part || 0) - (+a.part || 0)).filter(x => !q || [x.name, x.part, x.code, x.hsn, x.comp, nm('inv_brands', x.brand, y => y.name), nm('inv_cats', x.cat, y => y.name)].join(' ').toLowerCase().includes(q));
   const P = pg(items, 'inv', 25);
-  const rows = P.items.map(x => `<tr><td class="mono">${esc(x.part)}</td><td class="wrap">${esc(x.name)}</td><td>${esc(x.code || '')}</td><td>${esc(x.comp ? compOf(x.comp) : '')}</td><td>${esc(nm('inv_brands', x.brand, y => y.name))}</td><td>${esc(nm('inv_cats', x.cat, y => y.name))}</td><td>${esc(nm('inv_subs', x.sub, y => y.name))}</td><td>${esc(nm('inv_units', x.unit, y => y.unit))}</td><td>${esc(x.hsn || '')}</td><td class="r">${esc(nm('inv_gst', x.gst, y => y.rate + '%'))}</td><td><button class="btn sm" data-act="invEdit" data-id="${esc(x.id)}">Edit</button> ${isAdm() ? `<button class="btn sm dng" data-act="invDel" data-id="${esc(x.id)}">Delete</button>` : ''}</td></tr>`).join('');
-  return `<div class="head"><div><h1>Create Stock Item</h1><p class="sub">Inventory · ${D.inv_items.size} stock item${D.inv_items.size === 1 ? '' : 's'}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${XB('xItems')}</div></div>${form}${itImpBox()}
+  const rows = P.items.map(x => `<tr><td class="mono">${esc(x.part)}</td><td class="wrap">${esc(x.name)}</td><td>${esc(x.code || '')}</td><td>${esc(x.comp ? compOf(x.comp) : '')}</td><td>${esc(nm('inv_brands', x.brand, y => y.name))}</td><td>${esc(nm('inv_cats', x.cat, y => y.name))}</td><td>${esc(nm('inv_subs', x.sub, y => y.name))}</td><td>${esc(nm('inv_units', x.unit, y => y.unit))}</td><td>${esc(x.hsn || '')}</td><td class="r">${esc(nm('inv_gst', x.gst, y => y.rate + '%'))}</td><td>${canMEdit() ? `<button class="btn sm" data-act="invEdit" data-id="${esc(x.id)}">Edit</button> ` : ''}${isAdm() ? `<button class="btn sm dng" data-act="invDel" data-id="${esc(x.id)}">Delete</button>` : ''}</td></tr>`).join('');
+  return `<div class="head"><div><h1>Create Stock Item</h1><p class="sub">Inventory · ${D.inv_items.size} stock item${D.inv_items.size === 1 ? '' : 's'}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${XB('xItems')}</div></div>${canMEdit() ? form + itImpBox() : '<p class="mut" style="margin:0 0 8px">View only. Admin and Abinaya can create or change stock items.</p>'}
   <div class="bar sfb" style="margin-top:12px"><label class="sf"><span>Search</span><input id="invq" data-f="invq" type="search" placeholder="Name, part no, code, HSN, brand" value="${esc(F.invq || '')}" autocomplete="off"></label></div>
   <div class="tw"><table><thead><tr><th>Part no</th><th>Stock name</th><th>Product code</th><th>Team</th><th>Brand</th><th>Category</th><th>Sub category</th><th>Unit</th><th>HSN</th><th class="r">GST</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="11" class="empty">No stock items yet.</td></tr>'}</tbody></table></div>${P.html}`;
 }
@@ -2085,7 +2087,7 @@ function viewStockItem(id){
   const cs = S.view === 'cls_stock', x = D.inv_items.get(id); if (!x) { if (cs){ F.csI = ''; return viewClosing(); } F.stkI = ''; return viewStock(); }
   const u = D.inv_units.get(x.unit)?.unit || '', y = F.stkY || fyStartY(), fs = `${y}-04-01`, fe = `${y + 1}-03-31`, all = itemMoves(id);
   const op = sumMv(all.filter(r => r.date < fs)); let cq = op.inQ - op.outQ, cv = op.inV - op.outV;
-  const back = `<button class="btn sm" data-act="stkBack">← ${cs ? 'Closing Stock' : 'Stock List'}</button>${canStock() ? ` <button class="btn sm" data-act="stkEdit" data-id="${esc(id)}">Edit item / team</button>` : ''}`, title = `<h1 style="margin:6px 0 2px">${esc(x.name)}</h1><p class="sub">Part no ${esc(x.part)}${compOf(x.comp) ? ' · Team ' + esc(compOf(x.comp)) : ''}</p>`;
+  const back = `<button class="btn sm" data-act="stkBack">← ${cs ? 'Closing Stock' : 'Stock List'}</button>${canMEdit() ? ` <button class="btn sm" data-act="stkEdit" data-id="${esc(id)}">Edit item / team</button>` : ''}`, title = `<h1 style="margin:6px 0 2px">${esc(x.name)}</h1><p class="sub">Part no ${esc(x.part)}${compOf(x.comp) ? ' · Team ' + esc(compOf(x.comp)) : ''}</p>`;
   if (F.stkM != null){
     const mo = F.stkM, mm = (mo + 3) % 12, yy = mo < 9 ? y : y + 1, ms = `${yy}-${String(mm + 1).padStart(2, '0')}`;
     const pre = sumMv(all.filter(r => r.date < ms + '-01')); let rq = pre.inQ - pre.outQ, rv = pre.inV - pre.outV;
@@ -2116,7 +2118,7 @@ function viewStock(){
   const q = (F.stq || '').trim().toLowerCase(), nm = (col, id) => D[col].get(id)?.name || '';
   const list = [...D.inv_items.values()].filter(x => !q || [x.name, x.part, x.code, nm('inv_brands', x.brand), nm('inv_cats', x.cat), nm('inv_subs', x.sub)].join(' ').toLowerCase().includes(q)).sort((a, b) => String(a.part).localeCompare(String(b.part)));
   const P = pg(list, 'stklist', 50);
-  const body = P.items.map(x => `<tr class="clk${F.stkLast === x.id ? ' sel' : ''}" data-act="stkOpen" data-id="${esc(x.id)}" tabindex="0" title="Show in / out details"><td class="mono">${esc(x.part)}</td><td class="wrap"><b>${esc(x.name)}</b></td><td>${esc(nm('inv_brands', x.brand))}</td><td>${esc(nm('inv_cats', x.cat))}</td><td>${esc(nm('inv_subs', x.sub))}</td><td>${compOf(x.comp) ? esc(compOf(x.comp)) : '<span class="mut">—</span>'}</td><td class="nowrap"><button class="btn sm" data-act="stkEdit" data-id="${esc(x.id)}">Edit</button>${isAdm() ? ` <button class="btn sm dng" data-act="invDel" data-id="${esc(x.id)}">Delete</button>` : ''}</td></tr>`).join('');
+  const body = P.items.map(x => `<tr class="clk${F.stkLast === x.id ? ' sel' : ''}" data-act="stkOpen" data-id="${esc(x.id)}" tabindex="0" title="Show in / out details"><td class="mono">${esc(x.part)}</td><td class="wrap"><b>${esc(x.name)}</b></td><td>${esc(nm('inv_brands', x.brand))}</td><td>${esc(nm('inv_cats', x.cat))}</td><td>${esc(nm('inv_subs', x.sub))}</td><td>${compOf(x.comp) ? esc(compOf(x.comp)) : '<span class="mut">—</span>'}</td><td class="nowrap">${canMEdit() ? `<button class="btn sm" data-act="stkEdit" data-id="${esc(x.id)}">Edit</button>` : ''}${isAdm() ? ` <button class="btn sm dng" data-act="invDel" data-id="${esc(x.id)}">Delete</button>` : ''}</td></tr>`).join('');
   return `<div class="head"><div><h1>Stock List</h1><p class="sub">${list.length} stock items · click one to see month-wise in, out and closing stock</p></div>${XB('xStock')}</div>
   <div class="bar sfb"><label class="sf"><span>Search</span><input id="stq" data-f="stq" type="search" placeholder="Product, part no, brand, category" value="${esc(F.stq || '')}" autocomplete="off"></label></div>
   <div class="tw"><table class="stkl"><thead><tr><th>Part no</th><th>Product</th><th>Brand</th><th>Category</th><th>Sub category</th><th>Team</th><th></th></tr></thead><tbody>${body || '<tr><td colspan="7" class="empty">No stock items yet. Create them in Create Stock Item or from a GRN.</td></tr>'}</tbody></table></div>${P.html}`;
@@ -3234,7 +3236,7 @@ const XACT2 = {
     [...D.inv_items.values()].sort((a, b) => String(a.part).localeCompare(String(b.part))).map(x => [x.part, x.name, nm('inv_brands', x.brand), nm('inv_cats', x.cat), nm('inv_subs', x.sub)]), [10,40,18,18,18]); },
   xItemSample:() => exportSheet('Stock_item_import_sample', 'Stock items', IT_COLS,
     [['MILTON STEEL THERMOWARE INNER TUFF JUG', 'MT-JUG-1L', 'Karthik', 'Milton', 'Kitchen Appliances', 'Water jug', 'NOS', '70109010', '5'], ['Prestige OTG 19 Ltr PCR', '', 'Vignesh', 'Prestige', 'Kitchen Appliances', 'OTG', 'NOS', '85166000', '18'], ['POLO T SHIRT COLOUR- BLACK', '', 'Excoso', 'Puma', 'Apparel', 'T Shirts', 'NOS', '', '']], [40,14,16,16,20,18,8,12,8]),
-  itImpGo:() => itImpGo(),
+  itImpGo:() => canMEdit() ? itImpGo() : null,
   xPsSample:() => exportSheet('Physical_stock_import_sample', 'Physical stock', PS_COLS,
     [['10001', 'MILTON STEEL THERMOWARE INNER TUFF JUG', '12', '585', '', '', '', '', '', '', '', ''], ['', 'Prestige OTG 19 Ltr PCR', '3', '3807.5', '', 'Vignesh', 'Prestige', 'Kitchen Appliances', 'OTG', 'NOS', '85166000', '18']], [10,40,14,14,14,16,16,20,18,8,12,8]),
   psImpGo:() => psImpGo(),
@@ -3283,9 +3285,9 @@ const ACT = {
   toggleSide:() => { S.sideHidden = !S.sideHidden; try { localStorage.setItem('cof_side', S.sideHidden ? '1' : '0'); } catch(e){} forceRender = true; render(); },
   attDel:t => { (F.matt || []).splice(+t.dataset.k, 1); forceRender = true; render(); },
   mailCheck:async t => { t.disabled = true; t.textContent = 'Checking…'; const r = await mailAutoCheck(true); if (r && r.error) toast(r.error); else toastOk(r && r.replied ? r.replied + ' new customer repl' + (r.replied > 1 ? 'ies' : 'y') + ' found' : 'No new customer replies'); forceRender = true; render(); },
-  invMEdit:t => { F.invMEdit = t.dataset.id; forceRender = true; render(); },
+  invMEdit:t => { if (!canMEdit()) return; F.invMEdit = t.dataset.id; forceRender = true; render(); },
   invMCancel:() => { F.invMEdit = null; forceRender = true; render(); },
-  invMSave:async t => {
+  invMSave:async t => { if (!canMEdit()) return toast('Only Admin and Abinaya can change this.');
     const k = t.dataset.k, M = INVM[k], err = $('#imerr'), o = {};
     M.fields.forEach(f => o[f[0]] = val('im_' + f[0]));
     if (M.fields.some(f => !o[f[0]])){ err.textContent = 'Fill in ' + M.fields.map(f => f[1].replace(/ \(.*/, '')).join(' and ') + '.'; return; }
@@ -3298,17 +3300,17 @@ const ACT = {
     await logAct('Inventory', `${M.title}: ${F.invMEdit ? 'updated' : 'created'} ${mLabel(k, o)}`);
     F.invMEdit = null; toastOk(M.title + ' saved'); forceRender = true; render();
   },
-  invMDel:async t => { const k = t.dataset.k, M = INVM[k], x = D[M.col].get(t.dataset.id); if (!x) return;
+  invMDel:async t => { if (!isAdm()) return; const k = t.dataset.k, M = INVM[k], x = D[M.col].get(t.dataset.id); if (!x) return;
     const nI = [...D.inv_items.values()].filter(y => y[k] === x.id).length, nS = k === 'cat' ? [...D.inv_subs.values()].filter(y => y.cat === x.id).length : 0;
     if (!confirm(`Delete ${M.one} "${mLabel(k, x)}"?` + (nI || nS ? `\n\n${[nI ? nI + ' stock item' + (nI === 1 ? '' : 's') : '', nS ? nS + ' sub categor' + (nS === 1 ? 'y' : 'ies') : ''].filter(Boolean).join(' and ')} use it. After deleting, those show it blank; open them with Edit and pick another ${M.one}.` : ''))) return;
     await Store.del(M.col, x.id); await logAct('Inventory', `${M.title}: deleted ${mLabel(k, x)}`); forceRender = true; render(); },
-  stkEdit:t => { F.invBack = 1; F.invEdit = t.dataset.id; F.invCat = null; F.stkLast = t.dataset.id; ACT.nav({dataset:{k:'inv_item'}}); F.invEdit = t.dataset.id; forceRender = true; render(); $('#main').scrollTop = 0; },
-  invEdit:t => { F.invEdit = t.dataset.id; F.invCat = null; forceRender = true; render(); $('#main').scrollTop = 0; },
+  stkEdit:t => { if (!canMEdit()) return; F.invBack = 1; F.invEdit = t.dataset.id; F.invCat = null; F.stkLast = t.dataset.id; ACT.nav({dataset:{k:'inv_item'}}); F.invEdit = t.dataset.id; forceRender = true; render(); $('#main').scrollTop = 0; },
+  invEdit:t => { if (!canMEdit()) return; F.invEdit = t.dataset.id; F.invCat = null; forceRender = true; render(); $('#main').scrollTop = 0; },
   invCancel:() => { F.invEdit = null; F.invCat = null; if (F.invBack){ F.invBack = 0; ACT.nav({dataset:{k:'inv_stock', keep:1}}); return; } forceRender = true; render(); },
-  invDel:async t => { const x = D.inv_items.get(t.dataset.id); if (!x) return; const nD = itemMoves(x.id).length;
+  invDel:async t => { if (!isAdm()) return; const x = D.inv_items.get(t.dataset.id); if (!x) return; const nD = itemMoves(x.id).length;
     if (!confirm('Delete stock item ' + x.part + ' ' + x.name + '?' + (nD ? `\n\nIt is used in ${nD} GRN / DC / receipt note / physical stock entr${nD === 1 ? 'y' : 'ies'}. Those entries will show the item blank and the closing stock loses it.` : ''))) return; if (F.stkI === x.id) F.stkI = '';
     await Store.del('inv_items', x.id); await logAct('Inventory', `Stock item deleted: ${x.part} ${x.name}`); forceRender = true; render(); },
-  invSave:async () => {
+  invSave:async () => { if (!canMEdit()) return toast('Only Admin and Abinaya can change stock items.');
     const err = $('#iterr'), o = {name:val('it_name'), code:val('it_code'), comp:val('it_comp'), brand:val('it_brand'), cat:val('it_cat'), sub:val('it_sub'), unit:val('it_unit'), hsn:val('it_hsn'), gst:val('it_gst')};
     const need = [['name','Stock name'],['comp','Product company'],['brand','Brand'],['cat','Category'],['sub','Sub category'],['unit','Unit']].filter(f => !o[f[0]]).map(f => f[1]);
     if (need.length){ err.textContent = 'Fill in: ' + need.join(', ') + '.'; return; }
