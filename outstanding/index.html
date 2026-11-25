@@ -369,6 +369,7 @@ tr.flash td{background:#fef08a!important;transition:background .3s}
 .note.warn{background:#fffbeb;border-color:#fcd34d}.pill.warn{background:#fef3c7;color:#92400e}
 .chok{display:inline-block;margin:1px 6px 1px 0;color:#0c7d70;font-weight:700}.chno{display:inline-block;margin:1px 6px 1px 0;color:#b42318;font-weight:700}
 @media (max-width:560px){.igrid{grid-template-columns:minmax(0,1fr)}.igrid>*{grid-column:auto!important}.igrid input,.igrid select{min-width:0;max-width:100%}}
+.tcards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:6px 0 4px;max-width:720px}@media (max-width:560px){.tcard{padding:8px 10px!important}.tcard b{font-size:14px!important}.tcard small,.tcard span{font-size:11px!important}}.tcard{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;gap:2px}.tcard span{font-size:12px;color:#64748b;font-weight:600}.tcard b{font-size:18px}.tcard small{color:#64748b}
 .lnk{background:none;border:0;padding:0;color:#4338ca;text-decoration:underline;cursor:pointer;font:inherit;font-size:12px}
 </style>
 </head>
@@ -893,7 +894,7 @@ function viewInvItems(){
       <label class="f">Stock name *<input id="it_name" value="${v('name')}" autocomplete="off"></label>
       <label class="f">Part number<input id="it_part" value="${ed ? esc(ed.part) : nextPart()}" readonly aria-readonly="true" title="Created automatically"></label>
       <label class="f">Product code<input id="it_code" value="${v('code')}" autocomplete="off"></label>
-      <label class="f">Product company *<select id="it_comp"><option value="">Select</option>${COMPS.map(c => `<option ${(ed ? compOf(ed.comp) : 'Excoso') === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+      <label class="f">Team *<select id="it_comp"><option value="">Select team</option>${TEAMS.map(c => `<option ${(ed ? compOf(ed.comp) : myTeam()) === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
       ${cbx('it_brand', 'Brand *', ed ? D.inv_brands.get(ed.brand)?.name : '')}
       ${cbx('it_cat', 'Category *', ed ? D.inv_cats.get(ed.cat)?.name : '')}
       ${cbx('it_sub', 'Sub category *', ed ? D.inv_subs.get(ed.sub)?.name : '')}
@@ -910,7 +911,7 @@ function viewInvItems(){
   const rows = P.items.map(x => `<tr><td class="mono">${esc(x.part)}</td><td class="wrap">${esc(x.name)}</td><td>${esc(x.code || '')}</td><td>${esc(x.comp ? compOf(x.comp) : '')}</td><td>${esc(nm('inv_brands', x.brand, y => y.name))}</td><td>${esc(nm('inv_cats', x.cat, y => y.name))}</td><td>${esc(nm('inv_subs', x.sub, y => y.name))}</td><td>${esc(nm('inv_units', x.unit, y => y.unit))}</td><td>${esc(x.hsn || '')}</td><td class="r">${esc(nm('inv_gst', x.gst, y => y.rate + '%'))}</td><td><button class="btn sm" data-act="invEdit" data-id="${esc(x.id)}">Edit</button> ${isAdm() ? `<button class="btn sm dng" data-act="invDel" data-id="${esc(x.id)}">Delete</button>` : ''}</td></tr>`).join('');
   return `<div class="head"><div><h1>Create Stock Item</h1><p class="sub">Inventory · ${D.inv_items.size} stock item${D.inv_items.size === 1 ? '' : 's'}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${XB('xItems')}</div></div>${form}${itImpBox()}
   <div class="bar sfb" style="margin-top:12px"><label class="sf"><span>Search</span><input id="invq" data-f="invq" type="search" placeholder="Name, part no, code, HSN, brand" value="${esc(F.invq || '')}" autocomplete="off"></label></div>
-  <div class="tw"><table><thead><tr><th>Part no</th><th>Stock name</th><th>Product code</th><th>Company</th><th>Brand</th><th>Category</th><th>Sub category</th><th>Unit</th><th>HSN</th><th class="r">GST</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="11" class="empty">No stock items yet.</td></tr>'}</tbody></table></div>${P.html}`;
+  <div class="tw"><table><thead><tr><th>Part no</th><th>Stock name</th><th>Product code</th><th>Team</th><th>Brand</th><th>Category</th><th>Sub category</th><th>Unit</th><th>HSN</th><th class="r">GST</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="11" class="empty">No stock items yet.</td></tr>'}</tbody></table></div>${P.html}`;
 }
 /* ---------- GRN / Delivery Challan / Receipt Note / Closing Stock ---------- */
 const r2 = n => Math.round((+n || 0) * 100) / 100;
@@ -925,7 +926,7 @@ const normName = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').
 const mapKey = s => 'm_' + normName(s).replace(/ /g, '_').slice(0, 80);
 const matParties = () => { const p = custParties(); [...D.contacts.values()].forEach(c => { if (c.party && !p.includes(c.party)) p.push(c.party); }); D.mat_dc.forEach(d => { if (d.party && !p.includes(d.party)) p.push(d.party); }); D.cust_addr.forEach(c => { if (c.party && !p.includes(c.party)) p.push(c.party); }); return p.sort((a, b) => a.localeCompare(b)); };
 let SUPL = null;   // suppliers from Purchase → Create Supplier (read once; empty if this account cannot read them)
-function loadSupl(){ if (SUPL || !SB) return; SUPL = []; Store.sb.from('pr_suppliers').select('id,name,gstin,addr1,addr2,addr3,state,pincode,mobile,email,exec_id,exec_name,mgr_id,mgr_name').then(r => { if (!r.error){ SUPL = r.data || []; forceRender = true; render(); } }, () => {}); }
+function loadSupl(){ if (SUPL || !SB) return; SUPL = []; Store.sb.from('pr_suppliers').select('id,name,gstin,addr1,addr2,addr3,state,pincode,mobile,email,exec_id,exec_name,mgr_id,mgr_name,team').then(r => { if (!r.error){ SUPL = r.data || []; forceRender = true; render(); } }, () => {}); }
 // a supplier's product name -> our stock item: remembered once, then exact name, product code, name, or a single item with that HSN
 function guessItem(name, hsn){
   const m = D.mat_map.get(mapKey(name)); if (m && D.inv_items.has(m.item)) return m.item;
@@ -973,8 +974,17 @@ const mInp = (m, k, v, o = {}) => `<input class="mdi" id="${m}_${k}" data-m="${m
 const lInp = (m, i, k, v, o = {}) => `<input class="mdi" id="${m}_l${i}_${k}" data-m="${m}" data-l="${i}" data-k="${k}" value="${esc(v ?? '')}" ${o.num ? 'inputmode="decimal"' : ''} aria-label="${esc(o.al || k)}" autocomplete="off">`;
 const aiBar = (m, what) => `<div class="mai"><label class="btn pri" for="${m}_file" style="cursor:pointer">📷 Read from ${what} (photo / PDF)</label><input id="${m}_file" type="file" accept="image/*,application/pdf" style="position:absolute;opacity:0;width:1px;height:1px"><span id="${m}_ais" class="mut" role="status" aria-live="polite">${esc(F[m + 'Ais'] || 'AI fills the entry. Check it, then save. The file is not saved.')}</span></div>`;
 
-const COMPS = ['Excoso', 'Expert'];
-const compOf = c => c === 'Brand' + 'itude' ? 'Excoso' : (c || 'Excoso');  // older items said Branditude
+const TEAMS = ['Karthik', 'Vignesh', 'Sundar'];   // the three purchase teams, named by their manager
+const COMPS = TEAMS;
+const compOf = c => TEAMS.includes(c) ? c : '';   // older entries said Excoso / Expert: no team yet
+const teamOfName = n => { n = String(n || '').toLowerCase().trim(); return n === 'karthik' ? 'Karthik' : /^vignesh/.test(n) ? 'Vignesh' : n === 'sundar' ? 'Sundar' : ''; };
+function teamOfUser(u){ if (!u) return ''; const pool = ALLU.size ? ALLU : D.users; return teamOfName(u.name) || teamOfName(pool.get(u.prManagerId)?.name) || teamOfName(pool.get(u.managerId)?.name); }
+const myTeam = () => teamOfUser(me());
+const supTeam = d => { const s = typeof supFind === 'function' ? supFind(d) : null; return s && TEAMS.includes(s.team) ? s.team : ''; };
+const teamFree = () => isAdm() || me()?.role === 'Manager';
+const teamLock = d => !!(d && d.po) && !teamFree();   // a GRN against a PO keeps the PO's team
+const teamSel = (m, d) => `<label class="f">Team *<select class="mdi" id="${m}_comp" data-m="${m}" data-k="comp" ${teamLock(d) ? 'disabled title="The team comes from the purchase order"' : ''}><option value="">Select team</option>${TEAMS.map(c => `<option ${d.comp === c ? 'selected' : ''}>${c}</option>`).join('')}</select>${teamLock(d) ? '<span class="mut" style="font-size:12px">From the purchase order</span>' : ''}</label>`;
+const teamFill = d => { if (d && !TEAMS.includes(d.comp)) d.comp = (d.po && D.mat_po.get(d.po)?.comp) || supTeam(d) || myTeam() || ''; };
 const STCODE = {'35':'Andaman and Nicobar Islands','37':'Andhra Pradesh','12':'Arunachal Pradesh','18':'Assam','10':'Bihar','04':'Chandigarh','22':'Chhattisgarh','26':'Dadra and Nagar Haveli and Daman and Diu','07':'Delhi','30':'Goa','24':'Gujarat','06':'Haryana','02':'Himachal Pradesh','01':'Jammu and Kashmir','20':'Jharkhand','29':'Karnataka','32':'Kerala','38':'Ladakh','31':'Lakshadweep','23':'Madhya Pradesh','27':'Maharashtra','14':'Manipur','17':'Meghalaya','15':'Mizoram','13':'Nagaland','21':'Odisha','34':'Puducherry','03':'Punjab','08':'Rajasthan','11':'Sikkim','33':'Tamil Nadu','36':'Telangana','16':'Tripura','09':'Uttar Pradesh','05':'Uttarakhand','19':'West Bengal'};
 let PRDIR = null;  // Purchase people (executives and managers) for a new supplier; empty if this account cannot read them
 function loadPrDir(){ if (PRDIR || !SB) return; PRDIR = []; Store.sb.rpc('pr_directory').then(r => { if (!r.error){ PRDIR = (r.data || []).filter(x => x.active !== false); forceRender = true; render(); } }, () => {}); }
@@ -991,7 +1001,7 @@ const newTag = ok => ok ? '' : ' <span class="ntag">new</span>';
 function niCheck(l, i){
   const n = l.ni || {}, r = `New stock item ${i + 1}`;
   if (!String(n.name || '').trim()) return r + ': fill the stock name.';
-  const miss = [['comp', 'company'], ['brand', 'brand'], ['cat', 'category'], ['sub', 'sub category'], ['unit', 'unit']].filter(([k]) => !String(n[k] || '').trim()).map(x => x[1]);
+  const miss = [['comp', 'team (pick it above)'], ['brand', 'brand'], ['cat', 'category'], ['sub', 'sub category'], ['unit', 'unit']].filter(([k]) => !String(n[k] || '').trim()).map(x => x[1]);
   if (miss.length) return `${r} (${n.name}): fill ${miss.join(', ')}.`;
   if (String(l.hsn || '').trim() && !/^\d{4,8}$/.test(String(l.hsn).trim())) return `${r} (${n.name}): the HSN code must be 4 to 8 digits, or leave it empty.`;
   if (!GSTR.includes(+l.gst)) return `${r} (${n.name}): GST % must be 5 or 18.`;
@@ -1008,7 +1018,7 @@ async function niCreate(l){
   const u = findUnit(n.unit) || await mk('inv_units', {name:String(n.unit).trim(), unit:String(n.unit).trim().toUpperCase()});
   const g = [...D.inv_gst.values()].find(x => +x.rate === +l.gst) || await mk('inv_gst', {rate:+l.gst});
   const iid = uid('it'), pn = String(nextPart());
-  await Store.set('inv_items', iid, {id:iid, name:nm, part:pn, code:String(n.code || '').trim(), comp:n.comp || 'Excoso', brand:b.id, cat:c.id, sub:su.id, unit:u.id, hsn:String(l.hsn || '').trim(), gst:g.id, by:S.me, at:nowISO()});
+  await Store.set('inv_items', iid, {id:iid, name:nm, part:pn, code:String(n.code || '').trim(), comp:compOf(n.comp), brand:b.id, cat:c.id, sub:su.id, unit:u.id, hsn:String(l.hsn || '').trim(), gst:g.id, by:S.me, at:nowISO()});
   await logAct('Inventory', `Stock item created from GRN: ${pn} ${nm}`);
   l.item = iid; delete l.ni; return pn + ' ' + nm;
 }
@@ -1023,7 +1033,7 @@ function niCards(d, m = 'mi'){
         ${fi('name', 'Stock name *', '', true)}
         <label class="f">Part number<input value="${base + k}" readonly aria-readonly="true" title="Created automatically when you create the item"></label>
         ${fi('code', 'Product code', '', true)}
-        <label class="f">Company *<select class="mdi" id="${m}_l${i}_ni_comp" data-m="${m}" data-l="${i}" data-k="ni.comp">${COMPS.map(x => `<option ${(n.comp || d.comp || 'Excoso') === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+        <label class="f">Team<input value="${esc(d.comp || 'Pick the team above')}" readonly aria-readonly="true" title="Same team as the ${m === 'po' ? 'PO' : 'GRN'}"></label>
         ${fi('brand', 'Brand *', m + '_brs', !n.brand || findM('inv_brands', 'name', n.brand))}
         ${fi('cat', 'Category *', m + '_cats', !n.cat || c)}
         ${fi('sub', 'Sub category *', m + '_subs', !n.sub || findSub(c && c.id, n.sub))}
@@ -1041,7 +1051,7 @@ function niCards(d, m = 'mi'){
 function niRow(i, l){
   const n = l.ni || {}, c = findM('inv_cats', 'name', n.cat);
   const fld = (k, lab, list, ok) => `<label class="f">${lab}${newTag(ok)}<input class="mdi" id="mi_l${i}_ni_${k}" data-m="mi" data-l="${i}" data-k="ni.${k}" value="${esc(n[k] || '')}" ${list ? `list="${list}"` : ''} autocomplete="off"></label>`;
-  return `<tr class="nirow"><td colspan="9"><div class="nibox"><b>New stock item</b> <span class="mut">· created when you save the GRN · part number ${nextPart()} onwards · company ${esc(F.mi.comp || 'Excoso')}</span>
+  return `<tr class="nirow"><td colspan="9"><div class="nibox"><b>New stock item</b> <span class="mut">· created when you save the GRN · part number ${nextPart()} onwards · team ${esc(F.mi.comp || '(pick above)')}</span>
     <div class="igrid" style="margin-top:6px">${fld('name', 'Stock name *', '', true)}${fld('brand', 'Brand *', 'mi_brs', !n.brand || findM('inv_brands', 'name', n.brand))}${fld('cat', 'Category *', 'mi_cats', !n.cat || c)}${fld('sub', 'Sub category *', 'mi_subs', !n.sub || findSub(c && c.id, n.sub))}${fld('unit', 'Unit *', 'mi_units', !n.unit || findUnit(n.unit))}</div>
     <p class="mut" style="margin:4px 0 0;font-size:12px">HSN and GST % come from this row. Brand, category, sub category and unit that are not in the lists yet are created too.</p></div></td></tr>`;
 }
@@ -1067,7 +1077,7 @@ function nsBox(d){
     ${s.on !== false ? `<div class="igrid" style="margin-top:6px">${sel('exec', 'Executive', ex)}${sel('mgr', 'Manager', mg)}${inp('addr1', 'Address line 1')}${inp('addr2', 'Address line 2')}${inp('addr3', 'Address line 3')}${inp('pincode', 'Pincode')}${inp('mobile', 'Mobile')}${inp('email', 'Mail ID')}</div><p class="mut" style="margin:4px 0 0;font-size:12px">Under Sundry Creditors · State ${esc(STCODE[String(d.supGst || '').slice(0, 2)] || '— (from the GST number)')} · PAN ${esc(String(d.supGst || '').slice(2, 12) || '—')}</p>` : ''}</div>`;
 }
 function miFormHTML(){
-  const d = F.mi;
+  const d = F.mi; teamFill(d);
   const sups = [...new Set([...(SUPL || []).map(s => s.name), ...[...D.mat_in.values()].map(x => x.supName)].filter(Boolean))].sort();
   const rows = d.lines.map((l, i) => `<tr><td><select class="mdi" id="mi_l${i}_item" data-m="mi" data-l="${i}" data-k="item" aria-label="Stock item">${itemOpts(l.item)}<option value="__new" ${l.item === '__new' ? 'selected' : ''}>+ New stock item (below)</option></select>${poInfo(d, l, i)}</td><td>${lInp('mi', i, 'hsn', l.hsn, {al:'HSN'})}</td><td>${lInp('mi', i, 'qty', l.qty, {num:1, al:'Quantity'})}</td><td>${lInp('mi', i, 'unit', l.unit, {al:'Unit'})}</td><td>${lInp('mi', i, 'rate', l.rate, {num:1, al:'Rate per piece'})}</td><td>${lInp('mi', i, 'taxable', l.taxable, {num:1, al:'Taxable value'})}</td><td><select class="mdi" id="mi_l${i}_gst" data-m="mi" data-l="${i}" data-k="gst" aria-label="GST %">${GSTR.map(g => `<option value="${g}" ${+l.gst === g ? 'selected' : ''}>${g}%</option>`).join('')}${l.gst !== '' && !GSTR.includes(+l.gst) ? `<option value="${esc(l.gst)}" selected>${esc(l.gst)}% (check)</option>` : ''}</select></td><td><button class="btn sm dng" data-act="matDelL" data-m="mi" data-i="${i}" aria-label="Remove row ${i + 1}">✕</button></td></tr>`).join('');
   return `<div class="card" id="mform"><h2 style="margin:0 0 8px">${d.id ? 'Edit GRN' : 'New GRN'}</h2>
@@ -1076,7 +1086,7 @@ function miFormHTML(){
       <label class="f">Invoice date *${mInp('mi', 'invDate', d.invDate, {type:'date'})}</label>
       <label class="f">Supplier *${mInp('mi', 'supName', d.supName, {list:'mi_sups'})}</label>
       <label class="f">Supplier GST number${mInp('mi', 'supGst', d.supGst, {ph:'33ABCDE1234F1Z5'})}</label>
-      <label class="f">Company *<select class="mdi" id="mi_comp" data-m="mi" data-k="comp">${COMPS.map(c => `<option ${(d.comp || 'Excoso') === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+      ${teamSel('mi', d)}
     </div>${poBanner(d)}<datalist id="mi_sups">${sups.map(s => `<option value="${esc(s)}">`).join('')}</datalist>${nsBox(d)}
     <datalist id="mi_brs">${invList('inv_brands').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="mi_cats">${invList('inv_cats').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="mi_subs">${[...new Set(invList('inv_subs').map(x => x.name))].map(x => `<option value="${esc(x)}">`).join('')}</datalist><datalist id="mi_units">${invList('inv_units').map(x => `<option value="${esc(x.unit)}">${esc(x.name)}</option>`).join('')}</datalist>
     <div class="tw" style="margin-top:10px"><table class="mtab"><thead><tr><th>Stock item *</th><th>HSN</th><th class="r">Qty *</th><th>Unit</th><th class="r">Rate / piece</th><th class="r">Taxable value *</th><th>GST %</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -1150,7 +1160,7 @@ document.addEventListener('input', ev => { const t = ev.target; if (!t.classList
   matRecalc('rn');
 });
 /* ---------- Bulk import of stock items from Excel: brand, category, sub category, unit and GST % that are not there yet are created; existing ones are reused ---------- */
-const IT_COLS = ['Stock name *', 'Product code', 'Product company (Excoso / Expert)', 'Brand *', 'Category *', 'Sub category *', 'Unit *', 'HSN code', 'GST %'];
+const IT_COLS = ['Stock name *', 'Product code', 'Team (Karthik / Vignesh / Sundar)', 'Brand *', 'Category *', 'Sub category *', 'Unit *', 'HSN code', 'GST %'];
 let ITIMP = null;   // {rows, file, msg, busy}
 function itImpBox(){
   const R = ITIMP && ITIMP.rows, ok = R ? R.filter(r => !r.err && !r.dup) : [];
@@ -1160,23 +1170,23 @@ function itImpBox(){
     ${ITIMP && ITIMP.msg ? `<p role="status" style="margin:10px 0 0;font-weight:700;color:${ITIMP.bad ? '#b42318' : '#0c7d70'}">${esc(ITIMP.msg)}</p>` : ''}
     ${R ? `<div style="margin-top:10px"><p style="margin:0 0 6px"><b>${esc(ITIMP.file)}</b>: ${R.length} rows · <b>${ok.length}</b> to create${R.filter(r => r.dup).length ? ` · ${R.filter(r => r.dup).length} already in the stock list (skipped)` : ''}${R.filter(r => r.err).length ? ` · <span style="color:#b42318">${R.filter(r => r.err).length} with problems (skipped)</span>` : ''}</p>
       ${['brand', 'cat', 'sub', 'unit', 'gst'].some(k => nw(k).length) ? `<p class="mut" style="margin:0 0 6px">New in the lists: ${[['brand', 'brands'], ['cat', 'categories'], ['sub', 'sub categories'], ['unit', 'units'], ['gst', 'GST %']].filter(([k]) => nw(k).length).map(([k, l]) => `${l}: ${esc(nw(k).join(', '))}`).join(' · ')}</p>` : ''}
-      <div class="tw" style="max-height:320px;overflow:auto"><table><thead><tr><th>Row</th><th>Stock name</th><th>Company</th><th>Brand</th><th>Category</th><th>Sub category</th><th>Unit</th><th>HSN</th><th>GST %</th><th>Status</th></tr></thead><tbody>${R.slice(0, 300).map(r => `<tr><td class="num">${r.row}</td><td class="wrap">${esc(r.name)}</td><td>${esc(r.comp)}</td><td>${esc(r.brand)}${r.new.brand ? ' <span class="pill">new</span>' : ''}</td><td>${esc(r.cat)}${r.new.cat ? ' <span class="pill">new</span>' : ''}</td><td>${esc(r.sub)}${r.new.sub ? ' <span class="pill">new</span>' : ''}</td><td>${esc(r.unit)}${r.new.unit ? ' <span class="pill">new</span>' : ''}</td><td>${esc(r.hsn)}</td><td>${esc(r.gst)}${r.new.gst ? ' <span class="pill">new</span>' : ''}</td><td class="wrap" style="color:${r.err ? '#b42318' : r.dup ? '#92400e' : '#0c7d70'};font-weight:600">${esc(r.err || (r.dup ? 'Already in stock list' : 'Will be created'))}</td></tr>`).join('')}</tbody></table></div>
+      <div class="tw" style="max-height:320px;overflow:auto"><table><thead><tr><th>Row</th><th>Stock name</th><th>Team</th><th>Brand</th><th>Category</th><th>Sub category</th><th>Unit</th><th>HSN</th><th>GST %</th><th>Status</th></tr></thead><tbody>${R.slice(0, 300).map(r => `<tr><td class="num">${r.row}</td><td class="wrap">${esc(r.name)}</td><td>${esc(r.comp)}</td><td>${esc(r.brand)}${r.new.brand ? ' <span class="pill">new</span>' : ''}</td><td>${esc(r.cat)}${r.new.cat ? ' <span class="pill">new</span>' : ''}</td><td>${esc(r.sub)}${r.new.sub ? ' <span class="pill">new</span>' : ''}</td><td>${esc(r.unit)}${r.new.unit ? ' <span class="pill">new</span>' : ''}</td><td>${esc(r.hsn)}</td><td>${esc(r.gst)}${r.new.gst ? ' <span class="pill">new</span>' : ''}</td><td class="wrap" style="color:${r.err ? '#b42318' : r.dup ? '#92400e' : '#0c7d70'};font-weight:600">${esc(r.err || (r.dup ? 'Already in stock list' : 'Will be created'))}</td></tr>`).join('')}</tbody></table></div>
       <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">${ok.length ? `<button class="btn pri" data-act="itImpGo" ${ITIMP.busy ? 'disabled' : ''}>${ITIMP.busy ? 'Importing…' : `Create ${ok.length} stock item${ok.length === 1 ? '' : 's'}`}</button>` : ''}<button class="btn" data-act="itImpClr">Cancel</button></div></div>` : ''}</div>`;
 }
 async function itImpRead(f){
   const X = await loadXlsx(), wb = X.read(await f.arrayBuffer(), {type:'array'}), aoa = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, defval:'', raw:false});
   const hi = aoa.findIndex(r => r.some(c => /stock name|item name|product name|^name/i.test(String(c).trim()))); if (hi < 0) throw new Error('No "Stock name" heading found. Use the sample format.');
   const h = aoa[hi].map(c => String(c).toLowerCase().replace(/\*/g, '').trim()), ci = re => h.findIndex(c => re.test(c));
-  const I = {name:ci(/stock name|item name|product name|^name/), code:ci(/product code|^code/), comp:ci(/company/), brand:ci(/brand/), cat:ci(/^category|^cat/), sub:ci(/sub/), unit:ci(/unit|uom/), hsn:ci(/hsn/), gst:ci(/gst|tax/)};
+  const I = {name:ci(/stock name|item name|product name|^name/), code:ci(/product code|^code/), comp:ci(/team|company/), brand:ci(/brand/), cat:ci(/^category|^cat/), sub:ci(/sub/), unit:ci(/unit|uom/), hsn:ci(/hsn/), gst:ci(/gst|tax/)};
   const g = (r, k) => I[k] < 0 ? '' : String(r[I[k]] ?? '').trim();
   const names = new Set([...D.inv_items.values()].map(x => normName(x.name))), codes = new Set([...D.inv_items.values()].map(x => normName(x.code)).filter(Boolean)), seen = new Set();
   const nb = new Set(), nc = new Set(), ns = new Set(), nu = new Set(), ngs = new Set();
   return aoa.slice(hi + 1).map((r, i) => ({r, row:hi + i + 2})).filter(o => o.r.some(c => String(c).trim())).map(({r, row}) => {
     const o = {row, name:g(r, 'name'), code:g(r, 'code'), comp:g(r, 'comp'), brand:g(r, 'brand'), cat:g(r, 'cat'), sub:g(r, 'sub'), unit:g(r, 'unit'), hsn:g(r, 'hsn').replace(/\s+/g, ''), gst:g(r, 'gst').replace(/%/g, '').trim(), new:{}};
-    o.comp = !o.comp || /excoso|brand/i.test(o.comp) ? 'Excoso' : /expert/i.test(o.comp) ? 'Expert' : o.comp;   // empty = Excoso, the default company
+    o.comp = !o.comp || /excoso|brand|expert/i.test(o.comp) ? '' : teamOfName(o.comp) || o.comp;   // empty = no team yet
     const miss = [['name', 'stock name'], ['brand', 'brand'], ['cat', 'category'], ['sub', 'sub category'], ['unit', 'unit']].filter(([k]) => !o[k]).map(x => x[1]);
     if (miss.length) o.err = 'Missing ' + miss.join(', ');
-    else if (!COMPS.includes(o.comp)) o.err = 'Product company must be Excoso or Expert';
+    else if (o.comp && !TEAMS.includes(o.comp)) o.err = 'Team must be Karthik, Vignesh or Sundar';
     else if (o.hsn && !/^\d{4,8}$/.test(o.hsn)) o.err = 'HSN must be 4 to 8 digits (or leave it empty)';
     else if (o.gst && !(+o.gst >= 0 && +o.gst <= 40)) o.err = 'GST % must be a number like 5 or 18';
     const nk = normName(o.name);
@@ -1219,7 +1229,7 @@ document.addEventListener('change', async ev => { const t = ev.target; if (t.id 
   try { const rows = await itImpRead(f); ITIMP = rows.length ? {rows, file:f.name} : {msg:'No stock items found in ' + f.name + '.', bad:true}; } catch(e){ ITIMP = {msg:e.message, bad:true}; }
   forceRender = true; render(); });
 /* ---------- Physical Stock from Excel: each row is a stock item + quantity + value per piece. Items not in the stock list are created (with any missing brand / category / sub category / unit / GST %) ---------- */
-const PS_COLS = ['Part no', 'Stock name *', 'Physical stock quantity *', 'Taxable value / piece *', 'Product code', 'Product company (Excoso / Expert)', 'Brand', 'Category', 'Sub category', 'Unit', 'HSN code', 'GST %'];
+const PS_COLS = ['Part no', 'Stock name *', 'Physical stock quantity *', 'Taxable value / piece *', 'Product code', 'Team (Karthik / Vignesh / Sundar)', 'Brand', 'Category', 'Sub category', 'Unit', 'HSN code', 'GST %'];
 let PSIMP = null;   // {rows, file, msg, bad, busy}
 function psImpBox(){
   if (!PSIMP) return ''; const R = PSIMP.rows, ok = R ? R.filter(r => !r.err) : [];
@@ -1234,7 +1244,7 @@ async function psImpRead(f){
   const X = await loadXlsx(), wb = X.read(await f.arrayBuffer(), {type:'array'}), aoa = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, defval:'', raw:false});
   const hi = aoa.findIndex(r => r.some(c => /stock name|item name|product name|part no/i.test(String(c).trim()))); if (hi < 0) throw new Error('No "Stock name" or "Part no" heading found. Use the sample format.');
   const h = aoa[hi].map(c => String(c).toLowerCase().replace(/\*/g, '').trim()), ci = re => h.findIndex(c => re.test(c));
-  const I = {part:ci(/part/), name:ci(/stock name|item name|product name|^name/), qty:ci(/qty|quantity/), rate:ci(/per piece|\/ piece|\/piece|rate|value \/|cost/), code:ci(/product code|^code/), comp:ci(/company/), brand:ci(/brand/), cat:ci(/^category|^cat/), sub:ci(/sub/), unit:ci(/unit|uom/), hsn:ci(/hsn/), gst:ci(/gst|tax %/)};
+  const I = {part:ci(/part/), name:ci(/stock name|item name|product name|^name/), qty:ci(/qty|quantity/), rate:ci(/per piece|\/ piece|\/piece|rate|value \/|cost/), code:ci(/product code|^code/), comp:ci(/team|company/), brand:ci(/brand/), cat:ci(/^category|^cat/), sub:ci(/sub/), unit:ci(/unit|uom/), hsn:ci(/hsn/), gst:ci(/gst|tax %/)};
   const g = (r, k) => I[k] < 0 ? '' : String(r[I[k]] ?? '').trim(), num = v => +String(v).replace(/[₹,\s]/g, '');
   const byPart = new Map(), byCode = new Map(), byName = new Map();
   D.inv_items.forEach(x => { if (x.part) byPart.set(String(x.part).trim(), x); if (x.code) byCode.set(normName(x.code), x); byName.set(normName(x.name), x); });
@@ -1254,8 +1264,8 @@ async function psImpRead(f){
         else if (seenNew.has(normName(o.name))) o.err = 'Same new stock item appears twice in this file';
         else seenNew.add(normName(o.name)); }
     }
-    o.comp = !o.comp || /excoso|brand/i.test(o.comp) ? 'Excoso' : /expert/i.test(o.comp) ? 'Expert' : o.comp;
-    if (!o.err && !o.item && !COMPS.includes(o.comp)) o.err = 'Product company must be Excoso or Expert';
+    o.comp = !o.comp || /excoso|brand|expert/i.test(o.comp) ? '' : teamOfName(o.comp) || o.comp;
+    if (!o.err && !o.item && o.comp && !TEAMS.includes(o.comp)) o.err = 'Team must be Karthik, Vignesh or Sundar';
     return o;
   });
 }
@@ -1303,11 +1313,14 @@ const poPill = st => `<span class="pill ${PO_PILL[st] || ''}">${esc(st)}</span>`
 const poOpen = po => !po.closed && poLinesX(po).some(l => l.left > 1e-9);
 const blankPOL = () => ({name:'', enq:'', item:'', hsn:'', qty:'', unit:'', rate:'', value:'', gst:18});
 
-const poNi = (l, d) => ({name:enqStrip(l.name) || String(l.name || '').trim(), code:'', comp:d.comp || 'Excoso', brand:String(l.brand || '').trim(), cat:String(l.category || '').trim(), sub:String(l.sub_category || '').trim(), unit:String(l.unit || '').toUpperCase().trim()});
+const poNi = (l, d) => ({name:enqStrip(l.name) || String(l.name || '').trim(), code:'', comp:d.comp || '', brand:String(l.brand || '').trim(), cat:String(l.category || '').trim(), sub:String(l.sub_category || '').trim(), unit:String(l.unit || '').toUpperCase().trim()});
 const dMon = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); return m ? `${m[3]}-${MONS[+m[2] - 1]}-${m[1].slice(2)}` : String(s || ''); };
 const MONS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 // the PO total with GST (what the PO Master and payment requests work with)
 const poGross = doc => { const t = r2((doc.lines || []).reduce((a, l) => a + (+l.value || 0) * (1 + (+l.gst || 0) / 100), 0)); return doc.aiTotal && Math.abs(doc.aiTotal - t) <= 2 ? r2(doc.aiTotal) : t; };   // the PO's printed total when the rows still add up to it, else the rows
+// stock items and suppliers with no team yet take the team of the GRN / PO
+async function teamItems(lines, t){ if (!TEAMS.includes(t)) return; for (const id of new Set((lines || []).map(l => l.item).filter(Boolean))){ const x = D.inv_items.get(id); if (x && !compOf(x.comp)) await Store.set('inv_items', id, {...x, comp:t}); } }
+async function teamSupplier(doc){ const s = supFind(doc); if (!s || !s.id || TEAMS.includes(s.team) || !TEAMS.includes(doc.comp) || !Store.sb) return; const r = await Store.sb.from('pr_suppliers').update({team:doc.comp}).eq('id', s.id); if (!r.error) s.team = doc.comp; }
 async function poInMaster(no){ if (!Store.sb || !String(no || '').trim()) return false; const r = await Store.sb.rpc('po_master_has', {p_po:String(no).trim()}); return !r.error && r.data === true; }
 async function poMasterEdit(oldNo, doc){
   const r = await Store.sb.rpc('po_master_edit', {p_old:oldNo || doc.no, p_po:doc.no, p_enq:[...new Set((doc.lines || []).map(l => l.enq).filter(Boolean))].join(', '), p_date:dMon(doc.date), p_sup:doc.supName, p_value:poGross(doc)});
@@ -1324,7 +1337,7 @@ async function poSupplier(d){
   if (r.error) throw r.error; SUPL.push({name:nm, gstin:g, addr1:a.addr1 || '', addr2:a.addr2 || '', addr3:a.addr3 || ''}); d.supName = nm; await logAct('Inventory', 'Supplier created from Purchase Order: ' + nm);
 }
 function poFormHTML(){
-  const d = F.po, sups = [...new Set([...(SUPL || []).map(x => x.name), ...[...D.mat_po.values()].map(x => x.supName), ...[...D.mat_in.values()].map(x => x.supName)].filter(Boolean))].sort();
+  teamFill(F.po); const d = F.po, sups = [...new Set([...(SUPL || []).map(x => x.name), ...[...D.mat_po.values()].map(x => x.supName), ...[...D.mat_in.values()].map(x => x.supName)].filter(Boolean))].sort();
   const rows = d.lines.map((l, i) => `<tr><td>${lInp('po', i, 'name', l.name, {al:'Product as on the PO'})}<div class="poi">${l.item && l.item !== '__new' ? 'Stock item: ' + esc(itemLbl(l.item)) + ` <button class="lnk" data-act="poNewItem" data-i="${i}">change</button>` : l.item === '__new' ? 'New stock item, created when you save (fill the box below)' : ''}</div></td><td>${lInp('po', i, 'enq', l.enq, {al:'ENQ number'})}</td><td>${lInp('po', i, 'hsn', l.hsn, {al:'HSN'})}</td><td>${lInp('po', i, 'qty', l.qty, {num:1, al:'Quantity'})}</td><td>${lInp('po', i, 'rate', l.rate, {num:1, al:'Rate per piece'})}</td><td>${lInp('po', i, 'value', l.value, {num:1, al:'Amount'})}</td><td><button class="btn sm" data-act="matDelL" data-m="po" data-i="${i}" aria-label="Remove row ${i + 1}">✕</button></td></tr>`).join('');
   return `<div class="card" id="mform"><h2 style="margin:0 0 8px">${d.id ? 'Edit Purchase Order' : 'New Purchase Order'}</h2>
     <div class="igrid">
@@ -1332,7 +1345,7 @@ function poFormHTML(){
       <label class="f">PO date *${mInp('po', 'date', d.date, {type:'date'})}</label>
       <label class="f">Supplier *${mInp('po', 'supName', d.supName, {list:'po_sups'})}</label>
       <label class="f">Supplier GST number${mInp('po', 'supGst', d.supGst, {ph:'33ABCDE1234F1Z5'})}</label>
-      <label class="f">Company *<select class="mdi" id="po_comp" data-m="po" data-k="comp">${COMPS.map(c => `<option ${(d.comp || 'Excoso') === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+      ${teamSel('po', d)}
       <label class="f" style="grid-column:span 2">Remarks${mInp('po', 'remarks', d.remarks)}</label>
     </div><datalist id="po_sups">${sups.map(x => `<option value="${esc(x)}">`).join('')}</datalist>${d.supName && SUPL !== null && !supKnown(d) ? `<div class="nibox" style="margin-top:8px"><b>${esc(supNewName(d))}</b> <span class="mut">is not in the Supplier List. It is created there when you save the PO${supGstClash(d) ? ' (same name with a different GST number, so the GST number is added to the name)' : ''}.</span></div>` : ''}
     <datalist id="po_brs">${invList('inv_brands').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="po_cats">${invList('inv_cats').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="po_subs">${[...new Set(invList('inv_subs').map(x => x.name))].map(x => `<option value="${esc(x)}">`).join('')}</datalist><datalist id="po_units">${invList('inv_units').map(x => `<option value="${esc(x.unit)}">${esc(x.name)}</option>`).join('')}</datalist>
@@ -1343,7 +1356,7 @@ function poFormHTML(){
 }
 function viewPOnew(){
   loadSupl();
-  if (!F.po) F.po = {no:'', date:TODAY, supName:'', supGst:'', comp:'Excoso', enq:'', remarks:'', lines:[blankPOL()]};
+  if (!F.po) F.po = {no:'', date:TODAY, supName:'', supGst:'', comp:myTeam(), enq:'', remarks:'', lines:[blankPOL()]};
   return `<div class="head"><div><h1>${F.po.id ? 'Edit Purchase Order' : 'Create Purchase Order'}</h1><p class="sub">Upload the purchase order from Tally and AI fills it, or type it.</p></div><button class="btn" data-act="go" data-k="po_rep">PO vs Received</button></div>
   ${F.po.id ? '' : aiBar('po', 'purchase order')}${poFormHTML()}`;
 }
@@ -1370,19 +1383,22 @@ function poRepRows(){
     out.push({po, st, lst, l, diff, dv:r2(diff * (+l.rate || 0))}); }); });
   return out.sort((a, b) => String(b.po.date).localeCompare(String(a.po.date)) || String(b.po.no).localeCompare(String(a.po.no)) || a.l.i - b.l.i);
 }
+function teamCards(C, note){ return `<div class="tcards">${C.map(([t, a, b]) => `<div class="tcard"><span>Team ${esc(t)}</span><b>${b}</b><small>${a}</small></div>`).join('')}</div>${note ? `<p class="mut" style="margin:4px 0 0">${esc(note)}</p>` : ''}`; }
 function viewPORep(){
-  const q = (F.prq || '').trim().toLowerCase(), fs = F.prs || '', fp = F.prp || '', ff = F.prf || '', ft = F.prt || '';
+  const q = (F.prq || '').trim().toLowerCase(), fs = F.prs || '', fp = F.prp || '', ff = F.prf || '', ft = F.prt || '', fT = F.prT || '';
   let R = poRepRows(); const sups = [...new Set(R.map(r => r.po.supName).filter(Boolean))].sort();
-  R = R.filter(r => (!fs || r.lst === fs) && (!fp || r.po.supName === fp) && (!ff || r.po.date >= ff) && (!ft || r.po.date <= ft) && (!q || [r.po.no, r.po.supName, r.l.enq, r.po.enq, r.l.name, itemLbl(r.l.item), ...r.l.grns].join(' ').toLowerCase().includes(q)));
+  R = R.filter(r => (!fT || compOf(r.po.comp) === fT) && (!fs || r.lst === fs) && (!fp || r.po.supName === fp) && (!ff || r.po.date >= ff) && (!ft || r.po.date <= ft) && (!q || [r.po.no, r.po.supName, r.l.enq, r.po.enq, r.l.name, itemLbl(r.l.item), ...r.l.grns].join(' ').toLowerCase().includes(q)));
   const P = pg(R, 'porep', 50), T = k => R.reduce((a, r) => a + (+k(r) || 0), 0);
-  const body = P.items.map(r => `<tr><td class="mono nowrap">${esc(r.po.no)}</td><td>${esc(fmtD(r.po.date))}</td><td class="wrap">${esc(r.po.supName)}</td><td class="mono">${esc(r.l.enq || r.po.enq || '')}</td><td class="wrap">${esc(r.l.item ? itemLbl(r.l.item) : r.l.name)}</td><td class="r num">${qtyF(+r.l.qty || 0)}</td><td class="r num">${qtyF(r.l.recv)}</td><td class="r num" style="font-weight:700;color:${r.diff > 0 ? '#b42318' : r.diff < 0 ? '#92400e' : 'inherit'}">${r.diff > 0 ? '+' : ''}${qtyF(r.diff)}</td><td class="r num">${r.diff ? inr(r.dv) : ''}</td><td class="mono wrap">${esc(r.l.grns.join(', '))}</td><td class="wrap">${esc(r.l.why.join(', '))}</td><td>${poPill(r.lst)}</td><td class="nowrap">${r.l.i === 0 ? poActs(r.po) : ''}</td></tr>`).join('');
+  const body = P.items.map(r => `<tr><td class="mono nowrap">${esc(r.po.no)}</td><td>${esc(fmtD(r.po.date))}</td><td>${esc(compOf(r.po.comp) || '—')}</td><td class="wrap">${esc(r.po.supName)}</td><td class="mono">${esc(r.l.enq || r.po.enq || '')}</td><td class="wrap">${esc(r.l.item ? itemLbl(r.l.item) : r.l.name)}</td><td class="r num">${qtyF(+r.l.qty || 0)}</td><td class="r num">${qtyF(r.l.recv)}</td><td class="r num" style="font-weight:700;color:${r.diff > 0 ? '#b42318' : r.diff < 0 ? '#92400e' : 'inherit'}">${r.diff > 0 ? '+' : ''}${qtyF(r.diff)}</td><td class="r num">${r.diff ? inr(r.dv) : ''}</td><td class="mono wrap">${esc(r.l.grns.join(', '))}</td><td class="wrap">${esc(r.l.why.join(', '))}</td><td>${poPill(r.lst)}</td><td class="nowrap">${r.l.i === 0 ? poActs(r.po) : ''}</td></tr>`).join('');
   return `<div class="head"><div><h1>PO vs Received</h1><p class="sub">Every purchase order line: PO quantity, quantity received in GRNs, and the difference (+ more than the PO, − still pending)</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-act="go" data-k="po_new">+ Create Purchase Order</button>${XB('xPoRep')}</div></div>
+  ${(() => { const P0 = [...D.mat_po.values()].filter(po => (!ff || po.date >= ff) && (!ft || po.date <= ft)); return teamCards(TEAMS.map(t => { const L = P0.filter(po => compOf(po.comp) === t); return [t, L.length + ' PO' + (L.length === 1 ? '' : 's'), inr(L.reduce((a, po) => a + poGross(po), 0))]; }), P0.some(po => !compOf(po.comp)) ? 'Some POs have no team yet: press Edit on the PO and pick the team.' : ''); })()}
   ${F.justSaved && D.mat_po.get(F.justSaved) ? `<div class="note good" style="margin-bottom:10px">Saved ${esc(D.mat_po.get(F.justSaved).no)} · also in the PO Master.</div>` : ''}
   <div class="bar sfb"><label class="sf"><span>Search</span><input id="prq" data-f="prq" type="search" placeholder="PO no, ENQ, item, GRN" value="${esc(F.prq || '')}" autocomplete="off"></label>
    <label class="sf"><span>From date</span><input data-f="prf" type="date" value="${esc(ff)}"></label><label class="sf"><span>To date</span><input data-f="prt" type="date" value="${esc(ft)}"></label>
+   <label class="sf"><span>Team</span><select data-f="prT"><option value="">All</option>${TEAMS.map(x => `<option ${fT === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
    <label class="sf"><span>Supplier</span><select data-f="prp"><option value="">All</option>${sups.map(x => `<option ${fp === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
    <label class="sf"><span>Status</span><select data-f="prs"><option value="">All</option>${Object.keys(PO_PILL).map(x => `<option ${fs === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
-  <div class="tw"><table><thead><tr class="ttop"><td colspan="4"></td><td class="r">Total (${R.length})</td><td class="r num">${qtyF(T(r => r.l.qty))}</td><td class="r num">${qtyF(T(r => r.l.recv))}</td><td class="r num">${qtyF(T(r => r.diff))}</td><td class="r num">${inr(T(r => r.dv))}</td><td colspan="4"></td></tr><tr><th>PO no</th><th>PO date</th><th>Supplier</th><th>ENQ</th><th>Stock item</th><th class="r">PO qty</th><th class="r">Received</th><th class="r">Difference</th><th class="r">Diff value</th><th>GRN no</th><th>Reason</th><th>Status</th><th></th></tr></thead><tbody>${body || '<tr><td colspan="13" class="empty">No purchase order lines match.</td></tr>'}</tbody></table></div>${P.html}`;
+  <div class="tw"><table><thead><tr class="ttop"><td colspan="5"></td><td class="r">Total (${R.length})</td><td class="r num">${qtyF(T(r => r.l.qty))}</td><td class="r num">${qtyF(T(r => r.l.recv))}</td><td class="r num">${qtyF(T(r => r.diff))}</td><td class="r num">${inr(T(r => r.dv))}</td><td colspan="4"></td></tr><tr><th>PO no</th><th>PO date</th><th>Team</th><th>Supplier</th><th>ENQ</th><th>Stock item</th><th class="r">PO qty</th><th class="r">Received</th><th class="r">Difference</th><th class="r">Diff value</th><th>GRN no</th><th>Reason</th><th>Status</th><th></th></tr></thead><tbody>${body || '<tr><td colspan="14" class="empty">No purchase order lines match.</td></tr>'}</tbody></table></div>${P.html}`;
 }
 // purchase bill → PO: same supplier, then each bill line to the PO line with the closest rate and most shared words (EXP → EXPANDER)
 const poWords = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').split(' ').filter(w => w.length >= 2 && !/^\d+$/.test(w));
@@ -1396,7 +1412,7 @@ function poLink(d, poId){
       const r1 = +l.rate || (+l.qty ? +l.taxable / +l.qty : 0), r0 = +pl.rate || 0; if (r1 && r0){ const dev = Math.abs(r1 - r0) / r0; sc += dev < .01 ? 3 : dev < .05 ? 1.5 : 0; }
       if (+l.qty && +l.qty === +pl.qty) sc += .5; if (sc > bs){ bs = sc; best = pl; } });
     if (best && bs >= 2.5){ used.add(best.i); l.po = po.id; l.pl = best.i; l.enq = best.enq || po.enq || ''; if (best.item && (!l.item || l.item === '__new')){ l.item = best.item; delete l.ni; } n++; } else { delete l.po; delete l.pl; delete l.enq; } });
-  d.po = po.id; d.poNo = po.no; if (!d.comp || d.comp === 'Excoso') d.comp = po.comp || d.comp; return n;
+  d.po = po.id; d.poNo = po.no; if (TEAMS.includes(po.comp)) d.comp = po.comp; return n;
 }
 function poBanner(d){
   if (d.po){ const po = D.mat_po.get(d.po); return `<div class="note" style="margin:0 0 10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span>Against purchase order <b>${esc(po ? po.no : d.poNo || '')}</b>${po && po.enq ? ' · ENQ ' + esc(po.enq) : ''} · ${d.lines.filter(l => l.po).length} of ${d.lines.filter(l => l.item || l.name).length} rows matched</span><button class="btn sm" data-act="poUnlink">Remove PO link</button></div>`; }
@@ -1410,9 +1426,9 @@ function poInfo(d, l, i){
 }
 function poToGrn(po){
   const X = poLinesX(po).filter(l => l.left > 1e-9);
-  return {invNo:'', invDate:TODAY, supName:po.supName, supGst:po.supGst || '', comp:po.comp || 'Excoso', po:po.id, poNo:po.no,
+  return {invNo:'', invDate:TODAY, supName:po.supName, supGst:po.supGst || '', comp:compOf(po.comp), po:po.id, poNo:po.no,
     lines:X.map(l => { const it = l.item || guessItem(l.name, l.hsn) || '__new', g = GSTR.includes(+l.gst) ? +l.gst : (it !== '__new' && itemGst(it)) || 18;
-      return {name:l.name, item:it, ni:it === '__new' ? {name:String(l.name || '').replace(/[\s\-–]*\d{3,6}\s*$/, '').trim(), code:'', comp:po.comp || 'Excoso', brand:'', cat:'', sub:'', unit:String(l.unit || '').toUpperCase()} : undefined, hsn:l.hsn || '', qty:l.left, unit:l.unit || '', rate:r2(+l.rate || 0), taxable:r2(l.left * (+l.rate || 0)), gst:g, rateTyped:1, po:po.id, pl:l.i, enq:l.enq || po.enq || ''}; })};
+      return {name:l.name, item:it, ni:it === '__new' ? {name:String(l.name || '').replace(/[\s\-–]*\d{3,6}\s*$/, '').trim(), code:'', comp:compOf(po.comp), brand:'', cat:'', sub:'', unit:String(l.unit || '').toUpperCase()} : undefined, hsn:l.hsn || '', qty:l.left, unit:l.unit || '', rate:r2(+l.rate || 0), taxable:r2(l.left * (+l.rate || 0)), gst:g, rateTyped:1, po:po.id, pl:l.i, enq:l.enq || po.enq || ''}; })};
 }
 document.addEventListener('change', ev => { const t = ev.target; if (t.id === 'mi_pofill' && t.value){ const po = D.mat_po.get(t.value); if (po){ F.mi = poToGrn(po); F.miAis = `Filled from ${po.no}. Type the supplier invoice number and date, check the quantities and save.`; forceRender = true; render(); } return; } if (t.id !== 'mi_polink' || !t.value || !F.mi) return; const n = poLink(F.mi, t.value); toastOk(`Linked to ${F.mi.poNo}: ${n} row${n === 1 ? '' : 's'} matched.`); forceRender = true; render(); });
 const POACT = {
@@ -1428,13 +1444,14 @@ const POACT = {
     if (d.id){ const M = poRecvMap(); const sh = d.lines.findIndex((l, i) => (M.get(d.id + '|' + i) || {q:0}).q > 0 && !lines.includes(l)); if (sh >= 0) return bad(`Row ${sh + 1} already has goods received; it cannot be removed.`); }
     const oldNo = d.id ? String(D.mat_po.get(d.id)?.no || '').trim() : '';
     if ((!d.id || normName(oldNo) !== normName(d.no)) && await poInMaster(d.no)) return bad(`${String(d.no).trim()} is already in the PO Master. This PO is not saved and nothing was changed.`);
-    const nw = lines.filter(l => l.item === '__new'); for (const [k2, l] of nw.entries()){ const e = niCheck(l, k2); if (e) return bad(e); }
+    if (!TEAMS.includes(d.comp)) return bad('Pick the team (Karthik, Vignesh or Sundar).');
+    const nw = lines.filter(l => l.item === '__new'); for (const [k2, l] of nw.entries()){ l.ni.comp = d.comp; const e = niCheck(l, k2); if (e) return bad(e); }
     { const nn = nw.map(l => normName(l.ni.name)); if (new Set(nn).size < nn.length) return bad('Two new stock items have the same name. Change one.'); }
     t.disabled = true;
     try { await poSupplier(d); for (const l of nw) await niCreate(l); } catch(e){ t.disabled = false; forceRender = true; render(); return bad('Could not create: ' + (e.message || e)); }
     const id = d.id || uid('po'), clean = lines.map(l => ({name:String(l.name || '').trim() || (l.item ? D.inv_items.get(l.item)?.name || '' : ''), enq:String(l.enq || '').trim().toUpperCase() || enqOf(l.name) || '', item:l.item && l.item !== '__new' ? l.item : '', hsn:String(l.hsn || '').replace(/\D/g, ''), qty:r2(l.qty), unit:l.unit || '', rate:r2(l.rate), value:r2(l.value || (+l.qty || 0) * (+l.rate || 0)), gst:+l.gst || 0}));
     const doc = {...d, id, lines:clean, enq:[...new Set(clean.map(l => l.enq).filter(Boolean))].join(', '), value:r2(clean.reduce((a, l) => a + l.value, 0)), by:d.by || S.me, at:d.at || nowISO(), editedBy:d.id ? S.me : undefined, editedAt:d.id ? nowISO() : undefined};
-    delete doc.supAddr;
+    delete doc.supAddr; delete doc.teamSet; try { await teamItems(clean, doc.comp); await teamSupplier(doc); } catch(e){}
     try { await Store.set('mat_po', id, doc); await logAct('Inventory', `Purchase Order ${d.id ? 'edited' : 'saved'}: ${doc.no} · ${doc.supName}`); } catch(e){ t.disabled = false; return bad('Could not save: ' + (e.message || e)); }
     let pm = ''; try { pm = d.id ? await poMasterEdit(oldNo, doc) : await poMaster(doc); } catch(e){ toast('PO saved, but it could not be added to the PO Master: ' + (e.message || e)); }
     toastOk(`Saved ${doc.no}${pm === 'added' ? ' and added to the PO Master' : pm === 'updated' ? ' · PO Master updated too' : ''}.`);
@@ -1576,12 +1593,12 @@ const managers = () => [...D.users.values()].filter(isSalesMgr).sort((a, b) => (
 function viewMatIn(mode){
   loadSupl();
   if (mode === 'new'){
-    if (!F.mi) F.mi = {invNo:'', invDate:TODAY, supName:'', supGst:'', comp:'Excoso', lines:[blankLine('mi')]};
+    if (!F.mi) F.mi = {invNo:'', invDate:TODAY, supName:'', supGst:'', comp:'', lines:[blankLine('mi')]};
     loadPrDir();
     return `<div class="head"><div><h1>${F.mi.id ? 'Edit GRN' : 'Create GRN'}</h1><p class="sub">Goods received from a supplier. Upload the purchase invoice and AI fills the entry, or type it.</p></div><button class="btn" data-act="go" data-k="mat_in">GRN Register</button></div>
     ${F.mi.id ? '' : aiBar('mi', 'purchase invoice')}${F.mi.id || F.mi.po ? '' : (L => L.length ? `<div class="bar" style="margin:6px 0 10px"><label class="sf"><span>Or receive against an open purchase order</span><select id="mi_pofill"><option value="">Pick a PO…</option>${L.map(po => `<option value="${esc(po.id)}">${esc(po.no + ' · ' + po.supName + (po.enq ? ' · ENQ ' + po.enq : ''))}</option>`).join('')}</select></label></div>` : '')([...D.mat_po.values()].filter(poOpen).sort((a, b) => String(b.date).localeCompare(String(a.date))))}${miFormHTML()}`;
   }
-  return regHTML('mi', 'GRN Register', `${D.mat_in.size} GRN${D.mat_in.size === 1 ? '' : 's'} · saved items add to the closing stock`, '<button class="btn pri" data-act="go" data-k="mat_in_new">+ Create GRN</button>');
+  return regHTML('mi', 'GRN Register', `${D.mat_in.size} GRN${D.mat_in.size === 1 ? '' : 's'} · saved items add to the closing stock`, '<button class="btn pri" data-act="go" data-k="mat_in_new">+ Create GRN</button>', {extra:[{h:'Team', v:d => esc(compOf(d.comp) || '—')}]});
 }
 function savedBar(m){
   const s = F.justSaved && D[MATCOL[m]].get(F.justSaved); if (!s) return '';
@@ -1767,11 +1784,12 @@ function viewClosing(){
     .filter(r => !q || [r.x.part, r.x.name, nm('inv_cats', r.x.cat), nm('inv_subs', r.x.sub), nm('inv_brands', r.x.brand), compOf(r.x.comp)].join(' ').toLowerCase().includes(q))
     .sort((a, b) => String(a.x.part).localeCompare(String(b.x.part)));
   const tq = list.reduce((a, r) => a + r.s.q, 0), tv = list.reduce((a, r) => a + r.s.v, 0), unit = x => D.inv_units.get(x.unit)?.unit || '';
-  const body = list.map(({x, s}) => `<tr ${s.q ? '' : 'style="opacity:.55"'}><td class="mono">${esc(x.part)}</td><td class="wrap">${esc(x.name)}</td><td>${esc(nm('inv_cats', x.cat))}</td><td>${esc(nm('inv_subs', x.sub))}</td><td>${esc(nm('inv_brands', x.brand))}</td><td>${esc(x.comp ? compOf(x.comp) : '')}</td><td class="r num">${qtyF(s.q)} ${esc(unit(x))}</td><td class="r num">${inr(s.q > 0 ? s.v / s.q : s.rate)}</td><td class="r num">${inr(s.v)}</td></tr>`).join('');
+  const body = list.map(({x, s}) => `<tr ${s.q ? '' : 'style="opacity:.55"'}><td class="mono">${esc(x.part)}</td><td class="wrap">${esc(x.name)}</td><td>${esc(nm('inv_cats', x.cat))}</td><td>${esc(nm('inv_subs', x.sub))}</td><td>${esc(nm('inv_brands', x.brand))}</td><td>${esc(compOf(x.comp) || '—')}</td><td class="r num">${qtyF(s.q)} ${esc(unit(x))}</td><td class="r num">${inr(s.q > 0 ? s.v / s.q : s.rate)}</td><td class="r num">${inr(s.v)}</td></tr>`).join('');
   return `<div class="head"><div><h1>Closing Stock Details</h1><p class="sub">Stock we hold now · Physical Stock + GRN − Delivery Challan + Receipt Note</p></div>${XB('xClosing')}</div>
-  <div class="bar sfb"><label class="sf"><span>Search</span><input id="csq" data-f="csq" type="search" placeholder="Part no, stock, category, brand, company" value="${esc(F.csq || '')}" autocomplete="off"></label><label class="sf"><span>Category</span><select data-f="cscat"><option value="">All</option>${invList('inv_cats').map(c => `<option value="${esc(c.id)}" ${F.cscat === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="sf"><span>Brand</span><select data-f="csbr"><option value="">All</option>${invList('inv_brands').map(c => `<option value="${esc(c.id)}" ${F.csbr === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="sf"><span>Company</span><select data-f="cscomp"><option value="">All</option>${COMPS.map(c => `<option ${F.cscomp === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label><button class="btn sm" style="align-self:end;margin-bottom:6px" data-act="csAll" aria-pressed="${!!F.csall}">${F.csall ? 'Hide items with no stock' : 'Show items with no stock'}</button></div>
+  <div class="bar sfb"><label class="sf"><span>Search</span><input id="csq" data-f="csq" type="search" placeholder="Part no, stock, category, brand, team" value="${esc(F.csq || '')}" autocomplete="off"></label><label class="sf"><span>Category</span><select data-f="cscat"><option value="">All</option>${invList('inv_cats').map(c => `<option value="${esc(c.id)}" ${F.cscat === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="sf"><span>Brand</span><select data-f="csbr"><option value="">All</option>${invList('inv_brands').map(c => `<option value="${esc(c.id)}" ${F.csbr === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label class="sf"><span>Team</span><select data-f="cscomp"><option value="">All</option>${COMPS.map(c => `<option ${F.cscomp === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label><button class="btn sm" style="align-self:end;margin-bottom:6px" data-act="csAll" aria-pressed="${!!F.csall}">${F.csall ? 'Hide items with no stock' : 'Show items with no stock'}</button></div>
+  ${teamCards(TEAMS.map(t => { const L = list.filter(r => compOf(r.x.comp) === t && r.s.q > 0); return [t, L.length + ' item' + (L.length === 1 ? '' : 's') + ' · ' + qtyF(L.reduce((a, r) => a + r.s.q, 0)) + ' qty', inr(L.reduce((a, r) => a + r.s.v, 0))]; }), list.some(r => !compOf(r.x.comp) && r.s.q > 0) ? 'Items with no team yet: open Create Stock Item, press Edit and pick the team.' : '')}
   <h2 style="margin:12px 0 6px">Closing Stock</h2>
-  <div class="tw"><table><thead><tr class="ttop"><td colspan="5"></td><td class="r">Total (${list.length})</td><td class="r num">${qtyF(tq)}</td><td></td><td class="r num">${inr(tv)}</td></tr><tr><th>Part no</th><th>Stock item</th><th>Category</th><th>Sub category</th><th>Brand</th><th>Company</th><th class="r">Closing qty</th><th class="r">Rate / piece</th><th class="r">Taxable value</th></tr></thead><tbody>${body || '<tr><td colspan="9" class="empty">No stock in hand.</td></tr>'}</tbody></table></div>`;
+  <div class="tw"><table><thead><tr class="ttop"><td colspan="5"></td><td class="r">Total (${list.length})</td><td class="r num">${qtyF(tq)}</td><td></td><td class="r num">${inr(tv)}</td></tr><tr><th>Part no</th><th>Stock item</th><th>Category</th><th>Sub category</th><th>Brand</th><th>Team</th><th class="r">Closing qty</th><th class="r">Rate / piece</th><th class="r">Taxable value</th></tr></thead><tbody>${body || '<tr><td colspan="9" class="empty">No stock in hand.</td></tr>'}</tbody></table></div>`;
 }
 // Registers: one row per document (date, number, party, taxable value) with Print / Edit / Delete
 function regHTML(m, title, sub, newBtns, opts = {}){
@@ -2048,7 +2066,7 @@ function viewStockItem(id){
   const x = D.inv_items.get(id); if (!x) { F.stkI = ''; return viewStock(); }
   const u = D.inv_units.get(x.unit)?.unit || '', y = F.stkY || fyStartY(), fs = `${y}-04-01`, fe = `${y + 1}-03-31`, all = itemMoves(id);
   const op = sumMv(all.filter(r => r.date < fs)); let cq = op.inQ - op.outQ, cv = op.inV - op.outV;
-  const back = `<button class="btn sm" data-act="stkBack">← Stock List</button>`, title = `<h1 style="margin:6px 0 2px">${esc(x.name)}</h1><p class="sub">Part no ${esc(x.part)}${x.comp ? ' · ' + esc(compOf(x.comp)) : ''}</p>`;
+  const back = `<button class="btn sm" data-act="stkBack">← Stock List</button>`, title = `<h1 style="margin:6px 0 2px">${esc(x.name)}</h1><p class="sub">Part no ${esc(x.part)}${compOf(x.comp) ? ' · Team ' + esc(compOf(x.comp)) : ''}</p>`;
   if (F.stkM != null){
     const mo = F.stkM, mm = (mo + 3) % 12, yy = mo < 9 ? y : y + 1, ms = `${yy}-${String(mm + 1).padStart(2, '0')}`;
     const pre = sumMv(all.filter(r => r.date < ms + '-01')); let rq = pre.inQ - pre.outQ, rv = pre.inV - pre.outV;
@@ -2100,6 +2118,8 @@ function matInput(t){
   if (k.startsWith('nc.')){ d.nc = d.nc || {}; d.nc[k.slice(3)] = v; if (k === 'nc.on'){ forceRender = true; render(); } return; }
   if (k.startsWith('ni.')){ const l = d.lines[+t.dataset.l]; if (l){ l.ni = l.ni || {}; l.ni[k.slice(3)] = v; } return; }
   if (t.dataset.l == null){ d[k] = v;
+    if ((m === 'mi' || m === 'po') && k === 'comp'){ d.teamSet = 1; forceRender = true; render(); return; }
+    if ((m === 'mi' || m === 'po') && k === 'supName' && !d.teamSet && !teamLock(d)){ const tt = supTeam({supName:v, supGst:d.supGst}); if (tt && tt !== d.comp){ d.comp = tt; const e = document.getElementById(m + '_comp'); if (e) e.value = tt; } }
     if (m === 'rn' && k === 'dc'){ const x = D.mat_dc.get(v); if (x){ d.party = x.party; d.lines = dcPending(x, d.id).filter(l => l.left > 0).map(l => ({item:l.item, qty:l.left, rate:l.rate, value:r2(l.left * (+l.rate || 0))})); } forceRender = true; render(); return; }
     if (m === 'mi' && k === 'supGst'){ d.supGst = v.toUpperCase().replace(/\s/g, ''); const s = (SUPL || []).find(x => x.gstin === d.supGst); if (s && !d.supName){ d.supName = s.name; const n = document.getElementById('mi_supName'); if (n) n.value = s.name; } }
     if (m === 'mi' && k === 'supName'){ const s = (SUPL || []).find(x => x.name.toLowerCase() === v.trim().toLowerCase()); if (s && s.gstin && !d.supGst){ d.supGst = s.gstin; const g = document.getElementById('mi_supGst'); if (g) g.value = s.gstin; } }
@@ -2126,7 +2146,7 @@ function matInput(t){
     if (k === 'qty' || k === 'rate'){ if (l.qty !== '' && l.rate !== '') set('taxable', r2((+l.qty || 0) * (+l.rate || 0))); }
     if (k === 'taxable' && +l.qty && !l.rateTyped) set('rate', r2((+l.taxable || 0) / +l.qty));
     if (k === 'rate') l.rateTyped = 1;
-    if (k === 'item' && v === '__new'){ l.ni = l.ni || {name:l.name || '', code:'', comp:d.comp || 'Excoso', brand:'', cat:'', sub:'', unit:l.unit || ''}; forceRender = true; render(); return; }
+    if (k === 'item' && v === '__new'){ l.ni = l.ni || {name:l.name || '', code:'', comp:d.comp || '', brand:'', cat:'', sub:'', unit:l.unit || ''}; forceRender = true; render(); return; }
     if (k === 'item' && v && v !== '__new' && l.ni){ delete l.ni; l.gstTouched = 0; const x = D.inv_items.get(v); if (x){ set('hsn', x.hsn || l.hsn); const g = itemGst(v); if (g) set('gst', g); } forceRender = true; render(); return; }
     if (k === 'item' && v){ const x = D.inv_items.get(v); if (x){ if (!l.hsn) set('hsn', x.hsn || ''); const g = itemGst(v); if (g && !l.gstTouched) set('gst', g); if (!l.name) set('name', x.name); } }
     if (k === 'gst') l.gstTouched = 1;
@@ -2161,8 +2181,8 @@ async function matFile(t){
       const sm = supFind({supGst:g, supName:String(x.supplier_name || '').trim()});
       const lines = (x.lines || []).filter(l => l && String(l.name || '').trim() && (+l.qty > 0 || +l.amount > 0)).map(l => { const nm = String(l.name || '').replace(/\s+/g, ' ').trim(), it = guessItem(nm, l.hsn) || guessItem(enqStrip(nm), l.hsn); return {name:nm, enq:enqOf(nm) || String(x.enq || '').replace(/[^\dA-Za-z\-]/g, '').toUpperCase(), item:it || '__new', brand:l.brand, category:l.category, sub_category:l.sub_category, hsn:String(l.hsn || '').replace(/\D/g, ''), qty:r2(l.qty) || '', unit:String(l.unit || '').toUpperCase(), rate:r2(l.rate) || (+l.qty ? r2(l.amount / l.qty) : ''), value:r2(l.amount) || r2((+l.qty || 0) * (+l.rate || 0)), gst:+l.gst || 18}; });
       const no = String(x.po_no || '').trim(), dup = [...D.mat_po.values()].find(d => normName(d.no) === normName(no));
-      F.po = {no, date:ymdOk(x.po_date) || TODAY, supName:sm ? sm.name : String(x.supplier_name || '').replace(/\s+/g, ' ').trim(), supGst:sm && sm.gstin ? sm.gstin : g, supAddr:{addr1:String(x.supplier_addr1 || '').trim(), addr2:String(x.supplier_addr2 || '').trim(), addr3:String(x.supplier_addr3 || '').trim()}, comp:'Excoso', remarks:'', aiTotal:r2(x.total) || 0, lines:lines.length ? lines : [blankPOL()]};
-      if (await poInMaster(no)){ F.po = {no:'', date:TODAY, supName:'', supGst:'', comp:'Excoso', remarks:'', lines:[blankPOL()]}; forceRender = true; render(); say(`${no} is already in the PO Master, so this PO was not taken. Nothing was changed.`, true); return; }
+      F.po = {no, date:ymdOk(x.po_date) || TODAY, supName:sm ? sm.name : String(x.supplier_name || '').replace(/\s+/g, ' ').trim(), supGst:sm && sm.gstin ? sm.gstin : g, supAddr:{addr1:String(x.supplier_addr1 || '').trim(), addr2:String(x.supplier_addr2 || '').trim(), addr3:String(x.supplier_addr3 || '').trim()}, comp:(sm && TEAMS.includes(sm.team) ? sm.team : '') || myTeam(), remarks:'', aiTotal:r2(x.total) || 0, lines:lines.length ? lines : [blankPOL()]};
+      if (await poInMaster(no)){ F.po = {no:'', date:TODAY, supName:'', supGst:'', comp:myTeam(), remarks:'', lines:[blankPOL()]}; forceRender = true; render(); say(`${no} is already in the PO Master, so this PO was not taken. Nothing was changed.`, true); return; }
       F.po.lines.forEach(l => { if (l.item === '__new') l.ni = poNi(l, F.po); delete l.brand; delete l.category; delete l.sub_category; });
       const gw = String(x.supplier_gstin || '').toUpperCase().replace(/[^0-9A-Z]/g, ''), ourG = OUR_GSTS.includes(gw);
       const nNew = F.po.lines.filter(l => l.item === '__new').length, enqs = [...new Set(F.po.lines.map(l => l.enq).filter(Boolean))].join(', ');
@@ -2171,9 +2191,9 @@ async function matFile(t){
     if (m === 'mi'){
       let g = String(x.supplier_gstin || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); if (OUR_GSTS.includes(g)) g = '';
       const s = supFind({supGst:g, supName:String(x.supplier_name || '').trim()});
-      const lines = (x.lines || []).filter(l => l && String(l.name || '').trim() && (+l.taxable > 0 || +l.qty > 0)).map(l => { const it = guessItem(l.name, l.hsn); return {name:String(l.name || '').trim(), item:it || '__new', ni:it ? undefined : {name:String(l.name || '').trim(), code:'', comp:'Excoso', brand:String(l.brand || '').trim(), cat:String(l.category || '').trim(), sub:String(l.sub_category || '').trim(), unit:String(l.unit || '').toUpperCase().trim()}, hsn:String(l.hsn || '').replace(/\D/g, ''), qty:r2(l.qty) || '', unit:String(l.unit || '').toUpperCase(), rate:r2(l.rate) || (l.qty ? r2(l.taxable / l.qty) : ''), taxable:r2(l.taxable) || r2((+l.qty || 0) * (+l.rate || 0)), gst:GSTR.includes(+l.gst) ? +l.gst : (+l.gst || 18), rateTyped:1, gstTouched:1}; });
+      const lines = (x.lines || []).filter(l => l && String(l.name || '').trim() && (+l.taxable > 0 || +l.qty > 0)).map(l => { const it = guessItem(l.name, l.hsn); return {name:String(l.name || '').trim(), item:it || '__new', ni:it ? undefined : {name:String(l.name || '').trim(), code:'', comp:'', brand:String(l.brand || '').trim(), cat:String(l.category || '').trim(), sub:String(l.sub_category || '').trim(), unit:String(l.unit || '').toUpperCase().trim()}, hsn:String(l.hsn || '').replace(/\D/g, ''), qty:r2(l.qty) || '', unit:String(l.unit || '').toUpperCase(), rate:r2(l.rate) || (l.qty ? r2(l.taxable / l.qty) : ''), taxable:r2(l.taxable) || r2((+l.qty || 0) * (+l.rate || 0)), gst:GSTR.includes(+l.gst) ? +l.gst : (+l.gst || 18), rateTyped:1, gstTouched:1}; });
       const dup = [...D.mat_in.values()].find(d => normName(d.invNo) === normName(x.inv_no) && (normName(d.supName) === normName(s ? s.name : x.supplier_name) || (g && d.supGst === g)));
-      F.mi = {invNo:String(x.inv_no || '').trim(), invDate:ymdOk(x.inv_date), supName:s ? s.name : String(x.supplier_name || '').trim(), supGst:g, comp:'Excoso', lines:lines.length ? lines : [blankLine('mi')], aiTotal:r2(x.total) || 0, ns:{on:true, addr1:String(x.supplier_addr1 || '').trim(), addr2:String(x.supplier_addr2 || '').trim(), addr3:String(x.supplier_addr3 || '').trim(), pincode:String(x.supplier_pincode || '').replace(/\D/g, '').slice(0, 6), mobile:String(x.supplier_mobile || '').replace(/\D/g, '').slice(-10), email:String(x.supplier_email || '').trim()}};
+      F.mi = {invNo:String(x.inv_no || '').trim(), invDate:ymdOk(x.inv_date), supName:s ? s.name : String(x.supplier_name || '').trim(), supGst:g, comp:(s && TEAMS.includes(s.team) ? s.team : '') || myTeam(), lines:lines.length ? lines : [blankLine('mi')], aiTotal:r2(x.total) || 0, ns:{on:true, addr1:String(x.supplier_addr1 || '').trim(), addr2:String(x.supplier_addr2 || '').trim(), addr3:String(x.supplier_addr3 || '').trim(), pincode:String(x.supplier_pincode || '').replace(/\D/g, '').slice(0, 6), mobile:String(x.supplier_mobile || '').replace(/\D/g, '').slice(-10), email:String(x.supplier_email || '').trim()}};
       { const ref = normName(x.po_ref || ''), C = poCands(F.mi), byRef = ref && C.find(po => ref.includes(normName(po.no)) || normName(po.no).includes(ref)), pick = byRef || (C.length === 1 ? C[0] : null);
         if (pick){ const n = poLink(F.mi, pick.id); F.miPoMsg = ` Linked to ${pick.no}: ${n} of ${lines.length} row${lines.length === 1 ? '' : 's'} matched with the PO.`; } else F.miPoMsg = C.length ? ` ${C.length} open POs for this supplier: pick one in the yellow box.` : ''; }
       const miss = lines.filter(l => l.item === '__new').length;
@@ -2191,13 +2211,13 @@ async function matFile(t){
 const MATACT = {
   ...POACT,
   moTab:t => { F.moTab = t.dataset.t; forceRender = true; render(); },
-  matNew:t => { const m = t.dataset.m; F[m + 'Ais'] = ''; F[m] = m === 'mi' ? {invNo:'', invDate:TODAY, supName:'', supGst:'', comp:'Excoso', lines:[blankLine('mi')]} : {no:vno(MATCOL[m], m === 'dc' ? 'RDC' : 'RN'), date:TODAY, party:'', exec:'', dc:'', remarks:'', lines:m === 'rn' ? [] : [blankLine(m)]}; forceRender = true; render(); },
+  matNew:t => { const m = t.dataset.m; F[m + 'Ais'] = ''; F[m] = m === 'mi' ? {invNo:'', invDate:TODAY, supName:'', supGst:'', comp:myTeam(), lines:[blankLine('mi')]} : {no:vno(MATCOL[m], m === 'dc' ? 'RDC' : 'RN'), date:TODAY, party:'', exec:'', dc:'', remarks:'', lines:m === 'rn' ? [] : [blankLine(m)]}; forceRender = true; render(); },
   matAddL:t => { const m = t.dataset.m; F[m].lines.push(blankLine(m)); forceRender = true; render(); },
   matDelL:t => { const m = t.dataset.m; F[m].lines.splice(+t.dataset.i, 1); if (!F[m].lines.length && m !== 'rn' && m !== 'dc') F[m].lines.push(blankLine(m)); forceRender = true; render(); },
-  matNiCreate:async t => { const mm = t.dataset.m || 'mi', i = +t.dataset.i, l = F[mm].lines[i], nw = F[mm].lines.filter(x => x.item === '__new'), e = niCheck(l, nw.indexOf(l)), er = document.getElementById(mm + '_nierr' + i);
+  matNiCreate:async t => { const mm = t.dataset.m || 'mi', i = +t.dataset.i, l = F[mm].lines[i]; if (l && l.ni) l.ni.comp = F[mm].comp; const nw = F[mm].lines.filter(x => x.item === '__new'), e = niCheck(l, nw.indexOf(l)), er = document.getElementById(mm + '_nierr' + i);
     if (e){ if (er) er.textContent = e; toast(e); return; }
     t.disabled = true; try { const nm = await niCreate(l); toastOk('Created stock item ' + nm); } catch(x){ t.disabled = false; toast('Could not create: ' + (x.message || x)); return; } forceRender = true; render(); },
-  matNiAll:async t => { const mm = t.dataset.m || 'mi', nw = F[mm].lines.filter(x => x.item === '__new');
+  matNiAll:async t => { const mm = t.dataset.m || 'mi', nw = F[mm].lines.filter(x => x.item === '__new'); nw.forEach(x => { if (x.ni) x.ni.comp = F[mm].comp; });
     for (const [k, l] of nw.entries()){ const e = niCheck(l, k); if (e){ toast(e); const er = document.getElementById(mm + '_nierr' + F[mm].lines.indexOf(l)); if (er){ er.textContent = e; er.scrollIntoView({block:'center'}); } return; } }
     const nn = nw.map(l => normName(l.ni.name)); if (new Set(nn).size < nn.length){ toast('Two new stock items have the same name. Change one.'); return; }
     t.disabled = true; let n = 0; try { for (const l of nw){ await niCreate(l); n++; } } catch(x){ toast('Could not create: ' + (x.message || x)); }
@@ -2247,6 +2267,7 @@ const MATACT = {
     if (m === 'mi'){
       d.invNo = String(d.invNo || '').trim(); d.supName = String(d.supName || '').trim(); d.supGst = String(d.supGst || '').toUpperCase().trim();
       if (!d.invNo || !d.invDate || !d.supName) return bad('Fill in the invoice number, invoice date and supplier.');
+      if (!TEAMS.includes(d.comp)) return bad('Pick the team (Karthik, Vignesh or Sundar).');
       if (d.supGst && !/^\d{2}[A-Z0-9]{13}$/.test(d.supGst)) return bad('The supplier GST number should be 15 characters.');
       if (OUR_GSTS.includes(d.supGst)) return bad('That GST number is ours. Type the supplier GST number.');
       if (!lines.length) return bad('Add at least one product.');
@@ -2255,7 +2276,7 @@ const MATACT = {
       { const PM = poRecvMap(d.id), seen = {}; const xi = lines.findIndex(l => { if (!l.po) return false; const po = D.mat_po.get(l.po), pl = po && po.lines[l.pl]; if (!pl) return false; const k = l.po + '|' + l.pl; seen[k] = (seen[k] || 0) + (+l.qty || 0); const left = (+pl.qty || 0) - (PM.get(k) || {q:0}).q; if (seen[k] > left + 1e-9) return !l.exWhy; l.exWhy = ''; return false; });
         if (xi >= 0) return bad(`Row ${xi + 1}: more than the PO quantity was received. Pick why (keep, return or free) below the stock item.`); }
       const nw = lines.map((l, i) => [l, i]).filter(([l]) => l.item === '__new');
-      for (const [l, i] of nw){ const e = niCheck(l, nw.findIndex(x => x[1] === i)); if (e) return bad(e); }
+      for (const [l, i] of nw){ l.ni.comp = d.comp; const e = niCheck(l, nw.findIndex(x => x[1] === i)); if (e) return bad(e); }
       const nn = nw.map(([l]) => normName(l.ni.name)); if (new Set(nn).size < nn.length) return bad('Two new stock items have the same name. Change one, or choose the same existing item.');
       var needSup = !!(d.supName && SUPL !== null && !supKnown(d) && (!d.ns || d.ns.on !== false));
       if (needSup){ const n = d.ns || {};
@@ -2277,7 +2298,7 @@ const MATACT = {
     err.textContent = '';
     const id = d.id || uid(m), clean = lines.map(l => { const o = {...l}; delete o.rateTyped; delete o.gstTouched; delete o.back; delete o.left; ['qty', 'rate', 'taxable', 'value', 'gst'].forEach(k => { if (k in o) o[k] = r2(o[k]); }); return o; });
     const doc = {...d, id, lines:clean, by:d.by || S.me, at:d.at || nowISO(), editedBy:d.id ? S.me : undefined, editedAt:d.id ? nowISO() : undefined};
-    delete doc.aiTotal; delete doc.ks; if (m === 'mi'){ const T = miTotals(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; doc.igst = T.inter; doc.comp = compOf(doc.comp); if (!doc.grnNo) doc.grnNo = vno('mat_in', 'GRN', 'grnNo', doc.at);
+    delete doc.aiTotal; delete doc.ks; delete doc.teamSet; if (m === 'mi'){ const T = miTotals(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; doc.igst = T.inter; doc.comp = compOf(doc.comp); if (!doc.grnNo) doc.grnNo = vno('mat_in', 'GRN', 'grnNo', doc.at);
       const sm = (SUPL || []).find(x => (doc.supGst && x.gstin === doc.supGst) || normName(x.name) === normName(doc.supName)), sp = d.ks && d.ks.addr1 ? d.ks : sm && sm.addr1 ? sm : (d.ns && d.ns.addr1 ? d.ns : sm); if (sp) doc.supAddr = {addr1:sp.addr1 || '', addr2:sp.addr2 || '', addr3:sp.addr3 || ''}; }
     if (m === 'dc'){ doc.kind = dcKind(doc); doc.comp = 'Expert'; if (doc.sale){ doc.saleInv = doc.sale.inv; delete doc.sale; } delete doc.nc; delete doc.keepCust; }
     if (m !== 'mi' && !d.id && isAutoNo(doc.no) && !doc.no.endsWith('/' + fyOf(doc.date))) doc.no = vno(col, doc.no.split('/')[0], 'no', doc.date);
@@ -2297,8 +2318,8 @@ const MATACT = {
           if ((k.exec || null) !== (s0.exec_id || null)){ const x = (PRDIR || []).find(y => y.id === k.exec); ch.exec_id = k.exec || null; ch.exec_name = x ? x.name : ''; }
           if ((k.mgr || null) !== (s0.mgr_id || null)){ const x = (PRDIR || []).find(y => y.id === k.mgr); ch.mgr_id = k.mgr || null; ch.mgr_name = x ? x.name : ''; }
           if (Object.keys(ch).length){ ch.updated_at = nowISO(); const r = await Store.sb.from('pr_suppliers').update(ch).eq('id', k.id); if (!r.error){ Object.assign(s0, ch); await logAct('Inventory', 'Supplier details updated from GRN: ' + (s0.name || d.supName)); } } }
-        for (const l of clean){ if (l.item === '__new') await niCreate(l); }
-        doc.lines = clean; delete doc.ns;
+        for (const l of clean){ if (l.item === '__new'){ l.ni.comp = doc.comp; await niCreate(l); } }
+        doc.lines = clean; delete doc.ns; await teamItems(clean, doc.comp); await teamSupplier(doc);
       }
       await Store.set(col, id, doc);
       if (m === 'mi') for (const l of clean){ if (l.name && l.item){ const k = mapKey(l.name), old = D.mat_map.get(k); if (!old || old.item !== l.item) await Store.set('mat_map', k, {name:l.name, item:l.item, by:S.me, at:nowISO()}); } }
@@ -3186,20 +3207,20 @@ const XACT2 = {
     const rows = [...M.values()].filter(r => F.spall || r.left > 0).filter(r => !F.spex || r.exec === F.spex).sort((a, b) => exName(a.exec).localeCompare(exName(b.exec)) || a.party.localeCompare(b.party));
     return exportSheet('Pending_Samples', 'Pending Samples', ['Customer','Executive','Stock item','Part no','Pending RDC','Out','In','Pending','Pending value'], rows.map(r => [r.party, exName(r.exec), D.inv_items.get(r.item)?.name || '', D.inv_items.get(r.item)?.part || '', [...r.dcs].join(', '), r.outQ, r.inQ, r.left, r2(r.leftV)]), [34,18,34,10,24,10,10,10,14]); },
   xClosing:() => { const st = stockMap(); const rows = [...D.inv_items.values()].map(x => ({x, s:st.get(x.id) || {q:0, v:0, rate:0}})).filter(r => r.s.q > 0 || F.csall).sort((a, b) => String(a.x.part).localeCompare(String(b.x.part)));
-    return exportSheet('Closing_Stock_' + TODAY, 'Closing Stock', ['Part no','Stock item','Category','Sub category','Brand','Company','Closing qty','Unit','Rate / piece','Taxable value'],
+    return exportSheet('Closing_Stock_' + TODAY, 'Closing Stock', ['Part no','Stock item','Category','Sub category','Brand','Team','Closing qty','Unit','Rate / piece','Taxable value'],
       rows.map(({x, s}) => [x.part, x.name, xnm('inv_cats', x.cat), xnm('inv_subs', x.sub), xnm('inv_brands', x.brand), x.comp ? compOf(x.comp) : '', s.q, D.inv_units.get(x.unit)?.unit || '', r2(s.q > 0 ? s.v / s.q : s.rate), r2(s.v)]), [10,36,18,18,18,10,12,8,14,16]); },
   xStock:() => { const nm = (col, id) => D[col].get(id)?.name || ''; if (F.stkI){ const x = D.inv_items.get(F.stkI), L = itemMoves(F.stkI); let q = 0, v = 0; return exportSheet('Stock_' + (x?.part || '') + '_' + TODAY, 'Stock vouchers', ['Date','Particulars','Voucher type','Voucher no','In qty','In value','Out qty','Out value','Closing qty','Closing value'], L.map(r => { q += r.inQ - r.outQ; v += r.inV - r.outV; return [r.date, r.party, r.type, r.no, r.inQ || '', r.inV ? r2(r.inV) : '', r.outQ || '', r.outV ? r2(r.outV) : '', r2(q), r2(v)]; }), [12,36,18,16,10,14,10,14,12,14]); }
     return exportSheet('Stock_List_' + TODAY, 'Stock List', ['Part no','Product','Brand','Category','Sub category'],
     [...D.inv_items.values()].sort((a, b) => String(a.part).localeCompare(String(b.part))).map(x => [x.part, x.name, nm('inv_brands', x.brand), nm('inv_cats', x.cat), nm('inv_subs', x.sub)]), [10,40,18,18,18]); },
   xItemSample:() => exportSheet('Stock_item_import_sample', 'Stock items', IT_COLS,
-    [['MILTON STEEL THERMOWARE INNER TUFF JUG', 'MT-JUG-1L', 'Expert', 'Milton', 'Kitchen Appliances', 'Water jug', 'NOS', '70109010', '5'], ['Prestige OTG 19 Ltr PCR', '', 'Excoso', 'Prestige', 'Kitchen Appliances', 'OTG', 'NOS', '85166000', '18'], ['POLO T SHIRT COLOUR- BLACK', '', 'Excoso', 'Puma', 'Apparel', 'T Shirts', 'NOS', '', '']], [40,14,16,16,20,18,8,12,8]),
+    [['MILTON STEEL THERMOWARE INNER TUFF JUG', 'MT-JUG-1L', 'Karthik', 'Milton', 'Kitchen Appliances', 'Water jug', 'NOS', '70109010', '5'], ['Prestige OTG 19 Ltr PCR', '', 'Vignesh', 'Prestige', 'Kitchen Appliances', 'OTG', 'NOS', '85166000', '18'], ['POLO T SHIRT COLOUR- BLACK', '', 'Excoso', 'Puma', 'Apparel', 'T Shirts', 'NOS', '', '']], [40,14,16,16,20,18,8,12,8]),
   itImpGo:() => itImpGo(),
   xPsSample:() => exportSheet('Physical_stock_import_sample', 'Physical stock', PS_COLS,
-    [['10001', 'MILTON STEEL THERMOWARE INNER TUFF JUG', '12', '585', '', '', '', '', '', '', '', ''], ['', 'Prestige OTG 19 Ltr PCR', '3', '3807.5', '', 'Excoso', 'Prestige', 'Kitchen Appliances', 'OTG', 'NOS', '85166000', '18']], [10,40,14,14,14,16,16,20,18,8,12,8]),
+    [['10001', 'MILTON STEEL THERMOWARE INNER TUFF JUG', '12', '585', '', '', '', '', '', '', '', ''], ['', 'Prestige OTG 19 Ltr PCR', '3', '3807.5', '', 'Vignesh', 'Prestige', 'Kitchen Appliances', 'OTG', 'NOS', '85166000', '18']], [10,40,14,14,14,16,16,20,18,8,12,8]),
   psImpGo:() => psImpGo(),
   psImpClr:() => { PSIMP = null; forceRender = true; render(); },
   itImpClr:() => { ITIMP = null; forceRender = true; render(); },
-  xItems:() => exportSheet('Stock_Items', 'Stock Items', ['Part no','Stock name','Product code','Company','Brand','Category','Sub category','Unit','HSN','GST %'],
+  xItems:() => exportSheet('Stock_Items', 'Stock Items', ['Part no','Stock name','Product code','Team','Brand','Category','Sub category','Unit','HSN','GST %'],
     [...D.inv_items.values()].sort((a, b) => String(a.part).localeCompare(String(b.part))).map(x => [x.part, x.name, x.code || '', x.comp ? compOf(x.comp) : '', xnm('inv_brands', x.brand), xnm('inv_cats', x.cat), xnm('inv_subs', x.sub), D.inv_units.get(x.unit)?.unit || '', x.hsn || '', D.inv_gst.get(x.gst)?.rate ?? '']), [10,36,16,10,18,18,18,8,12,8]),
   xMaster:t => { const k = t.dataset.k, M = INVM[k]; return exportSheet(M.title.replace(/\s+/g, '_'), M.title.slice(0, 31), k === 'sub' ? ['Category', 'Sub category', 'Stock items'] : [M.title, 'Stock items'],
     invList(M.col).map(x => { const n = [...D.inv_items.values()].filter(y => y[k] === x.id).length; return k === 'sub' ? [D.inv_cats.get(x.cat)?.name || '', mLabel(k, x), n] : [mLabel(k, x), n]; }), [24, 24, 12]); }
@@ -3270,7 +3291,7 @@ const ACT = {
     if (o.hsn && !/^\d{4,8}$/.test(o.hsn)){ err.textContent = 'HSN code must be 4 to 8 digits.'; return; }
     const ed = F.invEdit && D.inv_items.get(F.invEdit);
     if (o.code && [...D.inv_items.values()].some(x => x.id !== (ed && ed.id) && String(x.code || '').toLowerCase() === o.code.toLowerCase())){ err.textContent = 'This product code is already used.'; return; }
-    if (!COMPS.includes(o.comp)){ err.textContent = 'Choose the product company.'; return; }
+    if (!TEAMS.includes(o.comp)){ err.textContent = 'Choose the team.'; return; }
     // brand, category, sub category and unit are typed: use the existing one, or create it now
     const mk = async (col, x) => { const nid = uid(col.slice(4, 7)), y = {...x, id:nid, by:S.me, at:nowISO()}; await Store.set(col, nid, y); return D[col].get(nid) || y; }, made = [];
     try {
