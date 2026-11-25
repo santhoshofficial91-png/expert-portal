@@ -1307,8 +1307,12 @@ const poNi = (l, d) => ({name:enqStrip(l.name) || String(l.name || '').trim(), c
 const dMon = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); return m ? `${m[3]}-${MONS[+m[2] - 1]}-${m[1].slice(2)}` : String(s || ''); };
 const MONS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 // the PO total with GST (what the PO Master and payment requests work with)
-const poGross = doc => r2(doc.aiTotal || (doc.lines || []).reduce((a, l) => a + (+l.value || 0) * (1 + (+l.gst || 0) / 100), 0));
+const poGross = doc => { const t = r2((doc.lines || []).reduce((a, l) => a + (+l.value || 0) * (1 + (+l.gst || 0) / 100), 0)); return doc.aiTotal && Math.abs(doc.aiTotal - t) <= 2 ? r2(doc.aiTotal) : t; };   // the PO's printed total when the rows still add up to it, else the rows
 async function poInMaster(no){ if (!Store.sb || !String(no || '').trim()) return false; const r = await Store.sb.rpc('po_master_has', {p_po:String(no).trim()}); return !r.error && r.data === true; }
+async function poMasterEdit(oldNo, doc){
+  const r = await Store.sb.rpc('po_master_edit', {p_old:oldNo || doc.no, p_po:doc.no, p_enq:[...new Set((doc.lines || []).map(l => l.enq).filter(Boolean))].join(', '), p_date:dMon(doc.date), p_sup:doc.supName, p_value:poGross(doc)});
+  if (r.error) throw r.error; return r.data;
+}
 async function poMaster(doc){
   const s = supFind(doc), req = s && s.exec_name ? s.exec_name : '';
   const r = await Store.sb.rpc('po_master_add', {p_po:doc.no, p_enq:[...new Set((doc.lines || []).map(l => l.enq).filter(Boolean))].join(', ') || doc.enq || '', p_date:dMon(doc.date), p_sup:doc.supName, p_value:poGross(doc), p_req:req});
@@ -1422,7 +1426,8 @@ const POACT = {
     const w = lines.findIndex(l => !(String(l.name || '').trim() || l.item) || !(+l.qty > 0)); if (w >= 0) return bad(`Row ${w + 1}: type the product and the quantity.`);
     if ([...D.mat_po.values()].some(x => x.id !== d.id && normName(x.no) === normName(d.no))) return bad('This PO number is already saved.');
     if (d.id){ const M = poRecvMap(); const sh = d.lines.findIndex((l, i) => (M.get(d.id + '|' + i) || {q:0}).q > 0 && !lines.includes(l)); if (sh >= 0) return bad(`Row ${sh + 1} already has goods received; it cannot be removed.`); }
-    if (!d.id && await poInMaster(d.no)) return bad(`${String(d.no).trim()} is already in the PO Master. This PO is not saved and nothing was changed.`);
+    const oldNo = d.id ? String(D.mat_po.get(d.id)?.no || '').trim() : '';
+    if ((!d.id || normName(oldNo) !== normName(d.no)) && await poInMaster(d.no)) return bad(`${String(d.no).trim()} is already in the PO Master. This PO is not saved and nothing was changed.`);
     const nw = lines.filter(l => l.item === '__new'); for (const [k2, l] of nw.entries()){ const e = niCheck(l, k2); if (e) return bad(e); }
     { const nn = nw.map(l => normName(l.ni.name)); if (new Set(nn).size < nn.length) return bad('Two new stock items have the same name. Change one.'); }
     t.disabled = true;
@@ -1431,8 +1436,8 @@ const POACT = {
     const doc = {...d, id, lines:clean, enq:[...new Set(clean.map(l => l.enq).filter(Boolean))].join(', '), value:r2(clean.reduce((a, l) => a + l.value, 0)), by:d.by || S.me, at:d.at || nowISO(), editedBy:d.id ? S.me : undefined, editedAt:d.id ? nowISO() : undefined};
     delete doc.supAddr;
     try { await Store.set('mat_po', id, doc); await logAct('Inventory', `Purchase Order ${d.id ? 'edited' : 'saved'}: ${doc.no} · ${doc.supName}`); } catch(e){ t.disabled = false; return bad('Could not save: ' + (e.message || e)); }
-    let pm = ''; if (!d.id) try { pm = await poMaster(doc); } catch(e){ toast('PO saved, but it could not be added to the PO Master: ' + (e.message || e)); }
-    toastOk(`Saved ${doc.no}${pm === 'added' ? ' and added to the PO Master' : ''}.`);
+    let pm = ''; try { pm = d.id ? await poMasterEdit(oldNo, doc) : await poMaster(doc); } catch(e){ toast('PO saved, but it could not be added to the PO Master: ' + (e.message || e)); }
+    toastOk(`Saved ${doc.no}${pm === 'added' ? ' and added to the PO Master' : pm === 'updated' ? ' · PO Master updated too' : ''}.`);
     F.po = null; F.justSaved = id; ACT.nav({dataset:{k:'po_rep'}}); },
   poNewItem:t => { const l = F.po && F.po.lines[+t.dataset.i]; if (!l) return; l.item = '__new'; l.ni = poNi(l, F.po); forceRender = true; render(); },
   poCancel:() => { F.po = null; ACT.nav({dataset:{k:'po_rep'}}); },
