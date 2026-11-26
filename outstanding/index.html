@@ -1003,7 +1003,16 @@ const supTeam = d => { const s = typeof supFind === 'function' ? supFind(d) : nu
 const teamFree = () => isAdm() || me()?.role === 'Manager';
 const teamLock = d => !!(d && d.po) && !teamFree();   // a GRN against a PO keeps the PO's team
 const teamSel = (m, d) => `<label class="f">Team *<select class="mdi" id="${m}_comp" data-m="${m}" data-k="comp" ${teamLock(d) ? 'disabled title="The team comes from the purchase order"' : ''}><option value="">Select team</option>${TEAMS.map(c => `<option ${d.comp === c ? 'selected' : ''}>${c}</option>`).join('')}</select>${teamLock(d) ? '<span class="mut" style="font-size:12px">From the purchase order</span>' : ''}</label>`;
-const teamFill = d => { if (d && !TEAMS.includes(d.comp)) d.comp = (d.po && D.mat_po.get(d.po)?.comp) || supTeam(d) || myTeam() || ''; };
+const teamFill = d => { if (!d) return; if (!TEAMS.includes(d.comp)) d.comp = (d.po && D.mat_po.get(d.po)?.comp) || supTeam(d) || myTeam() || '';
+  if (!d.exec && !d.execSet){ const po = d.po && D.mat_po.get(d.po), u = me(), s = typeof supFind === 'function' ? supFind(d) : null;
+    const pick = [po && po.exec, isPurExec(u) ? u.id : '', s && s.exec_id].find(id => id && purExecs(d.comp).some(x => x.id === id));
+    if (pick){ d.exec = pick; d.execName = userName(pick); } } };
+// purchase executives (their manager is one of the team managers); with a team, only that team's
+const isPurExec = u => !!u && u.active !== false && u.role === 'Executive' && !teamOfName(u.name) && !!teamOfUser(u);
+const purExecs = t => [...(ALLU.size ? ALLU : D.users).values()].filter(u => isPurExec(u) && (!t || teamOfUser(u) === t)).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+const userName = id => ((ALLU.size ? ALLU : D.users).get(id) || {}).name || '';
+const execSel = (m, d) => { const L = purExecs(TEAMS.includes(d.comp) ? d.comp : ''); if (d.exec && !L.some(x => x.id === d.exec) && userName(d.exec)) L.push({id:d.exec, name:userName(d.exec)});
+  return `<label class="f">Executive<select class="mdi" id="${m}_exec" data-m="${m}" data-k="exec" ${teamLock(d) ? 'disabled title="The executive comes from the purchase order"' : ''}><option value="">Select executive</option>${L.map(u => `<option value="${esc(u.id)}" ${d.exec === u.id ? 'selected' : ''}>${esc(u.name)}${TEAMS.includes(d.comp) ? '' : ' · ' + esc(teamOfUser(u))}</option>`).join('')}</select></label>`; };
 const STCODE = {'35':'Andaman and Nicobar Islands','37':'Andhra Pradesh','12':'Arunachal Pradesh','18':'Assam','10':'Bihar','04':'Chandigarh','22':'Chhattisgarh','26':'Dadra and Nagar Haveli and Daman and Diu','07':'Delhi','30':'Goa','24':'Gujarat','06':'Haryana','02':'Himachal Pradesh','01':'Jammu and Kashmir','20':'Jharkhand','29':'Karnataka','32':'Kerala','38':'Ladakh','31':'Lakshadweep','23':'Madhya Pradesh','27':'Maharashtra','14':'Manipur','17':'Meghalaya','15':'Mizoram','13':'Nagaland','21':'Odisha','34':'Puducherry','03':'Punjab','08':'Rajasthan','11':'Sikkim','33':'Tamil Nadu','36':'Telangana','16':'Tripura','09':'Uttar Pradesh','05':'Uttarakhand','19':'West Bengal'};
 let PRDIR = null;  // Purchase people (executives and managers) for a new supplier; empty if this account cannot read them
 function loadPrDir(){ if (PRDIR || !SB) return; PRDIR = []; Store.sb.rpc('pr_directory').then(r => { if (!r.error){ PRDIR = (r.data || []).filter(x => x.active !== false); forceRender = true; render(); } }, () => {}); }
@@ -1105,7 +1114,7 @@ function miFormHTML(){
       <label class="f">Invoice date *${mInp('mi', 'invDate', d.invDate, {type:'date'})}</label>
       <label class="f">Supplier *${mInp('mi', 'supName', d.supName, {list:'mi_sups'})}</label>
       <label class="f">Supplier GST number${mInp('mi', 'supGst', d.supGst, {ph:'33ABCDE1234F1Z5'})}</label>
-      ${teamSel('mi', d)}
+      ${teamSel('mi', d)}${execSel('mi', d)}
     </div>${poBanner(d)}<datalist id="mi_sups">${sups.map(s => `<option value="${esc(s)}">`).join('')}</datalist>${nsBox(d)}
     <datalist id="mi_brs">${invList('inv_brands').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="mi_cats">${invList('inv_cats').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="mi_subs">${[...new Set(invList('inv_subs').map(x => x.name))].map(x => `<option value="${esc(x)}">`).join('')}</datalist><datalist id="mi_units">${invList('inv_units').map(x => `<option value="${esc(x.unit)}">${esc(x.name)}</option>`).join('')}</datalist>
     <div class="tw" style="margin-top:10px"><table class="mtab"><thead><tr><th>Stock item *</th><th>HSN</th><th class="r">Qty *</th><th>Unit</th><th class="r">Rate / piece</th><th class="r">Taxable value *</th><th>GST %</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -1346,7 +1355,7 @@ async function poMasterEdit(oldNo, doc){
   if (r.error) throw r.error; return r.data;
 }
 async function poMaster(doc){
-  const s = supFind(doc), req = s && s.exec_name ? s.exec_name : '';
+  const s = supFind(doc), req = doc.execName || (s && s.exec_name ? s.exec_name : '');
   const r = await Store.sb.rpc('po_master_add', {p_po:doc.no, p_enq:[...new Set((doc.lines || []).map(l => l.enq).filter(Boolean))].join(', ') || doc.enq || '', p_date:dMon(doc.date), p_sup:doc.supName, p_value:poGross(doc), p_req:req});
   if (r.error) throw r.error; return r.data;
 }
@@ -1364,7 +1373,7 @@ function poFormHTML(){
       <label class="f">PO date *${mInp('po', 'date', d.date, {type:'date'})}</label>
       <label class="f">Supplier *${mInp('po', 'supName', d.supName, {list:'po_sups'})}</label>
       <label class="f">Supplier GST number${mInp('po', 'supGst', d.supGst, {ph:'33ABCDE1234F1Z5'})}</label>
-      ${teamSel('po', d)}
+      ${teamSel('po', d)}${execSel('po', d)}
       <label class="f" style="grid-column:span 2">Remarks${mInp('po', 'remarks', d.remarks)}</label>
     </div><datalist id="po_sups">${sups.map(x => `<option value="${esc(x)}">`).join('')}</datalist>${d.supName && SUPL !== null && !supKnown(d) ? `<div class="nibox" style="margin-top:8px"><b>${esc(supNewName(d))}</b> <span class="mut">is not in the Supplier List. It is created there when you save the PO${supGstClash(d) ? ' (same name with a different GST number, so the GST number is added to the name)' : ''}.</span></div>` : ''}
     <datalist id="po_brs">${invList('inv_brands').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="po_cats">${invList('inv_cats').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="po_subs">${[...new Set(invList('inv_subs').map(x => x.name))].map(x => `<option value="${esc(x)}">`).join('')}</datalist><datalist id="po_units">${invList('inv_units').map(x => `<option value="${esc(x.unit)}">${esc(x.name)}</option>`).join('')}</datalist>
@@ -1386,13 +1395,13 @@ function viewPOReg(){
   const sups = [...new Set(L.map(x => x.po.supName).filter(Boolean))].sort();
   L = L.filter(x => (!fT || compOf(x.po.comp) === fT) && (!fs || x.st === fs) && (!fp || x.po.supName === fp) && (!q || [x.po.no, x.po.supName, x.po.enq, ...x.X.map(l => l.name + ' ' + l.enq + ' ' + itemLbl(l.item))].join(' ').toLowerCase().includes(q))).sort((a, b) => String(b.po.date).localeCompare(String(a.po.date)) || String(b.po.no).localeCompare(String(a.po.no)));
   const P = pg(L, 'poreg', 50), tot = L.reduce((a, x) => a + poGross(x.po), 0);
-  const body = P.items.map(({po, st}) => `<tr class="clk${F.poLast === po.id ? ' sel' : ''}" data-act="poOpen" data-id="${esc(po.id)}" tabindex="0" title="Open this purchase order"><td class="nowrap">${esc(fmtD(po.date))}</td><td class="mono nowrap"><b>${esc(po.no)}</b></td><td class="wrap">${esc(po.supName)}</td><td>${esc(compOf(po.comp) || '—')}</td><td class="mono">${esc(po.enq || '')}</td><td class="r num">${inr(poGross(po))}</td><td>${poPill(st)}</td><td class="nowrap">${poRowActs(po)}</td></tr>`).join('');
+  const body = P.items.map(({po, st}) => `<tr class="clk${F.poLast === po.id ? ' sel' : ''}" data-act="poOpen" data-id="${esc(po.id)}" tabindex="0" title="Open this purchase order"><td class="nowrap">${esc(fmtD(po.date))}</td><td class="mono nowrap"><b>${esc(po.no)}</b></td><td class="wrap">${esc(po.supName)}</td><td>${esc(compOf(po.comp) || '—')}</td><td>${esc(po.execName || userName(po.exec) || '—')}</td><td class="mono">${esc(po.enq || '')}</td><td class="r num">${inr(poGross(po))}</td><td>${poPill(st)}</td><td class="nowrap">${poRowActs(po)}</td></tr>`).join('');
   return `<div class="head"><div><h1>Purchase Order Register</h1><p class="sub">${D.mat_po.size} purchase order${D.mat_po.size === 1 ? '' : 's'} · click one to see its items</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-act="go" data-k="po_new">+ Create Purchase Order</button>${XB('xPoReg')}</div></div>
   <div class="bar sfb"><label class="sf"><span>Search</span><input id="poq" data-f="poq" type="search" placeholder="PO no, supplier, ENQ, item" value="${esc(F.poq || '')}" autocomplete="off"></label>
    <label class="sf"><span>Team</span><select data-f="poT"><option value="">All</option>${TEAMS.map(x => `<option ${fT === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
    <label class="sf"><span>Supplier</span><select data-f="pop"><option value="">All</option>${sups.map(x => `<option ${fp === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
    <label class="sf"><span>Status</span><select data-f="pos"><option value="">All</option>${Object.keys(PO_PILL).map(x => `<option ${fs === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
-  <div class="tw"><table><thead><tr class="ttop"><td colspan="4"></td><td class="r">Total (${L.length})</td><td class="r num">${inr(tot)}</td><td colspan="2"></td></tr><tr><th>PO date</th><th>PO no</th><th>Supplier</th><th>Team</th><th>ENQ</th><th class="r">Amount (with GST)</th><th>Status</th><th></th></tr></thead><tbody>${body || '<tr><td colspan="8" class="empty">No purchase orders yet. Create one or upload the PO from Tally.</td></tr>'}</tbody></table></div>${P.html}`;
+  <div class="tw"><table><thead><tr class="ttop"><td colspan="5"></td><td class="r">Total (${L.length})</td><td class="r num">${inr(tot)}</td><td colspan="2"></td></tr><tr><th>PO date</th><th>PO no</th><th>Supplier</th><th>Team</th><th>Executive</th><th>ENQ</th><th class="r">Amount (with GST)</th><th>Status</th><th></th></tr></thead><tbody>${body || '<tr><td colspan="9" class="empty">No purchase orders yet. Create one or upload the PO from Tally.</td></tr>'}</tbody></table></div>${P.html}`;
 }
 // buttons beside a PO: print for everyone, edit and delete only for the Admin
 function poRowActs(po){ const hasG = poLinesX(po).some(l => l.recv > 0);
@@ -1403,7 +1412,7 @@ function viewPOOne(po){
   const rows = X.map((l, i) => { const x = D.inv_items.get(l.item); return `<tr><td class="c">${i + 1}</td><td class="wrap"><b>${esc(l.name)}</b></td><td class="mono">${esc(l.enq || '')}</td><td class="wrap">${x ? `<span class="mono">${esc(x.part)}</span> ${esc(x.name)}` : '<span class="mut">Not linked</span>'}</td><td class="mono">${esc(l.hsn || x?.hsn || '')}</td><td class="r">${esc(String(+l.gst || 0))}%</td><td class="r num">${qtyF(l.qty)} ${esc(String(l.unit || (x ? unitOf(x.id) : '')).toUpperCase())}</td><td class="r num">${inr(l.rate)}</td><td class="r num">${inr(l.value)}</td><td class="r num">${qtyF(l.recv)}</td></tr>`; }).join('');
   const f = (k, v) => `<div><div class="mut" style="font-size:12px">${k}</div><b>${v || '—'}</b></div>`;
   return `<div class="head"><div><button class="btn sm" data-act="poBack">← Purchase Order Register</button><h1 style="margin-top:8px">${esc(po.no)}</h1><p class="sub">${esc(po.supName)} · ${poPill(st)}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${poRowActs(po)}</div></div>
-  <div class="card"><div class="igrid">${f('PO number', esc(po.no))}${f('PO date', esc(fmtD(po.date)))}${f('Supplier', esc(po.supName))}${f('Supplier GST', esc(po.supGst || s.gstin || ''))}${f('Team', esc(compOf(po.comp)))}${f('ENQ', esc(po.enq || ''))}${f('Company', 'Branditude')}${f('Remarks', esc(po.remarks || ''))}</div></div>
+  <div class="card"><div class="igrid">${f('PO number', esc(po.no))}${f('PO date', esc(fmtD(po.date)))}${f('Supplier', esc(po.supName))}${f('Supplier GST', esc(po.supGst || s.gstin || ''))}${f('Team', esc(compOf(po.comp)))}${f('Executive', esc(po.execName || userName(po.exec)))}${f('ENQ', esc(po.enq || ''))}${f('Company', 'Branditude')}${f('Remarks', esc(po.remarks || ''))}</div></div>
   <div class="tw" style="margin-top:12px"><table><thead><tr><th>Sl</th><th>Product as on PO</th><th>ENQ</th><th>Stock item</th><th>HSN</th><th class="r">GST</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th><th class="r">Received</th></tr></thead><tbody>${rows}</tbody>
   <tfoot><tr><td colspan="8" class="r">Taxable value</td><td class="r num">${inr(sub)}</td><td></td></tr><tr><td colspan="8" class="r">GST</td><td class="r num">${inr(gst)}</td><td></td></tr><tr><td colspan="8" class="r"><b>Total</b></td><td class="r num"><b>${inr(poGross(po))}</b></td><td></td></tr></tfoot></table></div>`;
 }
@@ -1458,7 +1467,7 @@ function poInfo(d, l, i){
 }
 function poToGrn(po){
   const X = poLinesX(po).filter(l => l.left > 1e-9);
-  return {invNo:'', invDate:TODAY, supName:po.supName, supGst:po.supGst || '', comp:compOf(po.comp), po:po.id, poNo:po.no,
+  return {invNo:'', invDate:TODAY, supName:po.supName, supGst:po.supGst || '', comp:compOf(po.comp), exec:po.exec || '', execName:po.execName || '', po:po.id, poNo:po.no,
     lines:X.map(l => { const it = l.item || guessItem(l.name, l.hsn) || '__new', g = GSTR.includes(+l.gst) ? +l.gst : (it !== '__new' && itemGst(it)) || 18;
       return {name:l.name, item:it, ni:it === '__new' ? {name:String(l.name || '').replace(/[\s\-–]*\d{3,6}\s*$/, '').trim(), code:'', comp:compOf(po.comp), brand:'', cat:'', sub:'', unit:String(l.unit || '').toUpperCase()} : undefined, hsn:l.hsn || '', qty:l.left, unit:l.unit || '', rate:r2(+l.rate || 0), taxable:r2(l.left * (+l.rate || 0)), gst:g, rateTyped:1, po:po.id, pl:l.i, enq:l.enq || po.enq || ''}; })};
 }
@@ -1483,7 +1492,7 @@ const POACT = {
     try { await poSupplier(d); for (const l of nw) await niCreate(l); } catch(e){ t.disabled = false; forceRender = true; render(); return bad('Could not create: ' + (e.message || e)); }
     const id = d.id || uid('po'), clean = lines.map(l => ({name:String(l.name || '').trim() || (l.item ? D.inv_items.get(l.item)?.name || '' : ''), enq:String(l.enq || '').trim().toUpperCase() || enqOf(l.name) || '', item:l.item && l.item !== '__new' ? l.item : '', hsn:String(l.hsn || '').replace(/\D/g, ''), qty:r2(l.qty), unit:l.unit || '', rate:r2(l.rate), value:r2(l.value || (+l.qty || 0) * (+l.rate || 0)), gst:+l.gst || 0}));
     const doc = {...d, id, lines:clean, enq:[...new Set(clean.map(l => l.enq).filter(Boolean))].join(', '), value:r2(clean.reduce((a, l) => a + l.value, 0)), by:d.by || S.me, at:d.at || nowISO(), editedBy:d.id ? S.me : undefined, editedAt:d.id ? nowISO() : undefined};
-    delete doc.supAddr; delete doc.teamSet; try { await teamItems(clean, doc.comp); await teamSupplier(doc); } catch(e){}
+    delete doc.supAddr; delete doc.teamSet; delete doc.execSet; doc.execName = doc.exec ? userName(doc.exec) : ''; try { await teamItems(clean, doc.comp); await teamSupplier(doc); } catch(e){}
     try { await Store.set('mat_po', id, doc); await logAct('Inventory', `Purchase Order ${d.id ? 'edited' : 'saved'}: ${doc.no} · ${doc.supName}`); } catch(e){ t.disabled = false; return bad('Could not save: ' + (e.message || e)); }
     let pm = ''; try { pm = d.id ? await poMasterEdit(oldNo, doc) : await poMaster(doc); } catch(e){ toast('PO saved, but it could not be added to the PO Master: ' + (e.message || e)); }
     toastOk(`Saved ${doc.no}${pm === 'added' ? ' and added to the PO Master' : pm === 'updated' ? ' · PO Master updated too' : ''}.`);
@@ -1492,7 +1501,7 @@ const POACT = {
   poCancel:() => { F.po = null; ACT.nav({dataset:{k:'po_rep'}}); },
   poOpen:t => { F.poView = F.poLast = t.dataset.id; forceRender = true; render(); window.scrollTo(0, 0); },
   poBack:() => { F.poView = ''; forceRender = true; render(); stkFocus(); },
-  xPoReg:() => exportSheet('Purchase_Orders', 'Purchase Orders', ['PO date', 'PO no', 'Supplier', 'Team', 'ENQ', 'Amount (with GST)'], [...D.mat_po.values()].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(po => [fmtD(po.date), po.no, po.supName, compOf(po.comp), po.enq || '', poGross(po)])),
+  xPoReg:() => exportSheet('Purchase_Orders', 'Purchase Orders', ['PO date', 'PO no', 'Supplier', 'Team', 'Executive', 'ENQ', 'Amount (with GST)'], [...D.mat_po.values()].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(po => [fmtD(po.date), po.no, po.supName, compOf(po.comp), po.execName || userName(po.exec), po.enq || '', poGross(po)])),
   poEdit:t => { if (!isAdm()) return; const x = D.mat_po.get(t.dataset.id); if (!x) return; F.po = JSON.parse(JSON.stringify(x)); F.justSaved = ''; ACT.nav({dataset:{k:'po_new'}}); },
   poDel:async t => { if (!isAdm()) return; const x = D.mat_po.get(t.dataset.id); if (!x || !confirm(`Delete purchase order ${x.no}?`)) return; if (F.poView === x.id) F.poView = ''; await Store.del('mat_po', x.id); await logAct('Inventory', 'Purchase Order deleted: ' + x.no); forceRender = true; render(); },
   poClose:async t => { const x = D.mat_po.get(t.dataset.id); if (!x) return; if (!x.closed && !confirm(`Close ${x.no}? The quantity not received stays as "Closed short" and the PO no longer shows as open.`)) return;
@@ -1633,7 +1642,7 @@ function viewMatIn(mode){
     return `<div class="head"><div><h1>${F.mi.id ? 'Edit GRN' : 'Create GRN'}</h1><p class="sub">Goods received from a supplier. Upload the purchase invoice and AI fills the entry, or type it.</p></div><button class="btn" data-act="go" data-k="mat_in">GRN Register</button></div>
     ${F.mi.id ? '' : aiBar('mi', 'purchase invoice')}${F.mi.id || F.mi.po ? '' : (L => L.length ? `<div class="bar" style="margin:6px 0 10px"><label class="sf"><span>Or receive against an open purchase order</span><select id="mi_pofill"><option value="">Pick a PO…</option>${L.map(po => `<option value="${esc(po.id)}">${esc(po.no + ' · ' + po.supName + (po.enq ? ' · ENQ ' + po.enq : ''))}</option>`).join('')}</select></label></div>` : '')([...D.mat_po.values()].filter(poOpen).sort((a, b) => String(b.date).localeCompare(String(a.date))))}${miFormHTML()}`;
   }
-  return regHTML('mi', 'GRN Register', `${D.mat_in.size} GRN${D.mat_in.size === 1 ? '' : 's'} · saved items add to the closing stock`, '<button class="btn pri" data-act="go" data-k="mat_in_new">+ Create GRN</button>', {extra:[{h:'Team', v:d => esc(compOf(d.comp) || '—')}]});
+  return regHTML('mi', 'GRN Register', `${D.mat_in.size} GRN${D.mat_in.size === 1 ? '' : 's'} · saved items add to the closing stock`, '<button class="btn pri" data-act="go" data-k="mat_in_new">+ Create GRN</button>', {extra:[{h:'Team', v:d => esc(compOf(d.comp) || '—')}, {h:'Executive', v:d => esc(d.execName || userName(d.exec) || '—')}]});
 }
 function savedBar(m){
   const s = F.justSaved && D[MATCOL[m]].get(F.justSaved); if (!s) return '';
@@ -2164,7 +2173,8 @@ function matInput(t){
   if (k.startsWith('nc.')){ d.nc = d.nc || {}; d.nc[k.slice(3)] = v; if (k === 'nc.on'){ forceRender = true; render(); } return; }
   if (k.startsWith('ni.')){ const l = d.lines[+t.dataset.l]; if (l){ l.ni = l.ni || {}; l.ni[k.slice(3)] = v; } return; }
   if (t.dataset.l == null){ d[k] = v;
-    if ((m === 'mi' || m === 'po') && k === 'comp'){ d.teamSet = 1; forceRender = true; render(); return; }
+    if ((m === 'mi' || m === 'po') && k === 'comp'){ d.teamSet = 1; if (d.exec && teamOfUser((ALLU.size ? ALLU : D.users).get(d.exec)) !== v){ d.exec = ''; d.execName = ''; } forceRender = true; render(); return; }
+    if ((m === 'mi' || m === 'po') && k === 'exec'){ d.execSet = 1; d.execName = userName(v); const t = teamOfUser((ALLU.size ? ALLU : D.users).get(v)); if (v && t && t !== d.comp && !teamLock(d)){ d.comp = t; d.teamSet = 1; } forceRender = true; render(); return; }
     if ((m === 'mi' || m === 'po') && k === 'supName' && !d.teamSet && !teamLock(d)){ const tt = supTeam({supName:v, supGst:d.supGst}); if (tt && tt !== d.comp){ d.comp = tt; const e = document.getElementById(m + '_comp'); if (e) e.value = tt; } }
     if (m === 'rn' && k === 'dc'){ const x = D.mat_dc.get(v); if (x){ d.party = x.party; d.lines = dcPending(x, d.id).filter(l => l.left > 0).map(l => ({item:l.item, qty:l.left, rate:l.rate, value:r2(l.left * (+l.rate || 0))})); } forceRender = true; render(); return; }
     if (m === 'mi' && k === 'supGst'){ d.supGst = v.toUpperCase().replace(/\s/g, ''); const s = (SUPL || []).find(x => x.gstin === d.supGst); if (s && !d.supName){ d.supName = s.name; const n = document.getElementById('mi_supName'); if (n) n.value = s.name; } }
@@ -2345,7 +2355,7 @@ const MATACT = {
     err.textContent = '';
     const id = d.id || uid(m), clean = lines.map(l => { const o = {...l}; delete o.rateTyped; delete o.gstTouched; delete o.back; delete o.left; ['qty', 'rate', 'taxable', 'value', 'gst'].forEach(k => { if (k in o) o[k] = r2(o[k]); }); return o; });
     const doc = {...d, id, lines:clean, by:d.by || S.me, at:d.at || nowISO(), editedBy:d.id ? S.me : undefined, editedAt:d.id ? nowISO() : undefined};
-    delete doc.aiTotal; delete doc.ks; delete doc.teamSet; if (m === 'mi'){ const T = miTotals(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; doc.igst = T.inter; doc.comp = compOf(doc.comp); if (!doc.grnNo) doc.grnNo = vno('mat_in', 'GRN', 'grnNo', doc.at);
+    delete doc.aiTotal; delete doc.ks; delete doc.teamSet; delete doc.execSet; doc.execName = doc.exec ? userName(doc.exec) : ''; if (m === 'mi'){ const T = miTotals(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; doc.igst = T.inter; doc.comp = compOf(doc.comp); if (!doc.grnNo) doc.grnNo = vno('mat_in', 'GRN', 'grnNo', doc.at);
       const sm = (SUPL || []).find(x => (doc.supGst && x.gstin === doc.supGst) || normName(x.name) === normName(doc.supName)), sp = d.ks && d.ks.addr1 ? d.ks : sm && sm.addr1 ? sm : (d.ns && d.ns.addr1 ? d.ns : sm); if (sp) doc.supAddr = {addr1:sp.addr1 || '', addr2:sp.addr2 || '', addr3:sp.addr3 || ''}; }
     if (m === 'dc'){ doc.kind = dcKind(doc); doc.comp = 'Expert'; if (doc.sale){ doc.saleInv = doc.sale.inv; delete doc.sale; } delete doc.nc; delete doc.keepCust; }
     if (m !== 'mi' && !d.id && isAutoNo(doc.no) && !doc.no.endsWith('/' + fyOf(doc.date))) doc.no = vno(col, doc.no.split('/')[0], 'no', doc.date);
