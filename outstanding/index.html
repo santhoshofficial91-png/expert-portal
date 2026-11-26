@@ -1012,7 +1012,7 @@ const isPurExec = u => !!u && u.active !== false && u.role === 'Executive' && !t
 const purExecs = t => [...(ALLU.size ? ALLU : D.users).values()].filter(u => isPurExec(u) && (!t || teamOfUser(u) === t)).sort((a, b) => String(a.name).localeCompare(String(b.name)));
 const userName = id => ((ALLU.size ? ALLU : D.users).get(id) || {}).name || '';
 const execSel = (m, d) => { const L = purExecs(TEAMS.includes(d.comp) ? d.comp : ''); if (d.exec && !L.some(x => x.id === d.exec) && userName(d.exec)) L.push({id:d.exec, name:userName(d.exec)});
-  return `<label class="f">Executive<select class="mdi" id="${m}_exec" data-m="${m}" data-k="exec" ${teamLock(d) ? 'disabled title="The executive comes from the purchase order"' : ''}><option value="">Select executive</option>${L.map(u => `<option value="${esc(u.id)}" ${d.exec === u.id ? 'selected' : ''}>${esc(u.name)}${TEAMS.includes(d.comp) ? '' : ' · ' + esc(teamOfUser(u))}</option>`).join('')}</select></label>`; };
+  return `<label class="f">Executive *<select class="mdi" id="${m}_exec" data-m="${m}" data-k="exec" ${teamLock(d) && d.exec ? 'disabled title="The executive comes from the purchase order"' : ''}><option value="">Select executive</option>${L.map(u => `<option value="${esc(u.id)}" ${d.exec === u.id ? 'selected' : ''}>${esc(u.name)}${TEAMS.includes(d.comp) ? '' : ' · ' + esc(teamOfUser(u))}</option>`).join('')}</select></label>`; };
 const STCODE = {'35':'Andaman and Nicobar Islands','37':'Andhra Pradesh','12':'Arunachal Pradesh','18':'Assam','10':'Bihar','04':'Chandigarh','22':'Chhattisgarh','26':'Dadra and Nagar Haveli and Daman and Diu','07':'Delhi','30':'Goa','24':'Gujarat','06':'Haryana','02':'Himachal Pradesh','01':'Jammu and Kashmir','20':'Jharkhand','29':'Karnataka','32':'Kerala','38':'Ladakh','31':'Lakshadweep','23':'Madhya Pradesh','27':'Maharashtra','14':'Manipur','17':'Meghalaya','15':'Mizoram','13':'Nagaland','21':'Odisha','34':'Puducherry','03':'Punjab','08':'Rajasthan','11':'Sikkim','33':'Tamil Nadu','36':'Telangana','16':'Tripura','09':'Uttar Pradesh','05':'Uttarakhand','19':'West Bengal'};
 let PRDIR = null;  // Purchase people (executives and managers) for a new supplier; empty if this account cannot read them
 function loadPrDir(){ if (PRDIR || !SB) return; PRDIR = []; Store.sb.rpc('pr_directory').then(r => { if (!r.error){ PRDIR = (r.data || []).filter(x => x.active !== false); forceRender = true; render(); } }, () => {}); }
@@ -1486,6 +1486,7 @@ const POACT = {
     const oldNo = d.id ? String(D.mat_po.get(d.id)?.no || '').trim() : '';
     if ((!d.id || normName(oldNo) !== normName(d.no)) && await poInMaster(d.no)) return bad(`${String(d.no).trim()} is already in the PO Master. This PO is not saved and nothing was changed.`);
     if (!TEAMS.includes(d.comp)) return bad('Pick the team (Karthik, Vignesh or Sundar).');
+    if (!d.exec || !userName(d.exec)) return bad('Pick the executive.');
     const nw = lines.filter(l => l.item === '__new'); for (const [k2, l] of nw.entries()){ l.ni.comp = d.comp; const e = niCheck(l, k2); if (e) return bad(e); }
     { const nn = nw.map(l => normName(l.ni.name)); if (new Set(nn).size < nn.length) return bad('Two new stock items have the same name. Change one.'); }
     t.disabled = true;
@@ -2174,7 +2175,7 @@ function matInput(t){
   if (k.startsWith('ni.')){ const l = d.lines[+t.dataset.l]; if (l){ l.ni = l.ni || {}; l.ni[k.slice(3)] = v; } return; }
   if (t.dataset.l == null){ d[k] = v;
     if ((m === 'mi' || m === 'po') && k === 'comp'){ d.teamSet = 1; if (d.exec && teamOfUser((ALLU.size ? ALLU : D.users).get(d.exec)) !== v){ d.exec = ''; d.execName = ''; } forceRender = true; render(); return; }
-    if ((m === 'mi' || m === 'po') && k === 'exec'){ d.execSet = 1; d.execName = userName(v); const t = teamOfUser((ALLU.size ? ALLU : D.users).get(v)); if (v && t && t !== d.comp && !teamLock(d)){ d.comp = t; d.teamSet = 1; } forceRender = true; render(); return; }
+    if ((m === 'mi' || m === 'po') && k === 'exec'){ if (teamLock(d) && d.exec) return; d.execSet = 1; d.execName = userName(v); const t = teamOfUser((ALLU.size ? ALLU : D.users).get(v)); if (v && t && t !== d.comp && !teamLock(d)){ d.comp = t; d.teamSet = 1; } forceRender = true; render(); return; }
     if ((m === 'mi' || m === 'po') && k === 'supName' && !d.teamSet && !teamLock(d)){ const tt = supTeam({supName:v, supGst:d.supGst}); if (tt && tt !== d.comp){ d.comp = tt; const e = document.getElementById(m + '_comp'); if (e) e.value = tt; } }
     if (m === 'rn' && k === 'dc'){ const x = D.mat_dc.get(v); if (x){ d.party = x.party; d.lines = dcPending(x, d.id).filter(l => l.left > 0).map(l => ({item:l.item, qty:l.left, rate:l.rate, value:r2(l.left * (+l.rate || 0))})); } forceRender = true; render(); return; }
     if (m === 'mi' && k === 'supGst'){ d.supGst = v.toUpperCase().replace(/\s/g, ''); const s = (SUPL || []).find(x => x.gstin === d.supGst); if (s && !d.supName){ d.supName = s.name; const n = document.getElementById('mi_supName'); if (n) n.value = s.name; } }
@@ -2325,6 +2326,7 @@ const MATACT = {
       d.invNo = String(d.invNo || '').trim(); d.supName = String(d.supName || '').trim(); d.supGst = String(d.supGst || '').toUpperCase().trim();
       if (!d.invNo || !d.invDate || !d.supName) return bad('Fill in the invoice number, invoice date and supplier.');
       if (!TEAMS.includes(d.comp)) return bad('Pick the team (Karthik, Vignesh or Sundar).');
+      if (!d.exec || !userName(d.exec)) return bad('Pick the executive.');
       if (d.supGst && !/^\d{2}[A-Z0-9]{13}$/.test(d.supGst)) return bad('The supplier GST number should be 15 characters.');
       if (OUR_GSTS.includes(d.supGst)) return bad('That GST number is ours. Type the supplier GST number.');
       if (!lines.length) return bad('Add at least one product.');
