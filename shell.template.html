@@ -428,11 +428,11 @@ function buildNav(){
     }
   }
   // GRN / Delivery Challan / Receipt Note: a group each (create + list), right under Expenses
-  // Create Documents, then Physical Stock, then Document Registers
+  // Create Vouchers, then Vouchers Register, then Closing Stock Details
   const grp = (g, lab, ks) => { const its = ks.map(get).filter(Boolean); if (its.length) h += groupHTML(g, lab, its.map(it => itemHTML('outstanding', it)).join(''), its.some(it => on('outstanding', it))); };
-  grp('cdoc', 'Create Documents', ['po_new', 'mat_in_new', 'dc_new', 'rdc_new', 'rn_new', 'ps_new']);
+  grp('cdoc', 'Create Vouchers', ['po_new', 'mat_in_new', 'dc_new', 'rdc_new', 'rn_new', 'ps_new']);
+  grp('dreg', 'Vouchers Register', ['mat_po', 'mat_in', 'mat_dc', 'mat_rn', 'mat_ps', 'po_rep']);
   const cs = get('cls_stock'); if (cs) h += topBtn('outstanding', cs);
-  grp('dreg', 'Document Registers', ['mat_po', 'mat_in', 'mat_dc', 'mat_rn', 'mat_ps', 'po_rep']);
   ['smp_pend'].forEach(k => { const it = get(k); if (it) h += topBtn('outstanding', it); });
   ['chat', 'edits', 'activity'].forEach(k => { const it = get(k); if (it) h += topBtn('outstanding', it); });
   oi.filter(it => !used.has(it.k)).forEach(it => { h += it.children ? itemHTML('outstanding', it) : topBtn('outstanding', it); });
