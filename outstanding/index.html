@@ -1140,6 +1140,17 @@ function viewSamplesPending(){
   <div class="bar sfb"><label class="sf"><span>Search</span><input id="spq" data-f="spq" type="search" placeholder="Customer, executive, item, RDC no" value="${esc(F.spq || '')}" autocomplete="off"></label><label class="sf"><span>Executive</span><select data-f="spex"><option value="">All executives</option>${exs.map(([id, n]) => `<option value="${esc(id)}" ${ex === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label><button class="btn sm" style="align-self:end;margin-bottom:6px" data-act="spAll" aria-pressed="${all}">${all ? 'Hide fully returned' : 'Show fully returned too'}</button></div>
   <div class="tw"><table><thead><tr class="ttop"><td colspan="3"></td><td class="r">Total (${rows.length})</td><td class="r num">${qtyF(T('outQ'))}</td><td class="r num">${qtyF(T('inQ'))}</td><td class="r num">${qtyF(T('left'))}</td><td class="r num">${inr(T('leftV'))}</td></tr><tr><th>Customer</th><th>Executive</th><th>Stock item</th><th>Pending RDC</th><th class="r">Out</th><th class="r">In</th><th class="r">Pending</th><th class="r">Pending value</th></tr></thead><tbody>${body || '<tr><td colspan="8" class="empty">No samples pending. Every returnable DC has come back.</td></tr>'}</tbody></table></div>`;
 }
+// Ship to on a voucher: same as the default (customer / our office) unless unticked; typed here, saved only on this voucher
+const OUR_ADDR = () => { const C = COINFO.Excoso || {}; return {name:C.name || 'BRANDITUDE CORPORATE PRIVATE LIMITED', addr1:(C.lines || [])[0] || '', addr2:(C.lines || [])[1] || '', addr3:(C.lines || [])[2] || '', gstin:C.gstin || ''}; };
+const shipDefault = (m, d) => m === 'dc' ? {name:d.party || '', addr1:d.addr1 || '', addr2:d.addr2 || '', addr3:d.addr3 || '', gstin:d.gstin || ''} : OUR_ADDR();
+function shipBox(m, d, sameLbl){
+  const sh = d.ship || {same:true}, on = sh.same !== false, f = (k, l) => `<label class="f">${l}<input class="mdi" id="${m}_ship_${k}" data-m="${m}" data-k="ship.${k}" value="${esc(sh[k] || '')}" autocomplete="off"></label>`;
+  return `<h3 style="margin:12px 0 4px;font-size:14px">Ship to</h3><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" class="mdi" id="${m}_ship_same" data-m="${m}" data-k="ship.same" ${on ? 'checked' : ''}> ${esc(sameLbl)}</label>
+    ${on ? '' : `<div class="igrid" style="margin-top:6px">${f('name', 'Name *')}${f('addr1', 'Address line 1 *')}${f('addr2', 'Address line 2')}${f('addr3', 'Address line 3')}${f('gstin', 'GSTIN')}</div><p class="mut" style="margin:4px 0 0;font-size:12px">Saved only on this voucher. The customer / supplier list is not changed.</p>`}`;
+}
+const shipOk = d => { const sh = d.ship; if (!sh || sh.same !== false) return ''; return !String(sh.name || '').trim() || !String(sh.addr1 || '').trim() ? 'Fill the Ship to name and address, or tick "same".' : ''; };
+const shipClean = d => { const sh = d.ship; return !sh || sh.same !== false ? {same:true} : {same:false, name:String(sh.name || '').trim(), addr1:String(sh.addr1 || '').trim(), addr2:String(sh.addr2 || '').trim(), addr3:String(sh.addr3 || '').trim(), gstin:String(sh.gstin || '').trim().toUpperCase()}; };
+const shipParty = (sh, label) => ({label, title:sh.name, lines:[sh.addr1, sh.addr2, sh.addr3, sh.gstin ? 'GSTIN/UIN : ' + sh.gstin : '', STCODE[String(sh.gstin || '').slice(0, 2)] ? `State Name : ${STCODE[String(sh.gstin).slice(0, 2)]}, Code : ${String(sh.gstin).slice(0, 2)}` : ''].filter(Boolean)});
 function rnFormHTML(){
   const d = F.rn, sel = D.mat_dc.get(d.dc), pend = sel ? dcPending(sel, d.id) : [];
   const list = d.party ? pendDCs(d.party).concat(sel && !pendDCs(d.party).includes(sel) ? [sel] : []) : [];
@@ -1157,6 +1168,7 @@ function rnFormHTML(){
       <label class="f">Customer *${mInp('rn', 'party', d.party, {list:'rn_parties'})}</label>
       <label class="f">Remarks${mInp('rn', 'remarks', d.remarks)}</label>
     </div><datalist id="rn_parties">${dcParties().map(s => `<option value="${esc(s)}">`).join('')}</datalist>
+    ${d.party ? `<h3 style="margin:12px 0 4px;font-size:14px">Bill from <span class="mut" style="font-weight:400;font-size:12px">· from the delivery challan; a change here is saved only on this receipt note</span></h3><div class="igrid"><label class="f">Address line 1${mInp('rn', 'addr1', d.addr1 ?? (sel || {}).addr1)}</label><label class="f">Address line 2${mInp('rn', 'addr2', d.addr2 ?? (sel || {}).addr2)}</label><label class="f">Address line 3${mInp('rn', 'addr3', d.addr3 ?? (sel || {}).addr3)}</label><label class="f">Customer GSTIN${mInp('rn', 'gstin', d.gstin ?? (sel || {}).gstin)}</label></div>${shipBox('rn', d, 'Ship to our office (Branditude)')}` : ''}
     ${scanBox('rn')}
     ${dcTable}
     ${sel ? `<h3 style="margin:14px 0 6px">Items coming back against ${esc(sel.no)}</h3><div class="tw"><table class="mtab"><thead><tr><th>Stock item</th><th class="r">Pending</th><th class="r">Qty back *</th><th class="r">Rate</th><th class="r">Value</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="4" class="r"><b>Total value</b></td><td class="r num" id="rn_tot"><b>${inr(tot)}</b></td></tr></tfoot></table></div>
@@ -1382,6 +1394,7 @@ function poFormHTML(){
     <datalist id="po_brs">${invList('inv_brands').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="po_cats">${invList('inv_cats').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="po_subs">${[...new Set(invList('inv_subs').map(x => x.name))].map(x => `<option value="${esc(x)}">`).join('')}</datalist><datalist id="po_units">${invList('inv_units').map(x => `<option value="${esc(x.unit)}">${esc(x.name)}</option>`).join('')}</datalist>
     <div class="tw" style="margin-top:10px"><table class="mtab"><thead><tr><th>Product as on PO *</th><th>ENQ</th><th>HSN</th><th class="r">Qty *</th><th class="r">Rate / piece</th><th class="r">Amount</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     <div style="display:flex;gap:16px;align-items:center;margin-top:8px"><button class="btn" data-act="matAddL" data-m="po">+ Add product</button><div style="margin-left:auto">Total before tax: <span id="po_tot"><b>${inr(d.lines.reduce((a, l) => a + (+l.value || 0), 0))}</b></span></div></div>
+    ${shipBox('po', d, 'Ship to our office (Branditude)')}
     ${niCards(d, 'po')}<div class="err" id="po_err"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="poSave">${d.id ? 'Save changes' : 'Save Purchase Order'}</button><button class="btn" data-act="poCancel">Cancel</button></div>
     <p class="mut" style="margin:6px 0 0">The ENQ number is taken from the end of the product name (for example "-8478" or "-8521-D"). Products not in the stock list are created as stock items when you save. Saving also adds the PO to the PO Master (Purchase).</p></div>`;
 }
@@ -1490,13 +1503,14 @@ const POACT = {
     if (poRegDup(d.no, d.id)) return bad(`${String(d.no).trim()} is already in the Purchase Order Register. Open it there instead of saving it again.`);
     if (!TEAMS.includes(d.comp)) return bad('Pick the team (Karthik, Vignesh or Sundar).');
     if (!d.exec || !userName(d.exec)) return bad('Pick the executive.');
+    if (shipOk(d)) return bad(shipOk(d));
     const nw = lines.filter(l => l.item === '__new'); for (const [k2, l] of nw.entries()){ l.ni.comp = d.comp; const e = niCheck(l, k2); if (e) return bad(e); }
     { const nn = nw.map(l => normName(l.ni.name)); if (new Set(nn).size < nn.length) return bad('Two new stock items have the same name. Change one.'); }
     t.disabled = true;
     try { await poSupplier(d); for (const l of nw) await niCreate(l); } catch(e){ t.disabled = false; forceRender = true; render(); return bad('Could not create: ' + (e.message || e)); }
     const id = d.id || uid('po'), clean = lines.map(l => ({name:String(l.name || '').trim() || (l.item ? D.inv_items.get(l.item)?.name || '' : ''), enq:String(l.enq || '').trim().toUpperCase() || enqOf(l.name) || '', item:l.item && l.item !== '__new' ? l.item : '', hsn:String(l.hsn || '').replace(/\D/g, ''), qty:r2(l.qty), unit:l.unit || '', rate:r2(l.rate), value:r2(l.value || (+l.qty || 0) * (+l.rate || 0)), gst:+l.gst || 0}));
     const doc = {...d, id, lines:clean, enq:[...new Set(clean.map(l => l.enq).filter(Boolean))].join(', '), value:r2(clean.reduce((a, l) => a + l.value, 0)), by:d.by || S.me, at:d.at || nowISO(), editedBy:d.id ? S.me : undefined, editedAt:d.id ? nowISO() : undefined};
-    delete doc.supAddr; delete doc.inMaster; delete doc.teamSet; delete doc.execSet; doc.execName = doc.exec ? userName(doc.exec) : ''; try { await teamItems(clean, doc.comp); await teamSupplier(doc); } catch(e){}
+    doc.ship = shipClean(d); delete doc.supAddr; delete doc.inMaster; delete doc.teamSet; delete doc.execSet; doc.execName = doc.exec ? userName(doc.exec) : ''; try { await teamItems(clean, doc.comp); await teamSupplier(doc); } catch(e){}
     try { await Store.set('mat_po', id, doc); await logAct('Inventory', `Purchase Order ${d.id ? 'edited' : 'saved'}: ${doc.no} · ${doc.supName}`); } catch(e){ t.disabled = false; return bad('Could not save: ' + (e.message || e)); }
     let pm = ''; try { pm = d.id ? await poMasterEdit(oldNo, doc) : await poMaster(doc); } catch(e){ toast('PO saved, but it could not be added to the PO Master: ' + (e.message || e)); }
     toastOk(`Saved ${doc.no}${pm === 'added' ? ' and added to the PO Master' : pm === 'updated' ? ' · PO Master updated too' : pm === 'exists' ? ' in the Purchase Order Register (it was already in the PO Master)' : ''}.`);
@@ -1669,11 +1683,11 @@ function dcFormHTML(){
       <label class="f">Manager<select class="mdi" id="dc_mgr" data-m="dc" data-k="mgr"><option value="">Select manager</option>${mgs.map(u => `<option value="${esc(u.id)}" ${d.mgr === u.id ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
     </div>
     ${d.party ? `<p class="mut" style="margin:4px 0 0;font-size:12px">${team.area ? `Area ${esc(team.area)} · executive and manager picked from the area; you can change them.` : 'No invoice for this customer yet, so pick the executive and manager.'}</p>` : ''}
-    <h3 style="margin:12px 0 4px;font-size:14px">Customer address <span class="mut" style="font-weight:400;font-size:12px">· fills from the customer's saved address; you can change it</span></h3>
+    <h3 style="margin:12px 0 4px;font-size:14px">Bill to <span class="mut" style="font-weight:400;font-size:12px">· fills from the customer's saved address; a change here is saved only on this voucher</span></h3>
     <div class="igrid">
       <label class="f">Address line 1${mInp('dc', 'addr1', d.addr1)}</label><label class="f">Address line 2${mInp('dc', 'addr2', d.addr2)}</label><label class="f">Address line 3${mInp('dc', 'addr3', d.addr3)}</label>
       <label class="f">Customer GSTIN${mInp('dc', 'gstin', d.gstin)}</label>
-    </div>${!d.id ? ncBox(d) : ''}
+    </div>${shipBox('dc', d, 'Same as Bill to')}${!d.id ? ncBox(d) : ''}
     <datalist id="mat_parties">${matParties().map(s => `<option value="${esc(s)}">`).join('')}</datalist>
     <div class="tw" style="margin-top:10px">${scanBox('dc')}<table class="mtab"><thead><tr><th>Stock item *</th><th>Available</th><th class="r">Qty *</th><th class="r">Rate</th><th class="r">Value</th><th>Item note (printed)</th><th></th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="4" class="r"><b>Total value</b></td><td class="r num" id="dc_tot"><b>${inr(tot)}</b></td><td colspan="2"></td></tr></tfoot></table></div>
     <div class="err" id="dc_err"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="matSave" data-m="dc">${d.id ? 'Save changes' : 'Save ' + DCT[k]}</button><button class="btn" data-act="matCancel" data-m="dc">Cancel</button></div>
@@ -1782,7 +1796,7 @@ function docModel(m, d){
   if (m === 'po'){
     const s = (SUPL || []).find(x => (d.supGst && x.gstin === d.supGst) || normName(x.name) === normName(d.supName)) || {}, g = d.supGst || s.gstin || '';
     const sup = {label:'Supplier (Bill from)', title:d.supName, lines:[s.addr1, s.addr2, s.addr3, g ? 'GSTIN/UIN : ' + g : '', stName(g) ? 'State Name : ' + stName(g) : '', s.mobile ? 'Contact : ' + s.mobile : ''].filter(Boolean)};
-    return {kind:'po', po:true, title:'PURCHASE ORDER', tag:'PO', no:d.no, co:coBlock, parties:[us('Consignee (Ship to)'), sup], inter:isInter(g), inputTax:true, hsnSummary:false,
+    return {kind:'po', po:true, title:'PURCHASE ORDER', tag:'PO', no:d.no, co:coBlock, parties:[d.ship && d.ship.same === false ? shipParty(d.ship, 'Consignee (Ship to)') : us('Consignee (Ship to)'), sup], inter:isInter(g), inputTax:true, hsnSummary:false,
       meta:[['Voucher No.', d.no, 'Dated', fd(d.date)], ['', '', 'Mode/Terms of Payment', d.terms || ''], ['Reference No. & Date.', d.no, 'Other References', d.enq || ''], ['Dispatched through', d.dispatch || '', 'Destination', d.dest || '']],
       todLabel:'Terms of Delivery', tod:d.tod || '', remarks:d.remarks || '',
       lines:(d.lines || []).map(l => ({name:l.name || it(l.item).name || '', hsn:l.hsn || it(l.item).hsn || '', gst:+l.gst || 0, due:fd(d.date), qty:+l.qty || 0, unit:String(l.unit || unitOf(l.item) || 'nos').toLowerCase(), rate:+l.rate || 0, amt:+l.value || 0})),
@@ -1797,14 +1811,16 @@ function docModel(m, d){
       leftFoot:'Recd. in Good Condition'};
   }
   const isRn = m === 'rn', dc = isRn ? (D.mat_dc.get(d.dc) || {}) : d, g = dc.gstin || '';
-  const cust = {title:d.party, lines:[dc.addr1, dc.addr2, dc.addr3, g ? 'GSTIN/UIN : ' + g : '', stName(g) ? 'State Name : ' + stName(g) : '', dc.contact ? 'Contact : ' + dc.contact : ''].filter(Boolean)};
+  const A = isRn && d.addr1 != null ? d : dc, g2 = isRn && d.gstin != null ? d.gstin : g;
+  const cust = {title:d.party, lines:[A.addr1, A.addr2, A.addr3, g2 ? 'GSTIN/UIN : ' + g2 : '', stName(g2) ? 'State Name : ' + stName(g2) : '', dc.contact ? 'Contact : ' + dc.contact : ''].filter(Boolean)};
+  const shp = d.ship && d.ship.same === false ? d.ship : null;
   const ex = D.users.get(dc.exec)?.name || '', mg = D.users.get(dc.mgr)?.name || '';
   const lines = (d.lines || []).map(l => ({name:it(l.item).name || '', sub:it(l.item).part ? 'Part No. ' + it(l.item).part : '', note:l.note || '', hsn:it(l.item).hsn || '', qty:+l.qty || 0, unit:unitOf(l.item), rate:+l.rate || 0, amt:+l.value || 0, gst:itemGst(l.item) || 0}));
-  if (isRn) return {kind:'rn', title:'Receipt Note', tag:'RN', no:d.no, co:coBlock, parties:[us('Consignee (Bill to / Ship to)'), {label:'Bill from', ...cust}], inter:isInter(g), inputTax:true, hsnSummary:false,
+  if (isRn) return {kind:'rn', title:'Receipt Note', tag:'RN', no:d.no, co:coBlock, parties:[shp ? shipParty(shp, 'Consignee (Ship to)') : us('Consignee (Bill to / Ship to)'), {label:'Bill from', ...cust}], inter:isInter(g), inputTax:true, hsnSummary:false,
     meta:[['Receipt Note No.', d.no, 'Dated', fd(d.date)], ['Reference No. & Date.', dc.no ? `${dc.no} dt. ${fd(dc.date)}` : '', 'Other References', ex ? 'Executive: ' + ex : '']],
     todLabel:'', tod:d.remarks || '', lines, leftFoot:'Recd. in Good Condition'};
   const rdc = dcKind(d) === 'rdc';
-  return {kind:'dc', title:rdc ? 'RETURNABLE DELIVERY CHALLAN' : 'DELIVERY CHALLAN', copy:'ORIGINAL FOR CONSIGNEE', tag:rdc ? 'RDC' : 'DC', no:d.no, co:coBlock, parties:[{label:'Consignee (Ship to)', ...cust}, {label:'Buyer (Bill to)', ...cust}], inter:isInter(g), inputTax:false, hsnSummary:true,
+  return {kind:'dc', title:rdc ? 'RETURNABLE DELIVERY CHALLAN' : 'DELIVERY CHALLAN', copy:'ORIGINAL FOR CONSIGNEE', tag:rdc ? 'RDC' : 'DC', no:d.no, co:coBlock, parties:[shp ? shipParty(shp, 'Consignee (Ship to)') : {label:'Consignee (Ship to)', ...cust}, {label:'Buyer (Bill to)', ...cust}], inter:isInter(g), inputTax:false, hsnSummary:true,
     meta:[[rdc ? 'Returnable DC No.' : 'Delivery Note No.', d.no, 'Dated', fd(d.date)], ['Executive', ex, 'Mode/Terms of Payment', d.terms || ''], ['Reference No. & Date.', d.refNo || '', 'Other References', d.otherRef || (mg ? 'Manager: ' + mg : '')], ["Buyer's Order No.", d.orderNo || '', 'Dated', d.orderDate ? fd(d.orderDate) : ''], ['Dispatch Doc No.', d.dispDoc || '', '', ''], ['Dispatched through', d.dispatch || '', 'Destination', d.dest || '']],
     todLabel:'Terms of Delivery', tod:d.tod || (rdc ? 'Returnable samples - not for sale. To be returned in good condition.' : ''), lines, remarks:d.remarks || '', leftFoot:'Recd. in Good Condition'};
 }
@@ -2174,13 +2190,15 @@ function matInput(t){
   if (k.startsWith('ns.')){ const kk = k.slice(3); d.ns = d.ns || {}; d.ns[kk] = v;
     if (kk === 'exec'){ const x = (PRDIR || []).find(y => y.id === v); if (x && x.manager_id){ d.ns.mgr = x.manager_id; const e = document.getElementById('mi_ns_mgr'); if (e) e.value = x.manager_id; } }
     if (kk === 'on'){ forceRender = true; render(); } return; }
+  if (k.startsWith('ship.')){ const kk = k.slice(5); d.ship = d.ship || {same:true}; d.ship[kk] = kk === 'same' ? !!v : v;
+    if (kk === 'same'){ if (!v && !d.ship.addr1 && !d.ship.name){ Object.assign(d.ship, shipDefault(m, d)); } forceRender = true; render(); } return; }
   if (k.startsWith('nc.')){ d.nc = d.nc || {}; d.nc[k.slice(3)] = v; if (k === 'nc.on'){ forceRender = true; render(); } return; }
   if (k.startsWith('ni.')){ const l = d.lines[+t.dataset.l]; if (l){ l.ni = l.ni || {}; l.ni[k.slice(3)] = v; } return; }
   if (t.dataset.l == null){ d[k] = v;
     if ((m === 'mi' || m === 'po') && k === 'comp'){ d.teamSet = 1; if (d.exec && teamOfUser((ALLU.size ? ALLU : D.users).get(d.exec)) !== v){ d.exec = ''; d.execName = ''; } forceRender = true; render(); return; }
     if ((m === 'mi' || m === 'po') && k === 'exec'){ if (teamLock(d) && d.exec) return; d.execSet = 1; d.execName = userName(v); const t = teamOfUser((ALLU.size ? ALLU : D.users).get(v)); if (v && t && t !== d.comp && !teamLock(d)){ d.comp = t; d.teamSet = 1; } forceRender = true; render(); return; }
     if ((m === 'mi' || m === 'po') && k === 'supName' && !d.teamSet && !teamLock(d)){ const tt = supTeam({supName:v, supGst:d.supGst}); if (tt && tt !== d.comp){ d.comp = tt; const e = document.getElementById(m + '_comp'); if (e) e.value = tt; } }
-    if (m === 'rn' && k === 'dc'){ const x = D.mat_dc.get(v); if (x){ d.party = x.party; d.lines = dcPending(x, d.id).filter(l => l.left > 0).map(l => ({item:l.item, qty:l.left, rate:l.rate, value:r2(l.left * (+l.rate || 0))})); } forceRender = true; render(); return; }
+    if (m === 'rn' && k === 'dc'){ const x = D.mat_dc.get(v); if (x){ d.party = x.party; ['addr1', 'addr2', 'addr3', 'gstin'].forEach(f => delete d[f]); d.lines = dcPending(x, d.id).filter(l => l.left > 0).map(l => ({item:l.item, qty:l.left, rate:l.rate, value:r2(l.left * (+l.rate || 0))})); } forceRender = true; render(); return; }
     if (m === 'mi' && k === 'supGst'){ d.supGst = v.toUpperCase().replace(/\s/g, ''); const s = (SUPL || []).find(x => x.gstin === d.supGst); if (s && !d.supName){ d.supName = s.name; const n = document.getElementById('mi_supName'); if (n) n.value = s.name; } }
     if (m === 'mi' && k === 'supName'){ const s = (SUPL || []).find(x => x.name.toLowerCase() === v.trim().toLowerCase()); if (s && s.gstin && !d.supGst){ d.supGst = s.gstin; const g = document.getElementById('mi_supGst'); if (g) g.value = s.gstin; } }
     if (m === 'dc' && k === 'party'){ clearTimeout(matInput.t); matInput.t = setTimeout(() => { const tm = partyTeam(d.party);
@@ -2351,6 +2369,7 @@ const MATACT = {
     } else {
       d.no = String(d.no || '').trim(); d.party = String(d.party || '').trim();
       if (!d.no || !d.date || (!d.party && m !== 'ps')) return bad(m === 'ps' ? 'Fill in the number and date.' : `Fill in the ${m === 'dc' ? 'DC' : 'receipt note'} number, date and customer.`);
+      if ((m === 'dc' || m === 'rn') && shipOk(d)) return bad(shipOk(d));
       if (m === 'dc' && dcKind(d) === 'rdc' && !d.exec) return bad('Pick the executive who takes the samples.');
       if (m === 'dc' && d.refNo && d.sale && [...D.mat_dc.values()].some(x => x.id !== d.id && normName(x.refNo) === normName(d.refNo))) return bad('A DC for sales invoice ' + d.refNo + ' is already saved.');
       if ([...D[col].values()].some(x => x.id !== d.id && normName(x.no) === normName(d.no))) return bad('This number is already used.');
@@ -2363,6 +2382,8 @@ const MATACT = {
     err.textContent = '';
     const id = d.id || uid(m), clean = lines.map(l => { const o = {...l}; delete o.rateTyped; delete o.gstTouched; delete o.back; delete o.left; ['qty', 'rate', 'taxable', 'value', 'gst'].forEach(k => { if (k in o) o[k] = r2(o[k]); }); return o; });
     const doc = {...d, id, lines:clean, by:d.by || S.me, at:d.at || nowISO(), editedBy:d.id ? S.me : undefined, editedAt:d.id ? nowISO() : undefined};
+    if (m === 'dc' || m === 'rn') doc.ship = shipClean(d);
+    if (m === 'rn'){ const dc0 = D.mat_dc.get(d.dc) || {}; ['addr1', 'addr2', 'addr3', 'gstin'].forEach(f => { if (doc[f] == null) doc[f] = dc0[f] || ''; }); }
     delete doc.aiTotal; delete doc.ks; delete doc.teamSet; delete doc.execSet; doc.execName = doc.exec ? userName(doc.exec) : ''; if (m === 'mi'){ const T = miTotals(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; doc.igst = T.inter; doc.comp = compOf(doc.comp); if (!doc.grnNo) doc.grnNo = vno('mat_in', 'GRN', 'grnNo', doc.at);
       const sm = (SUPL || []).find(x => (doc.supGst && x.gstin === doc.supGst) || normName(x.name) === normName(doc.supName)), sp = d.ks && d.ks.addr1 ? d.ks : sm && sm.addr1 ? sm : (d.ns && d.ns.addr1 ? d.ns : sm); if (sp) doc.supAddr = {addr1:sp.addr1 || '', addr2:sp.addr2 || '', addr3:sp.addr3 || ''}; }
     if (m === 'dc'){ doc.kind = dcKind(doc); doc.comp = 'Expert'; if (doc.sale){ doc.saleInv = doc.sale.inv; delete doc.sale; } delete doc.nc; delete doc.keepCust; }
@@ -2390,7 +2411,6 @@ const MATACT = {
       if (m === 'mi') for (const l of clean){ if (l.name && l.item){ const k = mapKey(l.name), old = D.mat_map.get(k); if (!old || old.item !== l.item) await Store.set('mat_map', k, {name:l.name, item:l.item, by:S.me, at:nowISO()}); } }
       await logAct('Inventory', `${m === 'mi' ? 'GRN' : m === 'dc' ? 'Delivery Challan' : m === 'ps' ? 'Physical Stock' : 'Receipt Note'} ${d.id ? 'edited' : 'saved'}: ${m === 'mi' ? doc.invNo + ' · ' + doc.supName + ' · ' + inr(doc.total) : doc.no + ' · ' + doc.party}`);
       if (m === 'dc' && !d.id && doc.party && !custKnown(doc.party) && (!d.nc || d.nc.on !== false)){ try { await Store.set('cust_addr', mapKey(doc.party), {party:doc.party, addr1:doc.addr1 || '', addr2:doc.addr2 || '', addr3:doc.addr3 || '', gstin:String(doc.gstin || '').toUpperCase(), email:String((d.nc || {}).email || '').trim(), mobile:String((d.nc || {}).mobile || '').trim(), exec:doc.exec || '', mgr:doc.mgr || '', by:S.me, at:nowISO()}); await logAct('Sales', 'Customer created from DC: ' + doc.party); } catch(e){ toast('DC saved, but the customer could not be added: ' + (e.message || e)); } }
-      else if (m === 'dc' && !d.keepCust && (doc.addr1 || doc.gstin)){ const k = mapKey(doc.party), o = D.cust_addr.get(k) || {}; if (['addr1', 'addr2', 'addr3', 'gstin'].some(f => (o[f] || '') !== (doc[f] || ''))){ try { await Store.set('cust_addr', k, {party:doc.party, addr1:doc.addr1 || '', addr2:doc.addr2 || '', addr3:doc.addr3 || '', gstin:String(doc.gstin || '').toUpperCase(), by:S.me, at:nowISO()}); } catch(e){} } }
       delete doc.addrFor; delete doc.nc; delete doc.keepCust;
       F[m] = null; F[m + 'Ais'] = ''; F.justSaved = id; toastOk('Saved ' + (m === 'mi' ? doc.grnNo : doc.no) + '.'); ACT.nav({dataset:{k:m === 'mi' ? 'mat_in' : m === 'dc' ? 'mat_dc' : m === 'ps' ? 'mat_ps' : 'mat_rn'}}); F.justSaved = id; forceRender = true; render();
     } catch(e){ t.disabled = false; bad('Could not save: ' + (e.message || e)); }
