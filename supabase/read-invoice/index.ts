@@ -134,6 +134,24 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     if (body.action === 'status') return json({ ready: !!KEY });
     if (!KEY) return json({ error: 'not_configured' }, 503);
+    if (body.action === 'classify') {
+      // brand / category / sub category for new stock items (from product names only)
+      const names = (Array.isArray(body.names) ? body.names : []).map((x: unknown) => String(x).slice(0, 300)).slice(0, 100);
+      if (!names.length) return json({ ok: true, result: [] });
+      const cats = (Array.isArray(body.cats) ? body.cats : []).map(String).slice(0, 200), brands = (Array.isArray(body.brands) ? body.brands : []).map(String).slice(0, 300);
+      const prompt = `For each product name below, suggest brand (the maker or brand name if it is in the name, else ""), category (a short general product group) and sub_category (a narrower group). Prefer these existing categories when one fits: ${JSON.stringify(cats)}. Prefer these existing brands when one fits: ${JSON.stringify(brands)}. Return a JSON array in the same order, one object per product.\nProducts:\n${names.map((n: string, i: number) => `${i + 1}. ${n}`).join('\n')}`;
+      const sch = { type: 'ARRAY', items: { type: 'OBJECT', properties: { brand: { type: 'STRING' }, category: { type: 'STRING' }, sub_category: { type: 'STRING' } }, required: ['brand', 'category', 'sub_category'] } };
+      for (const m of MODELS) {
+        try {
+          const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': KEY }, signal: AbortSignal.timeout(20000),
+            body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: sch } }) });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) continue;
+          return json({ ok: true, model: m, result: JSON.parse(j?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || '').join('') || '[]') });
+        } catch (_) { /* next model */ }
+      }
+      return json({ error: 'Could not suggest groups.' }, 502);
+    }
     const mime = String(body.mime || '');
     const data = String(body.data || '');
     if (!/^(image\/(jpeg|png|webp|heic|heif)|application\/pdf)$/.test(mime)) return json({ error: 'Send a photo or a PDF.' }, 400);

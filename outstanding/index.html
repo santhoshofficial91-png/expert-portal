@@ -1402,7 +1402,7 @@ function viewPOnew(){
   loadSupl();
   if (!F.po) F.po = {no:'', date:TODAY, supName:'', supGst:'', comp:myTeam(), enq:'', remarks:'', lines:[blankPOL()]};
   return `<div class="head"><div><h1>${F.po.id ? 'Edit Purchase Order' : 'Create Purchase Order'}</h1><p class="sub">Upload the purchase order from Tally and AI fills it, or type it.</p></div><button class="btn" data-act="go" data-k="po_rep">PO vs Received</button></div>
-  ${F.po.id ? '' : aiBar('po', 'purchase order')}${poFormHTML()}`;
+  ${F.po.id ? '' : aiBar('po', 'purchase order').replace('</label>', `</label><label class="btn" for="po_xml" style="cursor:pointer">📄 Import Tally XML</label><input id="po_xml" type="file" accept=".xml,text/xml,application/xml" style="position:absolute;opacity:0;width:1px;height:1px">`)}${poFormHTML()}`;
 }
 function viewPOReg(){
   if (F.poView && D.mat_po.has(F.poView)) return viewPOOne(D.mat_po.get(F.poView));
@@ -1412,7 +1412,7 @@ function viewPOReg(){
   L = L.filter(x => (!fT || compOf(x.po.comp) === fT) && (!fs || x.st === fs) && (!fp || x.po.supName === fp) && (!q || [x.po.no, x.po.supName, x.po.enq, ...x.X.map(l => l.name + ' ' + l.enq + ' ' + itemLbl(l.item))].join(' ').toLowerCase().includes(q))).sort((a, b) => String(b.po.date).localeCompare(String(a.po.date)) || String(b.po.no).localeCompare(String(a.po.no)));
   const P = pg(L, 'poreg', 50), tot = L.reduce((a, x) => a + poGross(x.po), 0);
   const body = P.items.map(({po, st}) => `<tr class="clk${F.poLast === po.id ? ' sel' : ''}" data-act="poOpen" data-id="${esc(po.id)}" tabindex="0" title="Open this purchase order"><td class="nowrap">${esc(fmtD(po.date))}</td><td class="mono nowrap"><b>${esc(po.no)}</b></td><td class="wrap">${esc(po.supName)}</td><td>${esc(compOf(po.comp) || '—')}</td><td>${esc(po.execName || userName(po.exec) || '—')}</td><td class="mono">${esc(po.enq || '')}</td><td class="r num">${inr(poGross(po))}</td><td>${poPill(st)}</td><td class="nowrap">${poRowActs(po)}</td></tr>`).join('');
-  return `<div class="head"><div><h1>Purchase Order Register</h1><p class="sub">${D.mat_po.size} purchase order${D.mat_po.size === 1 ? '' : 's'} · click one to see its items</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-act="go" data-k="po_new">+ Create Purchase Order</button>${XB('xPoReg')}</div></div>
+  return `<div class="head"><div><h1>Purchase Order Register</h1><p class="sub">${D.mat_po.size} purchase order${D.mat_po.size === 1 ? '' : 's'} · click one to see its items</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-act="go" data-k="po_new">+ Create Purchase Order</button>${canStock() ? `<label class="btn" for="po_xml" style="cursor:pointer">📄 Import Tally XML</label><input id="po_xml" type="file" accept=".xml,text/xml,application/xml" style="position:absolute;opacity:0;width:1px;height:1px">` : ''}${XB('xPoReg')}</div></div>
   <div class="bar sfb"><label class="sf"><span>Search</span><input id="poq" data-f="poq" type="search" placeholder="PO no, supplier, ENQ, item" value="${esc(F.poq || '')}" autocomplete="off"></label>
    <label class="sf"><span>Team</span><select data-f="poT"><option value="">All</option>${TEAMS.map(x => `<option ${fT === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
    <label class="sf"><span>Supplier</span><select data-f="pop"><option value="">All</option>${sups.map(x => `<option ${fp === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
@@ -1487,6 +1487,7 @@ function poToGrn(po){
     lines:X.map(l => { const it = l.item || guessItem(l.name, l.hsn) || '__new', g = GSTR.includes(+l.gst) ? +l.gst : (it !== '__new' && itemGst(it)) || 18;
       return {name:l.name, item:it, ni:it === '__new' ? {name:String(l.name || '').replace(/[\s\-–]*\d{3,6}\s*$/, '').trim(), code:'', comp:compOf(po.comp), brand:'', cat:'', sub:'', unit:String(l.unit || '').toUpperCase()} : undefined, hsn:l.hsn || '', qty:l.left, unit:l.unit || '', rate:r2(+l.rate || 0), taxable:r2(l.left * (+l.rate || 0)), gst:g, rateTyped:1, po:po.id, pl:l.i, enq:l.enq || po.enq || ''}; })};
 }
+document.addEventListener('change', ev => { if (ev.target.id === 'po_xml'){ poXmlFile(ev.target); return; } });
 document.addEventListener('change', ev => { const t = ev.target; if (t.id === 'mi_pofill' && t.value){ const po = D.mat_po.get(t.value); if (po){ F.mi = poToGrn(po); F.miAis = `Filled from ${po.no}. Type the supplier invoice number and date, check the quantities and save.`; forceRender = true; render(); } return; } if (t.id !== 'mi_polink' || !t.value || !F.mi) return; const n = poLink(F.mi, t.value); toastOk(`Linked to ${F.mi.poNo}: ${n} row${n === 1 ? '' : 's'} matched.`); forceRender = true; render(); });
 const POACT = {
   poSave:async t => { const d = F.po, err = document.getElementById('po_err'), bad = x => { err.textContent = x; toast(x); return false; };
@@ -1514,9 +1515,11 @@ const POACT = {
     try { await Store.set('mat_po', id, doc); await logAct('Inventory', `Purchase Order ${d.id ? 'edited' : 'saved'}: ${doc.no} · ${doc.supName}`); } catch(e){ t.disabled = false; return bad('Could not save: ' + (e.message || e)); }
     let pm = ''; try { pm = d.id ? await poMasterEdit(oldNo, doc) : await poMaster(doc); } catch(e){ toast('PO saved, but it could not be added to the PO Master: ' + (e.message || e)); }
     toastOk(`Saved ${doc.no}${pm === 'added' ? ' and added to the PO Master' : pm === 'updated' ? ' · PO Master updated too' : pm === 'exists' ? ' in the Purchase Order Register (it was already in the PO Master)' : ''}.`);
-    F.po = null; F.justSaved = id; ACT.nav({dataset:{k:'po_rep'}}); },
+    F.po = null; F.justSaved = id;
+    if (F.poQueue && F.poQueue.length){ const nx = F.poQueue.shift(); ACT.nav({dataset:{k:'po_new'}}); await poFill(nx, s2 => { F.poAis = s2; const e = document.getElementById('po_ais'); if (e) e.textContent = s2; }); if (F.poQueue.length) toast(`${F.poQueue.length} more PO${F.poQueue.length === 1 ? '' : 's'} from the XML after this one.`); return; }
+    ACT.nav({dataset:{k:'mat_po'}}); },
   poNewItem:t => { const l = F.po && F.po.lines[+t.dataset.i]; if (!l) return; l.item = '__new'; l.ni = poNi(l, F.po); forceRender = true; render(); },
-  poCancel:() => { F.po = null; ACT.nav({dataset:{k:'po_rep'}}); },
+  poCancel:() => { F.po = null; F.poQueue = []; ACT.nav({dataset:{k:'mat_po'}}); },
   poOpen:t => { F.poView = F.poLast = t.dataset.id; forceRender = true; render(); window.scrollTo(0, 0); },
   poBack:() => { F.poView = ''; forceRender = true; render(); stkFocus(); },
   xPoReg:() => exportSheet('Purchase_Orders', 'Purchase Orders', ['PO date', 'PO no', 'Supplier', 'Team', 'Executive', 'ENQ', 'Amount (with GST)'], [...D.mat_po.values()].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(po => [fmtD(po.date), po.no, po.supName, compOf(po.comp), po.execName || userName(po.exec), po.enq || '', poGross(po)])),
@@ -2248,19 +2251,85 @@ async function aiDoc(file, kind){
   finally { clearTimeout(tm); }
 }
 const ymdOk = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) ? s : '';
-async function matFile(t){
-  const m = t.id.slice(0, 2), file = t.files[0]; if (!file) return; t.value = '';
-  if (!SB && !window.__testAi){ toast('Reading files works only on the live site.'); return; }
-  const say = s => { F[m + 'Ais'] = s; const e = document.getElementById(m + '_ais'); if (e) e.textContent = s; };
-  const t0 = Date.now(), tick = setInterval(() => say('Reading with AI… ' + Math.round((Date.now() - t0) / 1000) + ' s'), 1000);
-  try { say('Reading with AI…'); const x = await aiDoc(file, m === 'mi' ? 'purchase' : m === 'po' ? 'po' : 'dc'); clearInterval(tick);
-    if (m === 'po'){
+
+/* ---------- Purchase Order from a Tally XML file (no AI needed to read it) ---------- */
+// Tally export (Alt+E → XML) of one or more Purchase Order vouchers, or the ExpertOne TDL format (EPPOST)
+function tallyPOXml(text){
+  text = String(text || '').replace(/^﻿/, '').replace(/&#(?:[0-8]|1[124-9]|2\d|3[01]);/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+  const doc = new DOMParser().parseFromString(text, 'text/xml');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('This is not a valid XML file. Export it again from Tally (Alt+E → XML).');
+  const kids = (el, tag) => el ? [...el.children].filter(c => c.tagName.toUpperCase() === tag) : [];
+  const one = (el, ...tags) => { for (const t of tags){ const c = kids(el, t)[0]; if (c && c.textContent.trim()) return c.textContent.trim(); } return ''; };
+  const num = v => { const m = String(v || '').replace(/,/g, '').match(/-?\d+(?:\.\d+)?/); return m ? Math.abs(+m[0]) : 0; };
+  const unitOfQ = v => (String(v || '').replace(/[\d.,\-\s]+/, ' ').trim().split(/\s+/)[0] || '').replace(/^\//, '').toUpperCase();
+  const ymd = v => { v = String(v || '').trim(); let m; if ((m = /^(\d{4})(\d{2})(\d{2})$/.exec(v))) return `${m[1]}-${m[2]}-${m[3]}`; if ((m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v))) return v;
+    if ((m = /^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$/.exec(v))){ const mo = MONS.findIndex(x => x.toLowerCase() === m[2].toLowerCase()) + 1; const y = m[3].length === 2 ? '20' + m[3] : m[3]; return mo ? `${y}-${String(mo).padStart(2, '0')}-${m[1].padStart(2, '0')}` : ''; } return ''; };
+  const out = [];
+  // ExpertOne TDL format
+  [...doc.getElementsByTagName('EPPOST')].forEach(r => { const po = kids(r, 'PO')[0]; if (!po) return;
+    out.push({fromXml:true, po_no:one(po, 'NUMBER'), po_date:ymd(one(po, 'DATE')), supplier_name:one(po, 'SUPPLIER'), supplier_gstin:one(po, 'GSTIN'), total:num(one(po, 'TOTAL')), notes:one(po, 'NOTES'),
+      lines:kids(po, 'ITEM').map(it => ({name:one(it, 'NAME'), qty:num(one(it, 'QTY')), unit:unitOfQ(one(it, 'QTY')) || one(it, 'UNIT').toUpperCase(), rate:num(one(it, 'RATE')), amount:num(one(it, 'VALUE')), gst:num(one(it, 'GST')), hsn:one(it, 'HSN').replace(/\D/g, '')}))}); });
+  // Tally voucher export
+  [...doc.getElementsByTagName('VOUCHER')].forEach(v => {
+    const type = (v.getAttribute('VCHTYPE') || one(v, 'VOUCHERTYPENAME')).trim();
+    if (type && !/order/i.test(type)) return;   // only Purchase Orders
+    if (/^yes$/i.test(one(v, 'ISCANCELLED')) || /^yes$/i.test(one(v, 'ISOPTIONAL'))) return;
+    const party = one(v, 'PARTYLEDGERNAME', 'PARTYNAME', 'BASICBUYERNAME');
+    const addr = [...v.getElementsByTagName('ADDRESS.LIST')].filter(a => a.parentElement === v).flatMap(a => kids(a, 'ADDRESS').map(x => x.textContent.trim())).filter(Boolean);
+    const inv = [...kids(v, 'ALLINVENTORYENTRIES.LIST'), ...kids(v, 'INVENTORYENTRIES.LIST')];
+    const leds = [...kids(v, 'LEDGERENTRIES.LIST'), ...kids(v, 'ALLLEDGERENTRIES.LIST')];
+    const taxable = inv.reduce((a, e) => a + num(one(e, 'AMOUNT')), 0);
+    const tax = leds.filter(l => /gst|cgst|sgst|igst|tax/i.test(one(l, 'LEDGERNAME')) && !/^yes$/i.test(one(l, 'ISPARTYLEDGER'))).reduce((a, l) => a + num(one(l, 'AMOUNT')), 0);
+    const partyAmt = leds.filter(l => /^yes$/i.test(one(l, 'ISPARTYLEDGER')) || normName(one(l, 'LEDGERNAME')) === normName(party)).reduce((a, l) => a + num(one(l, 'AMOUNT')), 0);
+    const avgGst = taxable && tax ? [0, 5, 12, 18, 28].reduce((b, r) => Math.abs(r - tax / taxable * 100) < Math.abs(b - tax / taxable * 100) ? r : b, 18) : 0;
+    const lines = inv.map(e => {
+      const rd = [...e.getElementsByTagName('RATEDETAILS.LIST')], rOf = re => rd.filter(x => re.test(one(x, 'GSTRATEDUTYHEAD'))).reduce((a, x) => a + num(one(x, 'GSTRATE')), 0);
+      let gst = rOf(/igst|integrated/i) || (rOf(/cgst|central/i) + rOf(/sgst|state|ut/i)) || num(one(e, 'GSTRATE', 'IGSTRATE')) || avgGst;
+      const qv = one(e, 'BILLEDQTY', 'ACTUALQTY'), desc = [...e.getElementsByTagName('BASICUSERDESCRIPTION')].map(x => x.textContent.trim()).filter(Boolean).join(' ');
+      let name = one(e, 'STOCKITEMNAME'); if (desc && !enqOf(name) && enqOf(desc)) name += ' - ' + enqOf(desc);
+      return {name, qty:num(qv), unit:unitOfQ(qv) || unitOfQ(one(e, 'RATE')), rate:num(String(one(e, 'RATE')).split('/')[0]), amount:num(one(e, 'AMOUNT')), gst, hsn:one(e, 'GSTHSNNAME', 'HSNCODE', 'GSTHSNSACCODE').replace(/\D/g, '')};
+    }).filter(l => l.name);
+    const ref = one(v, 'BASICORDERREF', 'OTHERREFERENCES', 'REFERENCE');
+    out.push({fromXml:true, po_no:one(v, 'VOUCHERNUMBER', 'REFERENCE'), po_date:ymd(one(v, 'DATE')), supplier_name:party, supplier_gstin:one(v, 'PARTYGSTIN', 'GSTREGISTRATIONNUMBER'),
+      supplier_addr1:addr[0] || '', supplier_addr2:addr[1] || '', supplier_addr3:addr.slice(2).join(', ') + (one(v, 'PARTYPINCODE') && !addr.join(' ').includes(one(v, 'PARTYPINCODE')) ? ' ' + one(v, 'PARTYPINCODE') : ''),
+      enq:(String(ref).match(/\d{3,6}(?:-[A-Za-z]{1,3})?/) || [''])[0], notes:one(v, 'NARRATION'), total:partyAmt || r2(taxable + tax), lines});
+  });
+  return out.filter(x => x.po_no && x.lines.length);
+}
+// brand / category / sub category for new stock items made from an XML PO (AI suggestion; you can change it)
+async function poClassify(d){
+  const nw = (d.lines || []).filter(l => l.item === '__new' && l.ni && !l.ni.brand); if (!nw.length) return;
+  // first from our own lists: a known brand written in the name, and the usual category of that brand
+  nw.forEach(l => { const n = l.ni, low = ' ' + String(n.name).toLowerCase().replace(/[^a-z0-9]+/g, ' ') + ' ';
+    const b = invList('inv_brands').filter(x => x.name && x.name.length > 2 && low.includes(' ' + x.name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() + ' ')).sort((x, y) => y.name.length - x.name.length)[0];
+    if (!b) return; n.brand = b.name; const its = [...D.inv_items.values()].filter(x => x.brand === b.id); if (!its.length) return;
+    const top = k => { const C = {}; its.forEach(x => { if (x[k]) C[x[k]] = (C[x[k]] || 0) + 1; }); return Object.keys(C).sort((p, q) => C[q] - C[p])[0]; };
+    const c = top('cat'), sb = top('sub'); if (c && !n.cat) n.cat = (D.inv_cats.get(c) || {}).name || ''; if (sb && !n.sub) n.sub = (D.inv_subs.get(sb) || {}).name || ''; });
+  if (!nw.some(l => !l.ni.brand || !l.ni.cat) || !Store.sb || !Store.sb.auth) return;
+  try { const ss = (await Store.sb.auth.getSession()).data.session; if (!ss) return;
+    const r = await fetch(SB.url + '/functions/v1/read-invoice', {method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer ' + ss.access_token, apikey:SB.key}, body:JSON.stringify({action:'classify', names:nw.map(l => l.ni.name), cats:invList('inv_cats').map(x => x.name), brands:invList('inv_brands').map(x => x.name)})});
+    const j = await r.json().catch(() => ({})); (j.result || []).forEach((c, i) => { const n = nw[i] && nw[i].ni; if (!n || !c) return; n.brand = n.brand || String(c.brand || '').trim(); n.cat = n.cat || String(c.category || '').trim(); n.sub = n.sub || String(c.sub_category || '').trim(); });
+  } catch(e){}
+}
+async function poXmlFile(t){
+  const file = t.files[0]; if (!file) return; t.value = '';
+  const say = s2 => { F.poAis = s2; const e = document.getElementById('po_ais'); if (e) e.textContent = s2; };
+  let L; try { L = tallyPOXml(await file.text()); } catch(e){ toast(e.message || 'Could not read the XML file.'); return; }
+  if (!L.length){ toast('No Purchase Order found in this XML file. In Tally open the PO, press Alt+E, pick XML (Data Interchange) and export.'); return; }
+  const fresh = L.filter(x => !poRegDup(x.po_no)), skip = L.length - fresh.length;
+  if (!fresh.length){ toast(`${L.map(x => x.po_no).join(', ')} ${L.length === 1 ? 'is' : 'are'} already in the Purchase Order Register.`); return; }
+  F.poQueue = fresh.slice(1); F.po = null;
+  if (S.view !== 'po_new') ACT.nav({dataset:{k:'po_new'}});
+  await poFill(fresh[0], say); try { document.activeElement && document.activeElement.blur(); } catch(e){} forceRender = true; render();
+  if (fresh.length > 1 || skip) say(String(F.poAis || '') + ` (${fresh.length > 1 ? `1 of ${fresh.length} POs in this file; the next opens after you save` : ''}${skip ? `${fresh.length > 1 ? '; ' : ''}${skip} already in the register, skipped` : ''})`);
+}
+async function poFill(x, say){
       let g = String(x.supplier_gstin || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); if (OUR_GSTS.includes(g)) g = '';
       const sm = supFind({supGst:g, supName:String(x.supplier_name || '').trim()});
       const lines = (x.lines || []).filter(l => l && String(l.name || '').trim() && (+l.qty > 0 || +l.amount > 0)).map(l => { const nm = String(l.name || '').replace(/\s+/g, ' ').trim(), it = guessItem(nm, l.hsn) || guessItem(enqStrip(nm), l.hsn); return {name:nm, enq:enqOf(nm) || String(x.enq || '').replace(/[^\dA-Za-z\-]/g, '').toUpperCase(), item:it || '__new', brand:l.brand, category:l.category, sub_category:l.sub_category, hsn:String(l.hsn || '').replace(/\D/g, ''), qty:r2(l.qty) || '', unit:String(l.unit || '').toUpperCase(), rate:r2(l.rate) || (+l.qty ? r2(l.amount / l.qty) : ''), value:r2(l.amount) || r2((+l.qty || 0) * (+l.rate || 0)), gst:+l.gst || 18}; });
       const no = String(x.po_no || '').trim(), dup = [...D.mat_po.values()].find(d => normName(d.no) === normName(no));
-      F.po = {no, date:ymdOk(x.po_date) || TODAY, supName:sm ? sm.name : String(x.supplier_name || '').replace(/\s+/g, ' ').trim(), supGst:sm && sm.gstin ? sm.gstin : g, supAddr:{addr1:String(x.supplier_addr1 || '').trim(), addr2:String(x.supplier_addr2 || '').trim(), addr3:String(x.supplier_addr3 || '').trim()}, comp:(sm && TEAMS.includes(sm.team) ? sm.team : '') || myTeam(), remarks:'', aiTotal:r2(x.total) || 0, lines:lines.length ? lines : [blankPOL()]};
-      if (dup){ F.po = {no:'', date:TODAY, supName:'', supGst:'', comp:myTeam(), remarks:'', lines:[blankPOL()]}; forceRender = true; render(); say(`${no} is already in the Purchase Order Register, so it was not taken again.`, true); return; }
+      F.po = {no, date:ymdOk(x.po_date) || TODAY, supName:sm ? sm.name : String(x.supplier_name || '').replace(/\s+/g, ' ').trim(), supGst:sm && sm.gstin ? sm.gstin : g, supAddr:{addr1:String(x.supplier_addr1 || '').trim(), addr2:String(x.supplier_addr2 || '').trim(), addr3:String(x.supplier_addr3 || '').trim()}, comp:(sm && TEAMS.includes(sm.team) ? sm.team : '') || myTeam(), remarks:String(x.notes || '').trim().slice(0, 300), aiTotal:r2(x.total) || 0, lines:lines.length ? lines : [blankPOL()]};
+      if (dup){ F.po = {no:'', date:TODAY, supName:'', supGst:'', comp:myTeam(), remarks:'', lines:[blankPOL()]}; forceRender = true; render(); say(`${no} is already in the Purchase Order Register, so it was not taken again.`, true); return false; }
       // already in the PO Master (entered by the executive): the register still gets it; the PO Master row stays as it is
       const pm = await poMasterInfo(no); F.po.inMaster = !!pm;
       if (pm && pm.requester){ const u = [...(ALLU.size ? ALLU : D.users).values()].find(y => normName(y.name) === normName(pm.requester)); if (u && isPurExec(u)){ F.po.exec = u.id; F.po.execName = u.name; const t = teamOfUser(u); if (t) F.po.comp = t; } }
@@ -2268,7 +2337,17 @@ async function matFile(t){
       const gw = String(x.supplier_gstin || '').toUpperCase().replace(/[^0-9A-Z]/g, ''), ourG = OUR_GSTS.includes(gw);
       const nNew = F.po.lines.filter(l => l.item === '__new').length, enqs = [...new Set(F.po.lines.map(l => l.enq).filter(Boolean))].join(', ');
       say(`${F.po.inMaster ? 'Already in the PO Master: saving adds it to the Purchase Order Register only, the PO Master stays as it is. ' : ''}Done: ${lines.length} product row${lines.length === 1 ? '' : 's'} read${enqs ? ' · ENQ ' + enqs : ''}.${nNew ? ' ' + nNew + ' new stock item' + (nNew === 1 ? '' : 's') + ' will be created (check the yellow boxes).' : ''}${ourG ? ' The supplier GST number on this PO is our own GST number; correct the supplier in Tally and type their GST number here.' : ''} Check and save.`);
-      forceRender = true; render(); document.getElementById('mform')?.scrollIntoView({block:'start'}); return; }
+      if (x.fromXml) await poClassify(F.po);
+      if (x.fromXml) say(String(F.poAis || '').replace('Done:', 'Read from the Tally XML:'));
+      forceRender = true; render(); document.getElementById('mform')?.scrollIntoView({block:'start'}); return true;
+}
+async function matFile(t){
+  const m = t.id.slice(0, 2), file = t.files[0]; if (!file) return; t.value = '';
+  if (!SB && !window.__testAi){ toast('Reading files works only on the live site.'); return; }
+  const say = s => { F[m + 'Ais'] = s; const e = document.getElementById(m + '_ais'); if (e) e.textContent = s; };
+  const t0 = Date.now(), tick = setInterval(() => say('Reading with AI… ' + Math.round((Date.now() - t0) / 1000) + ' s'), 1000);
+  try { say('Reading with AI…'); const x = await aiDoc(file, m === 'mi' ? 'purchase' : m === 'po' ? 'po' : 'dc'); clearInterval(tick);
+    if (m === 'po'){ await poFill(x, say); return; }
     if (m === 'mi'){
       let g = String(x.supplier_gstin || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); if (OUR_GSTS.includes(g)) g = '';
       const s = supFind({supGst:g, supName:String(x.supplier_name || '').trim()});
