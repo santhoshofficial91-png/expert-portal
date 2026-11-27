@@ -15,6 +15,7 @@ begin
   return 'added';
 end $$;
 revoke all on function public.po_master_from_doc(jsonb, text) from public, anon, authenticated;
+grant execute on function public.po_master_from_doc(jsonb, text) to service_role;
 
 -- edits from the portal may also change PO Master rows that came from Tally
 create or replace function public.po_master_edit(p_old text, p_po text, p_enq text, p_date text, p_sup text, p_value numeric)
@@ -47,3 +48,12 @@ $r$  -- PO Master (Purchase): add when the PO number is not there yet; never cha
     execute d;
   end if;
 end $do$;
+
+-- the portal reads who raised a PO in the PO Master (to fill the executive)
+create or replace function public.po_master_info(p_po text)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select case when (public.my_can_stock() or public.pr_my_role() in ('admin','manager')) then
+    (select jsonb_build_object('requester', requester, 'po_value', po_value) from public.pr_po where lower(trim(po_num)) = lower(trim(coalesce(p_po,''))) limit 1) end;
+$$;
+revoke all on function public.po_master_info(text) from public, anon;
+grant execute on function public.po_master_info(text) to authenticated;

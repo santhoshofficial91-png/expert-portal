@@ -1350,6 +1350,9 @@ const poGross = doc => { const t = r2((doc.lines || []).reduce((a, l) => a + (+l
 async function teamItems(lines, t){ if (!TEAMS.includes(t)) return; for (const id of new Set((lines || []).map(l => l.item).filter(Boolean))){ const x = D.inv_items.get(id); if (x && !compOf(x.comp)) await Store.set('inv_items', id, {...x, comp:t}); } }
 async function teamSupplier(doc){ const s = supFind(doc); if (!s || !s.id || TEAMS.includes(s.team) || !TEAMS.includes(doc.comp) || !Store.sb) return; const r = await Store.sb.from('pr_suppliers').update({team:doc.comp}).eq('id', s.id); if (!r.error) s.team = doc.comp; }
 async function poInMaster(no){ if (!Store.sb || !String(no || '').trim()) return false; const r = await Store.sb.rpc('po_master_has', {p_po:String(no).trim()}); return !r.error && r.data === true; }
+// the PO Master row for this PO number (requester), or null
+async function poMasterInfo(no){ if (!Store.sb || !String(no || '').trim()) return null; try { const r = await Store.sb.rpc('po_master_info', {p_po:String(no).trim()}); return r.error ? null : r.data; } catch(e){ return null; } }
+const poRegDup = (no, id) => [...D.mat_po.values()].find(x => x.id !== id && normName(x.no) === normName(no));
 async function poMasterEdit(oldNo, doc){
   const r = await Store.sb.rpc('po_master_edit', {p_old:oldNo || doc.no, p_po:doc.no, p_enq:[...new Set((doc.lines || []).map(l => l.enq).filter(Boolean))].join(', '), p_date:dMon(doc.date), p_sup:doc.supName, p_value:poGross(doc)});
   if (r.error) throw r.error; return r.data;
@@ -1484,7 +1487,7 @@ const POACT = {
     if ([...D.mat_po.values()].some(x => x.id !== d.id && normName(x.no) === normName(d.no))) return bad('This PO number is already saved.');
     if (d.id){ const M = poRecvMap(); const sh = d.lines.findIndex((l, i) => (M.get(d.id + '|' + i) || {q:0}).q > 0 && !lines.includes(l)); if (sh >= 0) return bad(`Row ${sh + 1} already has goods received; it cannot be removed.`); }
     const oldNo = d.id ? String(D.mat_po.get(d.id)?.no || '').trim() : '';
-    if ((!d.id || normName(oldNo) !== normName(d.no)) && await poInMaster(d.no)) return bad(`${String(d.no).trim()} is already in the PO Master. This PO is not saved and nothing was changed.`);
+    if (poRegDup(d.no, d.id)) return bad(`${String(d.no).trim()} is already in the Purchase Order Register. Open it there instead of saving it again.`);
     if (!TEAMS.includes(d.comp)) return bad('Pick the team (Karthik, Vignesh or Sundar).');
     if (!d.exec || !userName(d.exec)) return bad('Pick the executive.');
     const nw = lines.filter(l => l.item === '__new'); for (const [k2, l] of nw.entries()){ l.ni.comp = d.comp; const e = niCheck(l, k2); if (e) return bad(e); }
@@ -1493,10 +1496,10 @@ const POACT = {
     try { await poSupplier(d); for (const l of nw) await niCreate(l); } catch(e){ t.disabled = false; forceRender = true; render(); return bad('Could not create: ' + (e.message || e)); }
     const id = d.id || uid('po'), clean = lines.map(l => ({name:String(l.name || '').trim() || (l.item ? D.inv_items.get(l.item)?.name || '' : ''), enq:String(l.enq || '').trim().toUpperCase() || enqOf(l.name) || '', item:l.item && l.item !== '__new' ? l.item : '', hsn:String(l.hsn || '').replace(/\D/g, ''), qty:r2(l.qty), unit:l.unit || '', rate:r2(l.rate), value:r2(l.value || (+l.qty || 0) * (+l.rate || 0)), gst:+l.gst || 0}));
     const doc = {...d, id, lines:clean, enq:[...new Set(clean.map(l => l.enq).filter(Boolean))].join(', '), value:r2(clean.reduce((a, l) => a + l.value, 0)), by:d.by || S.me, at:d.at || nowISO(), editedBy:d.id ? S.me : undefined, editedAt:d.id ? nowISO() : undefined};
-    delete doc.supAddr; delete doc.teamSet; delete doc.execSet; doc.execName = doc.exec ? userName(doc.exec) : ''; try { await teamItems(clean, doc.comp); await teamSupplier(doc); } catch(e){}
+    delete doc.supAddr; delete doc.inMaster; delete doc.teamSet; delete doc.execSet; doc.execName = doc.exec ? userName(doc.exec) : ''; try { await teamItems(clean, doc.comp); await teamSupplier(doc); } catch(e){}
     try { await Store.set('mat_po', id, doc); await logAct('Inventory', `Purchase Order ${d.id ? 'edited' : 'saved'}: ${doc.no} · ${doc.supName}`); } catch(e){ t.disabled = false; return bad('Could not save: ' + (e.message || e)); }
     let pm = ''; try { pm = d.id ? await poMasterEdit(oldNo, doc) : await poMaster(doc); } catch(e){ toast('PO saved, but it could not be added to the PO Master: ' + (e.message || e)); }
-    toastOk(`Saved ${doc.no}${pm === 'added' ? ' and added to the PO Master' : pm === 'updated' ? ' · PO Master updated too' : ''}.`);
+    toastOk(`Saved ${doc.no}${pm === 'added' ? ' and added to the PO Master' : pm === 'updated' ? ' · PO Master updated too' : pm === 'exists' ? ' in the Purchase Order Register (it was already in the PO Master)' : ''}.`);
     F.po = null; F.justSaved = id; ACT.nav({dataset:{k:'po_rep'}}); },
   poNewItem:t => { const l = F.po && F.po.lines[+t.dataset.i]; if (!l) return; l.item = '__new'; l.ni = poNi(l, F.po); forceRender = true; render(); },
   poCancel:() => { F.po = null; ACT.nav({dataset:{k:'po_rep'}}); },
@@ -2239,11 +2242,14 @@ async function matFile(t){
       const lines = (x.lines || []).filter(l => l && String(l.name || '').trim() && (+l.qty > 0 || +l.amount > 0)).map(l => { const nm = String(l.name || '').replace(/\s+/g, ' ').trim(), it = guessItem(nm, l.hsn) || guessItem(enqStrip(nm), l.hsn); return {name:nm, enq:enqOf(nm) || String(x.enq || '').replace(/[^\dA-Za-z\-]/g, '').toUpperCase(), item:it || '__new', brand:l.brand, category:l.category, sub_category:l.sub_category, hsn:String(l.hsn || '').replace(/\D/g, ''), qty:r2(l.qty) || '', unit:String(l.unit || '').toUpperCase(), rate:r2(l.rate) || (+l.qty ? r2(l.amount / l.qty) : ''), value:r2(l.amount) || r2((+l.qty || 0) * (+l.rate || 0)), gst:+l.gst || 18}; });
       const no = String(x.po_no || '').trim(), dup = [...D.mat_po.values()].find(d => normName(d.no) === normName(no));
       F.po = {no, date:ymdOk(x.po_date) || TODAY, supName:sm ? sm.name : String(x.supplier_name || '').replace(/\s+/g, ' ').trim(), supGst:sm && sm.gstin ? sm.gstin : g, supAddr:{addr1:String(x.supplier_addr1 || '').trim(), addr2:String(x.supplier_addr2 || '').trim(), addr3:String(x.supplier_addr3 || '').trim()}, comp:(sm && TEAMS.includes(sm.team) ? sm.team : '') || myTeam(), remarks:'', aiTotal:r2(x.total) || 0, lines:lines.length ? lines : [blankPOL()]};
-      if (await poInMaster(no)){ F.po = {no:'', date:TODAY, supName:'', supGst:'', comp:myTeam(), remarks:'', lines:[blankPOL()]}; forceRender = true; render(); say(`${no} is already in the PO Master, so this PO was not taken. Nothing was changed.`, true); return; }
+      if (dup){ F.po = {no:'', date:TODAY, supName:'', supGst:'', comp:myTeam(), remarks:'', lines:[blankPOL()]}; forceRender = true; render(); say(`${no} is already in the Purchase Order Register, so it was not taken again.`, true); return; }
+      // already in the PO Master (entered by the executive): the register still gets it; the PO Master row stays as it is
+      const pm = await poMasterInfo(no); F.po.inMaster = !!pm;
+      if (pm && pm.requester){ const u = [...(ALLU.size ? ALLU : D.users).values()].find(y => normName(y.name) === normName(pm.requester)); if (u && isPurExec(u)){ F.po.exec = u.id; F.po.execName = u.name; const t = teamOfUser(u); if (t) F.po.comp = t; } }
       F.po.lines.forEach(l => { if (l.item === '__new') l.ni = poNi(l, F.po); delete l.brand; delete l.category; delete l.sub_category; });
       const gw = String(x.supplier_gstin || '').toUpperCase().replace(/[^0-9A-Z]/g, ''), ourG = OUR_GSTS.includes(gw);
       const nNew = F.po.lines.filter(l => l.item === '__new').length, enqs = [...new Set(F.po.lines.map(l => l.enq).filter(Boolean))].join(', ');
-      say(dup ? `This PO (${no}) is already saved. Check before saving again.` : `Done: ${lines.length} product row${lines.length === 1 ? '' : 's'} read${enqs ? ' · ENQ ' + enqs : ''}.${nNew ? ' ' + nNew + ' new stock item' + (nNew === 1 ? '' : 's') + ' will be created (check the yellow boxes).' : ''}${ourG ? ' The supplier GST number on this PO is our own GST number; correct the supplier in Tally and type their GST number here.' : ''} Check and save.`);
+      say(`${F.po.inMaster ? 'Already in the PO Master: saving adds it to the Purchase Order Register only, the PO Master stays as it is. ' : ''}Done: ${lines.length} product row${lines.length === 1 ? '' : 's'} read${enqs ? ' · ENQ ' + enqs : ''}.${nNew ? ' ' + nNew + ' new stock item' + (nNew === 1 ? '' : 's') + ' will be created (check the yellow boxes).' : ''}${ourG ? ' The supplier GST number on this PO is our own GST number; correct the supplier in Tally and type their GST number here.' : ''} Check and save.`);
       forceRender = true; render(); document.getElementById('mform')?.scrollIntoView({block:'start'}); return; }
     if (m === 'mi'){
       let g = String(x.supplier_gstin || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); if (OUR_GSTS.includes(g)) g = '';
