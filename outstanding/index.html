@@ -1030,7 +1030,7 @@ const STCODE = {'35':'Andaman and Nicobar Islands','37':'Andhra Pradesh','12':'A
 let PRDIR = null;  // Purchase people (executives and managers) for a new supplier; empty if this account cannot read them
 function loadPrDir(){ if (PRDIR || !SB) return; PRDIR = []; Store.sb.rpc('pr_directory').then(r => { if (!r.error){ PRDIR = (r.data || []).filter(x => x.active !== false); forceRender = true; render(); } }, () => {}); }
 // supplier lookup: by GST number first; by name only when the GST numbers do not disagree
-const supFind = d => { const L = SUPL || [], g = String(d.supGst || '').toUpperCase(); if (g){ const x = L.find(s => s.gstin === g); if (x) return x; } return L.find(s => normName(s.name) === normName(d.supName) && (!g || !s.gstin || s.gstin === g)) || null; };
+const supFind = d => { const L = SUPL || [], g = String(d.supGst || '').toUpperCase(); if (g){ const x = L.find(s => s.gstin === g); if (x) return x; } const k = String(d.supName || '').toLowerCase().replace(/[^a-z0-9]+/g, ''); return L.find(s => String(s.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '') === k && k && (!g || !s.gstin || s.gstin === g)) || null; };
 const supKnown = d => !!supFind(d);
 const supGstClash = d => { const g = String(d.supGst || '').toUpperCase(); return !!g && !supFind(d) && (SUPL || []).some(s => normName(s.name) === normName(d.supName) && s.gstin && s.gstin !== g); };
 const supNewName = d => supGstClash(d) ? `${String(d.supName || '').trim()} (${String(d.supGst).toUpperCase()})` : String(d.supName || '').trim();
