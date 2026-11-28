@@ -1378,7 +1378,7 @@ const poNi = (l, d) => ({name:enqStrip(l.name) || String(l.name || '').trim(), c
 const dMon = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); return m ? `${m[3]}-${MONS[+m[2] - 1]}-${m[1].slice(2)}` : String(s || ''); };
 const MONS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 // the PO total with GST (what the PO Master and payment requests work with)
-const poGross = doc => { const t = r2((doc.lines || []).reduce((a, l) => a + (+l.value || 0) * (1 + (+l.gst || 0) / 100), 0)); return doc.aiTotal && Math.abs(doc.aiTotal - t) <= 2 ? r2(doc.aiTotal) : t; };   // the PO's printed total when the rows still add up to it, else the rows
+const poGross = doc => { const t = r2((doc.lines || []).reduce((a, l) => a + (+l.value || 0) * (1 + (+l.gst || 0) / 100), 0) + (+doc.other || 0)); return doc.aiTotal && Math.abs(doc.aiTotal - t) <= 2 ? r2(doc.aiTotal) : t; };   // the PO's printed total when the rows still add up to it, else the rows
 // stock items and suppliers with no team yet take the team of the GRN / PO
 async function teamItems(lines, t){ if (!TEAMS.includes(t)) return; for (const id of new Set((lines || []).map(l => l.item).filter(Boolean))){ const x = D.inv_items.get(id); if (x && !compOf(x.comp)) await Store.set('inv_items', id, {...x, comp:t}); } }
 async function teamSupplier(doc){ const s = supFind(doc); if (!s || !s.id || TEAMS.includes(s.team) || !TEAMS.includes(doc.comp) || !Store.sb) return; const r = await Store.sb.from('pr_suppliers').update({team:doc.comp}).eq('id', s.id); if (!r.error) s.team = doc.comp; }
@@ -1418,6 +1418,7 @@ function poFormHTML(){
     <datalist id="po_brs">${invList('inv_brands').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="po_cats">${invList('inv_cats').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="po_subs">${[...new Set(invList('inv_subs').map(x => x.name))].map(x => `<option value="${esc(x)}">`).join('')}</datalist><datalist id="po_units">${invList('inv_units').map(x => `<option value="${esc(x.unit)}">${esc(x.name)}</option>`).join('')}</datalist>
     <div class="tw" style="margin-top:10px"><table class="mtab"><thead><tr><th>Product as on PO *</th><th>ENQ</th><th>HSN</th><th class="r">Qty *</th><th class="r">Rate / piece</th><th class="r">Amount</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     <div style="display:flex;gap:16px;align-items:center;margin-top:8px"><button class="btn" data-act="matAddL" data-m="po">+ Add product</button><div style="margin-left:auto">Total before tax: <span id="po_tot"><b>${inr(d.lines.reduce((a, l) => a + (+l.value || 0), 0))}</b></span></div></div>
+    ${otherBox('po', d)}<div style="text-align:right;margin-top:6px">Total with GST${d.other ? ' + other amount' : ''}: <b id="po_gt">${inr(poGross(d))}</b></div>
     ${shipBox('po', d, 'Ship to our office (' + COS[coOf(d, 'mat_po')].name + ')')}
     <div class="err" id="po_err"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="poSave">${d.id ? 'Save changes' : 'Save Purchase Order'}</button><button class="btn" data-act="poCancel">Cancel</button></div>
     <p class="mut" style="margin:6px 0 0">The ENQ number is taken from the end of the product name (for example "-8478" or "-8521-D"). A purchase order does not create stock items and does not change the stock; only GRN, Delivery Challan, Returnable DC, Receipt Note and Physical Stock do. Saving also adds the PO to the PO Master (Purchase).</p></div>`;
@@ -1463,7 +1464,7 @@ function viewPOOne(po){
   return `<div class="head"><div><button class="btn sm" data-act="poBack">← Purchase Order List</button><h1 style="margin-top:8px">${esc(po.no)}</h1><p class="sub">${esc(po.supName)} · ${poPill(st)}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${poRowActs(po)}</div></div>
   <div class="card"><div class="igrid">${f('PO number', esc(po.no))}${f('PO date', esc(fmtD(po.date)))}${f('Supplier', esc(po.supName))}${f('Supplier GST', esc(po.supGst || s.gstin || ''))}${f('Team', esc(compOf(po.comp)))}${f('Executive', esc(po.execName || userName(po.exec)))}${f('ENQ', esc(po.enq || ''))}${f('Company', 'Branditude')}${f('Remarks', esc(po.remarks || ''))}</div></div>
   <div class="tw" style="margin-top:12px"><table><thead><tr><th>Sl</th><th>Product as on PO</th><th>ENQ</th><th>Stock item</th><th>HSN</th><th class="r">GST</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th><th class="r">Received</th></tr></thead><tbody>${rows}</tbody>
-  <tfoot><tr><td colspan="8" class="r">Taxable value</td><td class="r num">${inr(sub)}</td><td></td></tr><tr><td colspan="8" class="r">GST</td><td class="r num">${inr(gst)}</td><td></td></tr><tr><td colspan="8" class="r"><b>Total</b></td><td class="r num"><b>${inr(poGross(po))}</b></td><td></td></tr></tfoot></table></div>`;
+  <tfoot><tr><td colspan="8" class="r">Taxable value</td><td class="r num">${inr(sub)}</td><td></td></tr><tr><td colspan="8" class="r">GST</td><td class="r num">${inr(gst)}</td><td></td></tr>${+po.other ? `<tr><td colspan="8" class="r">${esc(po.otherLabel || 'Other amount')}</td><td class="r num">${inr(po.other)}</td><td></td></tr>` : ''}<tr><td colspan="8" class="r"><b>Total</b></td><td class="r num"><b>${inr(poGross(po))}</b></td><td></td></tr></tfoot></table></div>`;
 }
 function poActs(po){ const X = poLinesX(po), open = !po.closed && X.some(l => l.left > 1e-9), hasG = X.some(l => l.recv > 0);
   return `${open ? `<button class="btn sm pri" data-act="poRecv" data-id="${esc(po.id)}">Receive (GRN)</button> ` : ''}${isAdm() ? `<button class="btn sm" data-act="poEdit" data-id="${esc(po.id)}">Edit</button> ` : ''}${open && hasG ? `<button class="btn sm" data-act="poClose" data-id="${esc(po.id)}">Close short</button> ` : po.closed ? `<button class="btn sm" data-act="poClose" data-id="${esc(po.id)}">Reopen</button> ` : ''}${isAdm() && !hasG ? `<button class="btn sm danger" data-act="poDel" data-id="${esc(po.id)}">Delete</button>` : ''}`; }
@@ -1769,7 +1770,7 @@ function docHTML(M){
   M.lines.forEach(l => { sub += l.amt; qty += l.qty; const k = (l.hsn || '—') + '|' + l.gst; tx[k] = tx[k] || {hsn:l.hsn || '—', gst:l.gst, base:0}; tx[k].base += l.amt; });
   const T = Object.values(tx).map(t => ({...t, tax:M.inter ? r2(t.base * t.gst / 100) : r2(t.base * t.gst / 200) * 2}));
   const byRate = {}; T.forEach(t => { if (t.gst) byRate[t.gst] = (byRate[t.gst] || 0) + t.tax; });
-  const taxTot = r2(T.reduce((a, t) => a + t.tax, 0)), raw = sub + taxTot, grand = Math.round(raw), ro = r2(grand - raw);
+  const taxTot = r2(T.reduce((a, t) => a + t.tax, 0)), oth = M.other && +M.other.amt ? r2(+M.other.amt) : 0, raw = sub + taxTot + oth, grand = Math.round(raw), ro = r2(grand - raw);
   const taxRows = Object.keys(byRate).map(Number).sort((a, b) => a - b).flatMap(g => M.inter ? [[`${pre}IGST @ ${g}%`, g, byRate[g]]] : [[`${pre}CGST @ ${g / 2}%`, g / 2, byRate[g] / 2], [`${pre}SGST @ ${g / 2}%`, g / 2, byRate[g] / 2]]);
   const units = [...new Set(M.lines.map(l => l.unit))], qu = units.length === 1 ? ' ' + units[0] : '';
   const blk = (lab, p, cls = '') => `<div class="blk ${cls}">${lab ? `<div class="lab">${esc(lab)}</div>` : ''}<div class="pt">${esc(p.title || '')}</div>${p.lines.map(x => `<div>${esc(x)}</div>`).join('')}</div>`;
@@ -1779,6 +1780,7 @@ function docHTML(M){
   const item = (l, i) => `<tr class="ir">${col(i + 1, 'c')}${col(`<b>${esc(l.name)}</b>${l.sub ? `<div class="sm">${esc(l.sub)}</div>` : ''}${l.note ? `<div class="sm"><i>${esc(l.note)}</i></div>` : ''}`)}${hsnC ? col(esc(l.hsn), 'c') : ''}${PX ? col(esc(l.gst) + ' %', 'r') + col(esc(l.due || ''), 'c nw') + col(`${pq(l.qty)} ${esc(l.unit)}`, 'r') : ''}${col(`<b>${pq(l.qty)} ${esc(l.unit)}</b>`, 'r')}${col(pn(l.rate), 'r')}${col(esc(l.unit), 'c')}${col(`<b>${pn(l.amt)}</b>`, 'r')}</tr>`;
   const txr = ([k, rate, v]) => `<tr class="ir">${col('')}${col(`<b><i>${k}</i></b>`, 'r')}${hsnC ? col('') : ''}${PX ? col('') + col('') + col('') : ''}${col('')}${col(rate, 'r')}${col('%', 'c')}${col(`<b>${pn(v)}</b>`, 'r')}</tr>`;
   const roRow = ro ? `<tr class="ir">${col('')}${col('<b><i>ROUND OFF</i></b>', 'r')}${hsnC ? col('') : ''}${PX ? col('') + col('') + col('') : ''}${col('')}${col('')}${col('')}${col(`<b>${ro < 0 ? '(-)' : ''}${pn(Math.abs(ro))}</b>`, 'r')}</tr>` : '';
+  const othRow = oth ? `<tr class="ir">${col('')}${col(`<b><i>${esc(String(M.other.label || 'OTHER AMOUNT').toUpperCase())}</i></b>`, 'r')}${hsnC ? col('') : ''}${PX ? col('') + col('') + col('') : ''}${col('')}${col('')}${col('')}${col(`<b>${pn(oth)}</b>`, 'r')}</tr>` : '';
   const fill = `<tr class="ir fill">${'<td></td>'.repeat(ncol)}</tr>`;
   const hsnTab = !M.hsnSummary || !T.some(t => t.gst) ? '' : (M.inter
     ? `<table class="hs"><thead><tr><th rowspan="2" style="width:40%">HSN/SAC</th><th rowspan="2" class="r">Taxable<br>Value</th><th colspan="2">IGST</th><th rowspan="2" class="r">Total<br>Tax Amount</th></tr><tr><th>Rate</th><th class="r">Amount</th></tr></thead><tbody>${T.map(t => `<tr><td>${esc(t.hsn)}</td><td class="r">${pn(t.base)}</td><td class="c">${t.gst}%</td><td class="r">${pn(t.tax)}</td><td class="r">${pn(t.tax)}</td></tr>`).join('')}<tr class="b"><td class="r">Total</td><td class="r">${pn(sub)}</td><td></td><td class="r">${pn(taxTot)}</td><td class="r">${pn(taxTot)}</td></tr></tbody></table>`
@@ -1813,7 +1815,7 @@ function docHTML(M){
     <div class="top"><div class="lft"><div class="blk co">${logo}<div><div class="pt">${esc(M.co.title)}</div>${M.co.lines.map(x => `<div>${esc(x)}</div>`).join('')}</div></div>${M.parties.map(p => blk(p.label, p)).join('')}</div>
      <div class="rgt"><table class="meta">${metaRows}</table><div class="tod"><div class="lab">${esc(M.todLabel || '')}</div><div class="mv">${esc(M.tod || '')}</div></div></div></div>
     <div class="itw"><table class="it"><thead>${PX ? `<tr><th rowspan="2" style="width:24px">Sl<br>No.</th><th rowspan="2">Description of Goods</th><th rowspan="2" style="width:64px">HSN/SAC</th><th rowspan="2" style="width:38px">GST<br>Rate</th><th rowspan="2" style="width:64px">Due on</th><th colspan="2">Quantity</th><th rowspan="2" style="width:60px">Rate</th><th rowspan="2" style="width:30px">per</th><th rowspan="2" style="width:98px">Amount</th></tr><tr><th style="width:58px">To Ship</th><th style="width:58px">To Bill</th></tr>` : `<tr><th style="width:26px">Sl<br>No.</th><th>Description of Goods</th>${hsnC ? '<th style="width:74px">HSN/SAC</th>' : ''}<th style="width:76px">Quantity</th><th style="width:66px">Rate</th><th style="width:34px">per</th><th style="width:96px">Amount</th></tr>`}</thead>
-     <tbody>${M.lines.map(item).join('')}${taxRows.map(txr).join('')}${roRow}${fill}</tbody>
+     <tbody>${M.lines.map(item).join('')}${taxRows.map(txr).join('')}${othRow}${roRow}${fill}</tbody>
      <tfoot><tr><td></td><td class="r">Total</td>${hsnC ? '<td></td>' : ''}${PX ? `<td></td><td></td><td class="r"><b>${pq(qty)}${qu}</b></td>` : ''}<td class="r"><b>${pq(qty)}${qu}</b></td><td></td><td></td><td class="r gt">₹ ${pn(grand)}</td></tr></tfoot></table></div>
     <div class="row"><div class="aw"><span>Amount Chargeable (in words)</span><i>E. &amp; O.E</i></div><b>${inWords(grand)}</b></div>
     ${hsnTab}
@@ -1835,7 +1837,7 @@ function docModel(m, d){
     const sup = {label:'Supplier (Bill from)', title:d.supName, lines:[s.addr1, s.addr2, s.addr3, g ? 'GSTIN/UIN : ' + g : '', stName(g) ? 'State Name : ' + stName(g) : '', s.mobile ? 'Contact : ' + s.mobile : ''].filter(Boolean)};
     return {kind:'po', po:true, title:'PURCHASE ORDER', tag:'PO', no:d.no, co:coBlock, parties:[d.ship && d.ship.same === false ? shipParty(d.ship, 'Consignee (Ship to)') : us('Consignee (Ship to)'), sup], inter:isInter(g), inputTax:true, hsnSummary:false,
       meta:[['Voucher No.', d.no, 'Dated', fd(d.date)], ['', '', 'Mode/Terms of Payment', d.terms || ''], ['Reference No. & Date.', d.no, 'Other References', d.enq || ''], ['Dispatched through', d.dispatch || '', 'Destination', d.dest || '']],
-      todLabel:'Terms of Delivery', tod:d.tod || '', remarks:d.remarks || '',
+      todLabel:'Terms of Delivery', tod:d.tod || '', remarks:d.remarks || '', other:{label:d.otherLabel || 'Other amount', amt:+d.other || 0},
       lines:(d.lines || []).map(l => ({name:l.name || it(l.item).name || '', hsn:l.hsn || it(l.item).hsn || '', gst:+l.gst || 0, due:fd(d.date), qty:+l.qty || 0, unit:String(l.unit || unitOf(l.item) || 'nos').toLowerCase(), rate:+l.rate || 0, amt:+l.value || 0})),
       leftHtml:'<div style="border:1px solid #000;padding:4px 6px;font-size:9.5px;line-height:1.35">The supplier must mandatorily mention our Purchase Order (PO) number on the invoice. Invoices will be processed only if they strictly match the PO in terms of PO number, quantity, and value. Invoices without a PO reference or with discrepancies will not be accepted.</div>'};
   }
@@ -1846,7 +1848,7 @@ function docModel(m, d){
     const parties = m === 'pi' ? [us(T[3]), {label:T[2], ...pty}] : [{label:T[3], ...pty}, {label:T[2], ...pty}];
     return {kind:m, title:T[0], tag:T[1], no:d.no, co:coBlock, parties, inter:isInter(g), inputTax:m === 'pi', hsnSummary:m !== 'so',
       meta:[['Voucher No.', d.no, 'Dated', fd(d.date)], [AVK[m].ref, d.ref || '', 'Other References', d.enq || '']],
-      todLabel:'Remarks', tod:d.remarks || '',
+      todLabel:'Remarks', tod:d.remarks || '', other:{label:d.otherLabel || 'Other amount', amt:+d.other || 0},
       lines:(d.lines || []).map(l => ({name:l.name || '', hsn:l.hsn || '', gst:+l.gst || 0, qty:+l.qty || 0, unit:String(l.unit || 'nos').toLowerCase(), rate:+l.rate || 0, amt:+l.value || r2((+l.qty || 0) * (+l.rate || 0))}))};
   }
   if (m === 'mi'){
@@ -2228,6 +2230,7 @@ function viewStock(){
 function matRecalc(m){
   if (m === 'mi'){ const e = document.getElementById('mi_sum'); if (e) e.innerHTML = miSumHTML(F.mi); return; }
   const e = document.getElementById(m + '_tot'); if (e) e.innerHTML = `<b>${inr(F[m].lines.reduce((a, l) => a + (+l.value || 0), 0))}</b>`;
+  if (m === 'po'){ delete F.po.aiTotal; const g = document.getElementById('po_gt'); if (g) g.textContent = inr(poGross(F.po)); }
 }
 function matInput(t){
   const m = t.dataset.m, d = F[m]; if (!d) return;
@@ -2374,7 +2377,11 @@ const AVK = {
   si:{col:'mat_si', one:'Sales Invoice', reg:'Sales Invoice List', party:'Customer', pre:'SI', ref:'Order ref', newK:'si_new', regK:'mat_si'}};
 const blankAvL = () => ({name:'', hsn:'', qty:'', unit:'', rate:'', value:'', gst:18});
 const avNewDoc = m => ({co:curCo(), no:'', date:TODAY, party:'', gstin:'', addr1:'', addr2:'', addr3:'', ref:'', enq:'', remarks:'', lines:[blankAvL()]});
-function avTot(d){ const L = d.lines || [], tx = r2(L.reduce((a, l) => a + (+l.value || 0), 0)), tax = r2(L.reduce((a, l) => a + (+l.value || 0) * (+l.gst || 0) / 100, 0)); return {tx, tax, total:r2(d.total && Math.abs(d.total - (tx + tax)) <= 2 ? d.total : tx + tax)}; }
+// other amount (transport, branding … charges) is added to the final total, without GST
+const otherBox = (m, d) => `<div class="igrid" style="margin-top:10px;max-width:640px;margin-left:auto"><label class="f">Other amount for${mInp(m, 'otherLabel', d.otherLabel, {ph:'Transport / branding charges'})}</label><label class="f">Other amount (₹)${mInp(m, 'other', d.other || '', {num:1, ph:'0'})}</label></div>`;
+// Tally XML: voucher total above the products + GST = freight / other ledgers → other amount
+const xmlOther = x => { const L = x.lines || [], tx = L.reduce((a, l) => a + (+l.amount || 0), 0), tax = L.reduce((a, l) => a + (+l.amount || 0) * (+l.gst || 0) / 100, 0), o = r2((+x.total || 0) - tx - tax); return o > 2 ? {other:o, otherLabel:'Other charges (from Tally)'} : {}; };
+function avTot(d){ const L = d.lines || [], tx = r2(L.reduce((a, l) => a + (+l.value || 0), 0)), tax = r2(L.reduce((a, l) => a + (+l.value || 0) * (+l.gst || 0) / 100, 0)), oth = r2(+d.other || 0), c = tx + tax + oth; return {tx, tax, oth, total:r2(d.total && Math.abs(d.total - c) <= 2 ? d.total : c)}; }
 const avParties = m => m === 'pi' ? (SUPL || []).map(x => x.name) : matParties();
 function avPartyInfo(m, name){
   if (m === 'pi'){ const x = (SUPL || []).find(y => normName(y.name) === normName(name)); return x ? {gstin:x.gstin || '', addr1:x.addr1 || '', addr2:x.addr2 || '', addr3:x.addr3 || ''} : null; }
@@ -2382,13 +2389,14 @@ function avPartyInfo(m, name){
 }
 function avInput(t, m, d, k, v){
   if (t.dataset.l == null){ d[k] = v;
+    if (k === 'other'){ delete d.total; const e = document.getElementById(m + '_tot'); if (e) e.innerHTML = avTotHTML(avTot(d)); }
     if (k === 'party'){ const i = avPartyInfo(m, v); if (i) ['gstin', 'addr1', 'addr2', 'addr3'].forEach(f => { if (!d[f]){ d[f] = i[f]; const e = document.getElementById(m + '_' + f); if (e) e.value = i[f]; } }); }
     return; }
   const i = +t.dataset.l, l = d.lines[i]; if (!l) return; l[k] = v;
   if (k === 'qty' || k === 'rate'){ if (+l.qty && +l.rate){ l.value = r2(+l.qty * +l.rate); const e = document.getElementById(`${m}_l${i}_value`); if (e) e.value = l.value; } }
   if (['qty', 'rate', 'value', 'gst'].includes(k)){ const T = avTot(d), e = document.getElementById(m + '_tot'); if (e) e.innerHTML = avTotHTML(T); }
 }
-const avTotHTML = T => `Taxable <b>${inr(T.tx)}</b> · GST <b>${inr(T.tax)}</b> · Total <b>${inr(T.total)}</b>`;
+const avTotHTML = T => `Taxable <b>${inr(T.tx)}</b> · GST <b>${inr(T.tax)}</b>${T.oth ? ` · Other <b>${inr(T.oth)}</b>` : ''} · Total <b>${inr(T.total)}</b>`;
 function viewAvNew(m){
   const K = AVK[m]; if (!F[m]) F[m] = avNewDoc(m); const d = F[m]; loadSupl();
   const rows = d.lines.map((l, i) => `<tr><td>${lInp(m, i, 'name', l.name, {al:'Product'})}</td><td>${lInp(m, i, 'hsn', l.hsn, {al:'HSN'})}</td><td>${lInp(m, i, 'qty', l.qty, {num:1, al:'Qty'})}</td><td>${lInp(m, i, 'unit', l.unit, {al:'Unit'})}</td><td>${lInp(m, i, 'rate', l.rate, {num:1, al:'Rate'})}</td><td>${lInp(m, i, 'value', l.value, {num:1, al:'Amount'})}</td><td>${lInp(m, i, 'gst', l.gst, {num:1, al:'GST %'})}</td><td><button class="btn sm" data-act="avDelL" data-m="${m}" data-i="${i}" aria-label="Remove row">✕</button></td></tr>`).join('');
@@ -2400,7 +2408,8 @@ function viewAvNew(m){
     <label class="f">${K.ref}${mInp(m, 'ref', d.ref)}</label><label class="f">ENQ${mInp(m, 'enq', d.enq)}</label><label class="f" style="grid-column:span 2">Remarks${mInp(m, 'remarks', d.remarks)}</label>
   </div><datalist id="${m}_parties">${avParties(m).map(x => `<option value="${esc(x)}">`).join('')}</datalist>
   <div class="tw" style="margin-top:12px"><table class="mtab"><thead><tr><th>Product *</th><th>HSN</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th><th>GST %</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-  <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px"><button class="btn" data-act="avAddL" data-m="${m}">+ Add product</button><span id="${m}_tot">${avTotHTML(avTot(d))}</span></div>
+  <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px"><button class="btn" data-act="avAddL" data-m="${m}">+ Add product</button></div>
+  ${otherBox(m, d)}<div style="text-align:right;margin-top:6px"><span id="${m}_tot">${avTotHTML(avTot(d))}</span></div>
   <div class="err" id="${m}_err"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="avSave" data-m="${m}">Save ${K.one}</button><button class="btn" data-act="avCancel" data-m="${m}">Cancel</button></div></div>`;
 }
 function viewAvReg(m){
@@ -2427,12 +2436,12 @@ function viewAvOne(m, x){
   return `<div class="head"><div><button class="btn sm" data-act="avBack" data-m="${m}">← ${K.reg}</button><h1 style="margin-top:8px">${esc(x.no)}</h1><p class="sub">${esc(x.party)} · ${COS[coOf(x, K.col)].name}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${avActs(m, x)}</div></div>
   <div class="card"><div class="igrid">${f('Voucher no', esc(x.no))}${f('Date', esc(fmtD(x.date)))}${f(K.party, esc(x.party))}${f('GSTIN', esc(x.gstin || ''))}${f('Address', esc([x.addr1, x.addr2, x.addr3].filter(Boolean).join(', ')))}${f(K.ref, esc(x.ref || ''))}${f('ENQ', esc(x.enq || ''))}${f('Remarks', esc(x.remarks || ''))}</div></div>
   <div class="tw" style="margin-top:12px"><table><thead><tr><th>Sl</th><th>Product</th><th>HSN</th><th class="r">GST</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>${rows}</tbody>
-  <tfoot><tr><td colspan="6" class="r">Taxable value</td><td class="r num">${inr(T.tx)}</td></tr><tr><td colspan="6" class="r">GST</td><td class="r num">${inr(T.tax)}</td></tr><tr><td colspan="6" class="r"><b>Total</b></td><td class="r num"><b>${inr(T.total)}</b></td></tr></tfoot></table></div>`;
+  <tfoot><tr><td colspan="6" class="r">Taxable value</td><td class="r num">${inr(T.tx)}</td></tr><tr><td colspan="6" class="r">GST</td><td class="r num">${inr(T.tax)}</td></tr>${T.oth ? `<tr><td colspan="6" class="r">${esc(x.otherLabel || 'Other amount')}</td><td class="r num">${inr(T.oth)}</td></tr>` : ''}<tr><td colspan="6" class="r"><b>Total</b></td><td class="r num"><b>${inr(T.total)}</b></td></tr></tfoot></table></div>`;
 }
 const avDup = (m, no, id, co) => [...D[AVK[m].col].values()].find(x => x.id !== id && coOf(x, AVK[m].col) === (co || curCo()) && normName(x.no) === normName(no));
 function avClean(m, d){
   const lines = (d.lines || []).filter(l => String(l.name || '').trim()).map(l => ({name:String(l.name).trim(), hsn:String(l.hsn || '').replace(/\D/g, ''), qty:+l.qty || 0, unit:String(l.unit || '').toUpperCase().trim(), rate:+l.rate || 0, value:r2(+l.value || (+l.qty || 0) * (+l.rate || 0)), gst:+l.gst || 0, enq:enqOf(l.name) || '', ...(l.item ? {item:l.item} : {})}));
-  const doc = {...d, lines, no:String(d.no || '').trim(), party:String(d.party || '').trim(), gstin:String(d.gstin || '').toUpperCase().trim(), co:coOf(d, AVK[m].col)};
+  const doc = {...d, lines, no:String(d.no || '').trim(), party:String(d.party || '').trim(), gstin:String(d.gstin || '').toUpperCase().trim(), co:coOf(d, AVK[m].col), other:r2(+d.other || 0), otherLabel:String(d.otherLabel || '').trim()};
   doc.enq = String(d.enq || '').trim() || [...new Set(lines.map(l => l.enq).filter(Boolean))].join(', ');
   const T = avTot(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; return doc;
 }
@@ -2456,7 +2465,7 @@ async function avXmlFile(t){
       if (sm) x.supplier_name = sm.name;
       else if (sd.supName && Array.isArray(SUPL)){ try { await poSupplier(sd, 'Purchase Invoice'); x.supplier_name = sd.supName; nSup++; } catch(e){ if (!/already in the (supplier )?list/i.test(e.message || '')) bad.push(x.po_no + ': supplier ' + sd.supName + ' not created (' + (e.message || e) + ')'); } }
     }
-    const doc = avClean(m, {co:curCo(), no:x.po_no, date:x.po_date || TODAY, party:x.supplier_name, gstin:x.supplier_gstin || '', addr1:x.supplier_addr1 || '', addr2:x.supplier_addr2 || '', addr3:x.supplier_addr3 || '', ref:'', enq:x.enq || '', remarks:String(x.notes || '').trim().slice(0, 300), total:x.total || 0,
+    const doc = avClean(m, {co:curCo(), no:x.po_no, date:x.po_date || TODAY, party:x.supplier_name, gstin:x.supplier_gstin || '', addr1:x.supplier_addr1 || '', addr2:x.supplier_addr2 || '', addr3:x.supplier_addr3 || '', ref:'', enq:x.enq || '', remarks:String(x.notes || '').trim().slice(0, 300), total:x.total || 0, ...xmlOther(x),
       lines:x.lines.map(l => ({name:l.name, item:l.item || undefined, hsn:l.hsn, qty:l.qty, unit:l.unit, rate:l.rate, value:l.amount, gst:l.gst})), src:'tally_xml'});
     try { await avStore(m, doc); n++; } catch(e){ bad.push(x.po_no + ': ' + (e.message || e)); }
   }
@@ -2480,8 +2489,8 @@ const AVACT = {
   avBack:t => { F.avView = F.avView || {}; F.avView[t.dataset.m] = ''; forceRender = true; render(); stkFocus(); },
   avEdit:t => { if (!isAdm()) return; const m = t.dataset.m, x = D[AVK[m].col].get(t.dataset.id); if (!x) return; F[m] = JSON.parse(JSON.stringify(x)); F[m].co = F.co = coOf(x, AVK[m].col); F.avView = {}; ACT.nav({dataset:{k:AVK[m].newK}}); },
   avDel:async t => { if (!isAdm()) return; const m = t.dataset.m, x = D[AVK[m].col].get(t.dataset.id); if (!x || !confirm(`Delete ${AVK[m].one} ${x.no}?`)) return; await Store.del(AVK[m].col, x.id); await logAct('Inventory', `${AVK[m].one} deleted: ${x.no}`); F.avView = {}; forceRender = true; render(); },
-  avExport:t => { const m = t.dataset.m, K = AVK[m]; exportSheet(K.reg.replace(/\s+/g, '_') + '_' + COS[curCo()].name, K.reg, ['Date', 'Voucher no', K.party, 'GSTIN', 'Reference', 'ENQ', 'Product', 'HSN', 'Qty', 'Unit', 'Rate', 'Amount', 'GST %'],
-    [...D[K.col].values()].filter(inCo(K.col)).sort((a, b) => String(b.date).localeCompare(String(a.date))).flatMap(x => (x.lines || []).map(l => [fmtD(x.date), x.no, x.party, x.gstin || '', x.ref || '', x.enq || '', l.name, l.hsn || '', +l.qty || 0, l.unit || '', +l.rate || 0, +l.value || 0, +l.gst || 0]))); },
+  avExport:t => { const m = t.dataset.m, K = AVK[m]; exportSheet(K.reg.replace(/\s+/g, '_') + '_' + COS[curCo()].name, K.reg, ['Date', 'Voucher no', K.party, 'GSTIN', 'Reference', 'ENQ', 'Product', 'HSN', 'Qty', 'Unit', 'Rate', 'Amount', 'GST %', 'Other amount for', 'Other amount', 'Voucher total'],
+    [...D[K.col].values()].filter(inCo(K.col)).sort((a, b) => String(b.date).localeCompare(String(a.date))).flatMap(x => (x.lines || []).map((l, i) => [fmtD(x.date), x.no, x.party, x.gstin || '', x.ref || '', x.enq || '', l.name, l.hsn || '', +l.qty || 0, l.unit || '', +l.rate || 0, +l.value || 0, +l.gst || 0, i ? '' : x.otherLabel || '', i ? '' : +x.other || 0, i ? '' : avTot(x).total]))); },
 };
 // Purchase Order List → Export Excel → type Team / Executive → Import Excel (Admin): only those two columns are taken
 async function poTeamXls(t){
@@ -2593,7 +2602,7 @@ async function poFill(x, say, quiet){
       const sm = supFind({supGst:g, supName:String(x.supplier_name || '').trim()});
       const lines = (x.lines || []).filter(l => l && String(l.name || '').trim() && (+l.qty > 0 || +l.amount > 0)).map(l => { const nm = String(l.name || '').replace(/\s+/g, ' ').trim(), it = guessItem(nm, l.hsn) || guessItem(enqStrip(nm), l.hsn); return {name:nm, enq:enqOf(nm) || String(x.enq || '').replace(/[^\dA-Za-z\-]/g, '').toUpperCase(), item:it || '', brand:l.brand, category:l.category, sub_category:l.sub_category, hsn:String(l.hsn || '').replace(/\D/g, ''), qty:r2(l.qty) || '', unit:String(l.unit || '').toUpperCase(), rate:r2(l.rate) || (+l.qty ? r2(l.amount / l.qty) : ''), value:r2(l.amount) || r2((+l.qty || 0) * (+l.rate || 0)), gst:+l.gst || 18}; });
       const no = String(x.po_no || '').trim(), dup = [...D.mat_po.values()].find(d => normName(d.no) === normName(no));
-      F.po = {no, date:ymdOk(x.po_date) || TODAY, supName:sm ? sm.name : String(x.supplier_name || '').replace(/\s+/g, ' ').trim(), supGst:sm && sm.gstin ? sm.gstin : g, supAddr:{addr1:String(x.supplier_addr1 || '').trim(), addr2:String(x.supplier_addr2 || '').trim(), addr3:String(x.supplier_addr3 || '').trim()}, comp:(sm && TEAMS.includes(sm.team) ? sm.team : '') || myTeam(), remarks:String(x.notes || '').trim().slice(0, 300), aiTotal:r2(x.total) || 0, lines:lines.length ? lines : [blankPOL()]};
+      F.po = {...(x.fromXml ? xmlOther(x) : {}), no, date:ymdOk(x.po_date) || TODAY, supName:sm ? sm.name : String(x.supplier_name || '').replace(/\s+/g, ' ').trim(), supGst:sm && sm.gstin ? sm.gstin : g, supAddr:{addr1:String(x.supplier_addr1 || '').trim(), addr2:String(x.supplier_addr2 || '').trim(), addr3:String(x.supplier_addr3 || '').trim()}, comp:(sm && TEAMS.includes(sm.team) ? sm.team : '') || myTeam(), remarks:String(x.notes || '').trim().slice(0, 300), aiTotal:r2(x.total) || 0, lines:lines.length ? lines : [blankPOL()]};
       if (dup){ F.po = {no:'', date:TODAY, supName:'', supGst:'', comp:myTeam(), remarks:'', lines:[blankPOL()]}; forceRender = true; render(); say(`${no} is already in the Purchase Order List, so it was not taken again.`, true); return false; }
       // already in the PO Master (entered by the executive): the register still gets it; the PO Master row stays as it is
       const pm = await poMasterInfo(no); F.po.inMaster = !!pm;
