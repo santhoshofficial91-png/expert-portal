@@ -416,18 +416,18 @@ function buildNav(){
       const note = !info ? (current === 'payments' ? 'Loading…' : 'Click to open') : (info.cached ? 'Click to open' : 'No Purchase access for this account — ask the Admin');
       h += groupHTML('purchase', 'Purchase', `<div class="sl-note">${note}</div>`, current === 'payments');
     } else {
-      const pur = [], exp = [];
-      info.items.forEach(it => {
-        if (it.k === 'grp_ex') exp.push(...(it.children || []));
-        else if (it.children) pur.push(...it.children);
-        else pur.push(it);
-      });
+      // Purchase: supplier list, PO Master, PO details …  Payment Request: supplier + expense requests, then the paid lists, then "Request Sent"
+      const pur = [], pr = [], ORD = ['pay', 'exp', 'paid', 'expaid', 'sent', 'esent'];
+      const PRL = {paid:'Supplier Paid Request', expaid:'Expenses Paid Request', sent:'Supplier Request Sent', esent:'Expenses Request Sent'};
+      info.items.forEach(it => (it.children || [it]).forEach(c => (ORD.includes(c.k) ? pr : pur).push(c)));
+      pr.sort((x, y) => ORD.indexOf(x.k) - ORD.indexOf(y.k));
+      const prL = pr.map(c => ({...c, label:PRL[c.k] || (c.k === 'pay' && !/^Create/.test(c.label) ? 'Supplier Payment Request' : c.k === 'exp' && !/^Create/.test(c.label) ? 'Expenses Request' : c.label)}));
       const act = list => list.some(it => isOn('payments', it));
       if (pur.length) h += groupHTML('purchase', 'Purchase', pur.map(it => subBtn('payments', it, false)).join(''), act(pur));
-      if (exp.length) h += groupHTML('expenses', 'Expenses', exp.map(it => subBtn('payments', it, false)).join(''), act(exp));
+      if (prL.length) h += groupHTML('expenses', 'Payment Request', prL.map(it => subBtn('payments', it, false)).join(''), act(prL));
     }
   }
-  // GRN / Delivery Challan / Receipt Note: a group each (create + list), right under Expenses
+  // GRN / Delivery Challan / Receipt Note: a group each (create + list), right under Payment Request
   // Create Vouchers, then Vouchers Register, then Closing Stock Details
   const grp = (g, lab, ks) => { const its = ks.map(get).filter(Boolean); if (its.length) h += groupHTML(g, lab, its.map(it => itemHTML('outstanding', it)).join(''), its.some(it => on('outstanding', it))); };
   grp('cdoc', 'Create Vouchers', ['po_new', 'pi_new', 'mat_in_new', 'so_new', 'si_new', 'dc_new', 'rdc_new', 'rn_new', 'ps_new']);
