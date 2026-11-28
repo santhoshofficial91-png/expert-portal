@@ -1062,7 +1062,7 @@ async function niCreate(l){
   const g = !(+l.gst >= 0) || l.gst === '' ? none : [...D.inv_gst.values()].find(x => +x.rate === +l.gst) || await mk('inv_gst', {rate:+l.gst});
   const iid = uid('it'), pn = String(nextPart());
   await Store.set('inv_items', iid, {id:iid, name:nm, part:pn, code:String(n.code || '').trim(), comp:compOf(n.comp), brand:b.id, cat:c.id, sub:su.id, unit:u.id, hsn:String(l.hsn || '').trim(), gst:g.id, by:S.me, at:nowISO()});
-  await logAct('Inventory', `Stock item created from ${l.fromPo ? 'Purchase Order' : 'GRN'}: ${pn} ${nm}`);
+  await logAct('Inventory', `Stock item created from ${l.from || (l.fromPo ? 'Purchase Order' : 'GRN')}: ${pn} ${nm}`);
   l.item = iid; delete l.ni; return pn + ' ' + nm;
 }
 function niCards(d, m = 'mi'){
@@ -1398,10 +1398,10 @@ async function poMaster(doc){
   const r = await Store.sb.rpc('po_master_add', {p_po:doc.no, p_enq:[...new Set((doc.lines || []).map(l => l.enq).filter(Boolean))].join(', ') || doc.enq || '', p_date:dMon(doc.date), p_sup:doc.supName, p_value:poGross(doc), p_req:req});
   if (r.error) throw r.error; return r.data;
 }
-async function poSupplier(d){
+async function poSupplier(d, from = 'Purchase Order'){
   if (!d.supName || SUPL === null || supKnown(d)) return; const nm = supNewName(d), g = String(d.supGst || '').toUpperCase(), a = d.supAddr || {};
   const r = await Store.sb.from('pr_suppliers').insert({name:nm, under:'Sundry Creditors', addr1:a.addr1 || '', addr2:a.addr2 || '', addr3:a.addr3 || '', state:STCODE[g.slice(0, 2)] || '', pincode:'', gstin:g, pan:g.slice(2, 12), updated_at:nowISO()});
-  if (r.error) throw r.error; SUPL.push({name:nm, gstin:g, addr1:a.addr1 || '', addr2:a.addr2 || '', addr3:a.addr3 || ''}); d.supName = nm; await logAct('Inventory', 'Supplier created from Purchase Order: ' + nm);
+  if (r.error) throw r.error; SUPL.push({name:nm, gstin:g, addr1:a.addr1 || '', addr2:a.addr2 || '', addr3:a.addr3 || ''}); d.supName = nm; await logAct('Inventory', 'Supplier created from ' + from + ': ' + nm);
 }
 function poFormHTML(){
   teamFill(F.po); const d = F.po, sups = [...new Set([...(SUPL || []).map(x => x.name), ...[...D.mat_po.values()].map(x => x.supName), ...[...D.mat_in.values()].map(x => x.supName)].filter(Boolean))].sort();
@@ -2421,7 +2421,7 @@ function viewAvOne(m, x){
 }
 const avDup = (m, no, id, co) => [...D[AVK[m].col].values()].find(x => x.id !== id && coOf(x, AVK[m].col) === (co || curCo()) && normName(x.no) === normName(no));
 function avClean(m, d){
-  const lines = (d.lines || []).filter(l => String(l.name || '').trim()).map(l => ({name:String(l.name).trim(), hsn:String(l.hsn || '').replace(/\D/g, ''), qty:+l.qty || 0, unit:String(l.unit || '').toUpperCase().trim(), rate:+l.rate || 0, value:r2(+l.value || (+l.qty || 0) * (+l.rate || 0)), gst:+l.gst || 0, enq:enqOf(l.name) || ''}));
+  const lines = (d.lines || []).filter(l => String(l.name || '').trim()).map(l => ({name:String(l.name).trim(), hsn:String(l.hsn || '').replace(/\D/g, ''), qty:+l.qty || 0, unit:String(l.unit || '').toUpperCase().trim(), rate:+l.rate || 0, value:r2(+l.value || (+l.qty || 0) * (+l.rate || 0)), gst:+l.gst || 0, enq:enqOf(l.name) || '', ...(l.item ? {item:l.item} : {})}));
   const doc = {...d, lines, no:String(d.no || '').trim(), party:String(d.party || '').trim(), gstin:String(d.gstin || '').toUpperCase().trim(), co:coOf(d, AVK[m].col)};
   doc.enq = String(d.enq || '').trim() || [...new Set(lines.map(l => l.enq).filter(Boolean))].join(', ');
   const T = avTot(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; return doc;
@@ -2432,14 +2432,33 @@ async function avXmlFile(t){
   let L; try { L = tallyXml(await file.text(), m); } catch(e){ toast(e.message || 'Could not read the XML file.'); return; }
   if (!L.length){ toast(`No ${K.one} found in this XML.${L.types && L.types.length ? ' Voucher types in the file: ' + L.types.join(', ') + '.' : ''} In Tally open the voucher, press Alt+E, pick XML (Data Interchange).`); return; }
   if (L[0].co && L[0].co !== curCo()){ F.co = L[0].co; try { localStorage.setItem('eo_co', F.co); } catch(e){} }
-  let n = 0, skip = 0; const bad = [];
+  let n = 0, skip = 0, nSup = 0, nIt = 0; const bad = [], made = new Map();
+  F['avRes_' + m] = {bad:0, msg:`Importing ${L.length} ${K.one.toLowerCase()}${L.length === 1 ? '' : 's'} from ${file.name}… keep this page open.`}; ACT.nav({dataset:{k:K.regK, keep:1}}); forceRender = true; render();
+  // Purchase Invoice: a supplier not in the Supplier List is created (name, GST number, address); a product not in the
+  // stock items is created as a stock item (name, HSN, GST %, unit). Stock quantity does not change, only GRN moves stock.
+  if (m === 'pi' && SB){ try { const r = await Store.sb.from('pr_suppliers').select('id,name,gstin,addr1,addr2,addr3,state,pincode,mobile,email,exec_id,exec_name,mgr_id,mgr_name,team'); if (!r.error) SUPL = r.data || []; } catch(e){} }
   for (const x of L){
     if (avDup(m, x.po_no)){ skip++; continue; }
+    if (m === 'pi'){
+      let g = String(x.supplier_gstin || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); if (OUR_GSTS.includes(g) || !/^\d{2}[A-Z0-9]{13}$/.test(g)) g = '';
+      const sd = {supName:String(x.supplier_name || '').replace(/\s+/g, ' ').trim(), supGst:g, supAddr:{addr1:x.supplier_addr1 || '', addr2:x.supplier_addr2 || '', addr3:x.supplier_addr3 || ''}};
+      const sm = Array.isArray(SUPL) ? supFind(sd) : null;
+      if (sm) x.supplier_name = sm.name;
+      else if (sd.supName && Array.isArray(SUPL)){ try { await poSupplier(sd, 'Purchase Invoice'); x.supplier_name = sd.supName; nSup++; } catch(e){ if (!/already in the (supplier )?list/i.test(e.message || '')) bad.push(x.po_no + ': supplier ' + sd.supName + ' not created (' + (e.message || e) + ')'); } }
+      for (const l of x.lines){
+        const nm = String(l.name || '').replace(/\s+/g, ' ').trim(); if (!nm) continue;
+        let it = mxItem(l) || made.get(normName(enqStrip(nm) || nm));
+        if (!it){ const gst = l.gst === '' || l.gst == null || isNaN(+l.gst) ? '' : Math.round(+l.gst * 100) / 100, o = {ni:{name:enqStrip(nm) || nm, code:'', comp:'', brand:'', cat:'', sub:'', unit:String(l.unit || '').toUpperCase()}, hsn:String(l.hsn || '').replace(/\D/g, ''), gst, from:'Purchase Invoice'};
+          try { await niCreate(o); it = o.item; made.set(normName(enqStrip(nm) || nm), it); nIt++; } catch(e){ bad.push(x.po_no + ': item ' + nm + ' not created (' + (e.message || e) + ')'); } }
+        if (it) l.item = it;
+      }
+    }
     const doc = avClean(m, {co:curCo(), no:x.po_no, date:x.po_date || TODAY, party:x.supplier_name, gstin:x.supplier_gstin || '', addr1:x.supplier_addr1 || '', addr2:x.supplier_addr2 || '', addr3:x.supplier_addr3 || '', ref:'', enq:x.enq || '', remarks:String(x.notes || '').trim().slice(0, 300), total:x.total || 0,
-      lines:x.lines.map(l => ({name:l.name, hsn:l.hsn, qty:l.qty, unit:l.unit, rate:l.rate, value:l.amount, gst:l.gst})), src:'tally_xml'});
+      lines:x.lines.map(l => ({name:l.name, item:l.item || undefined, hsn:l.hsn, qty:l.qty, unit:l.unit, rate:l.rate, value:l.amount, gst:l.gst})), src:'tally_xml'});
     try { await avStore(m, doc); n++; } catch(e){ bad.push(x.po_no + ': ' + (e.message || e)); }
   }
-  F['avRes_' + m] = {bad:bad.length, msg:`Saved ${n} of ${L.length} ${K.one.toLowerCase()}${L.length === 1 ? '' : 's'} from ${file.name} in ${COS[curCo()].name}${skip ? ` · ${skip} already in the register (skipped)` : ''}${bad.length ? ' · Not saved: ' + bad.join(' · ') : ''}.`};
+  F['avRes_' + m] = {bad:bad.length, msg:`Saved ${n} of ${L.length} ${K.one.toLowerCase()}${L.length === 1 ? '' : 's'} from ${file.name} in ${COS[curCo()].name}${skip ? ` · ${skip} already in the register (skipped)` : ''}${m === 'pi' ? ` · new suppliers created: ${nSup} · new stock items created: ${nIt}` : ''}${bad.length ? ' · Problems: ' + bad.join(' · ') : ''}.`};
+  if (m === 'pi' && (nSup || nIt)) await logAct('Inventory', `Purchase Invoice XML import: ${n} saved, ${nSup} suppliers and ${nIt} stock items created`);
   F.avView = {}; ACT.nav({dataset:{k:K.regK, keep:1}}); forceRender = true; render();
 }
 document.addEventListener('change', ev => { if (ev.target.classList && ev.target.classList.contains('avxml')) avXmlFile(ev.target); });
