@@ -255,7 +255,7 @@ textarea{width:100%;padding:10px 12px;border:1px solid #cbd2dc;border-radius:8px
 <script>
 const SB_URL = 'https://ogvltuavclcgbxlyxkhs.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ndmx0dWF2Y2xjZ2J4bHl4a2hzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ3MjY4MDAsImV4cCI6MjExMDMwMjgwMH0.M8toXkbQui8TjCacIobkiyew9O-6IrqgZTTzIkQV8Sg';
-const BUILD = '20261128075637';   // set by build.sh; makes browsers fetch fresh module pages after each update
+const BUILD = '20261128081155';   // set by build.sh; makes browsers fetch fresh module pages after each update
 const MODULES = {
   out: {key:'outstanding', title:'Customer Outstanding', path:'outstanding/'},
   pay: {key:'payments', title:'Payment Request', path:'payments/'}
@@ -333,6 +333,7 @@ const GICON = {
   mail:'<svg class="gi" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
   contacts:'<svg class="gi" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M7.5 17c.8-2 2.5-3 4.5-3s3.7 1 4.5 3"/></svg>',
   dashboard:'<svg class="gi" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="8" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="15" width="7" height="6" rx="1.5"/></svg>',
+  outst:'<svg class="gi" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 8h6M9 11h6M10 8c3 0 3 5 0 5l4 4"/></svg>',
   sales:'<svg class="gi" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>',
   purchase:'<svg class="gi" viewBox="0 0 24 24"><path d="M3 4h2l2.4 11h11l2-8H6.2"/><circle cx="9" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/></svg>',
   admin:'<svg class="gi" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 6.5a3 3 0 010 5.5M18 14.5c1.8.7 3 2.3 3 4.5"/></svg>',
@@ -359,7 +360,9 @@ const OUT_BASE = [{k:'dashboard',label:'Dashboard'},{k:'outstanding',label:'Outs
 const OUT_INV = [{k:'inv_stock',label:'Stock List'},{k:'inv_item',label:'Create Stock Item'},{k:'inv_brand',label:'Brand'},{k:'inv_cat',label:'Category'},{k:'inv_sub',label:'Sub Category'},{k:'inv_unit',label:'Units'},{k:'inv_gst',label:'GST Percentage'},{k:'po_new',label:'Create Purchase Order'},{k:'pi_new',label:'Create Purchase Invoice'},{k:'mat_in_new',label:'Create GRN'},{k:'so_new',label:'Create Sales Order'},{k:'si_new',label:'Create Sales Invoice'},{k:'dc_new',label:'Create Delivery Challan'},{k:'rdc_new',label:'Create Returnable DC'},{k:'rn_new',label:'Create Receipt Note'},{k:'ps_new',label:'Create Physical Stock'},{k:'cls_stock',label:'Closing Stock Details'},{k:'mat_po',label:'Purchase Order Register'},{k:'mat_pi',label:'Purchase Register'},{k:'mat_in',label:'GRN Register'},{k:'mat_so',label:'Sales Order Register'},{k:'mat_si',label:'Sales Invoice Register'},{k:'mat_dc',label:'Delivery Challan Register'},{k:'mat_rn',label:'Receipt Note Register'},{k:'mat_ps',label:'Physical Stock Register'},{k:'smp_pend',label:'Pending Samples'}];
 // menu shown before the Sales module has loaded once (it then sends its exact menu)
 const outFallback = () => { const adm = P && P.role === 'Admin', invOnly = P && P.role === 'Executive' && P.canInv === true && Array.isArray(P.subs) && !P.subs.length, items = invOnly ? OUT_BASE.filter(i => !['dashboard','outstanding','billing','collection'].includes(i.k)) : OUT_BASE.slice(); if (adm || (P && P.role === 'Sub Admin' && P.canAlert)) items.splice(1, 0, {k:'mail', label:'Send Payment Mail'}); if (adm || (P && (P.role === 'Sub Admin' || P.role === 'Manager'))) items.splice(items.findIndex(i => i.k === 'collection') + 1, 0, {k:'cust_list', label:'Customer List'}); if (adm || (P && P.canInv)) items.push(...OUT_INV); if (adm) items.push({k:'backup', label:'Backup Download'}); return items; };
-const RENAME = {outstanding:{outstanding:'Customer Outstanding'}};  // Purchase labels are set by the module (they depend on the role)
+const RENAME = {outstanding:{outstanding:'Customer Outstanding', billing:'Billing Register', mat_po:'Purchase Order', mat_pi:'Purchase Invoice', mat_in:'GRN', mat_so:'Sales Order', mat_si:'Sales Invoice', po_new:'Purchase Order', pi_new:'Purchase Invoice', mat_in_new:'GRN', so_new:'Sales Order', si_new:'Sales Invoice'}};
+// one panel item per voucher: its list opens, and the list has the Create button; the create page lights up the same item
+const SAME_ITEM = {po_new:'mat_po', pi_new:'mat_pi', mat_in_new:'mat_in', so_new:'mat_so', si_new:'mat_si'};  // Purchase labels are set by the module (they depend on the role)
 const MOD_NAV = {};          // module key -> {items, view, role}
 let openG = {}, subOpen = {}, frameMod = null, frameReady = false, pendingGo = null;
 // the menu cache is tied to the app version and to the access ticks, so a new tick or a new version shows at once
@@ -367,7 +370,7 @@ const cacheKey = k => 'portal_nav_' + (P && P.id) + '_' + k + '_' + BUILD + '_' 
 function loadNavCache(){ MOD_NAV_RESET(); myMods().forEach(m => { const k = MODULES[m].key; try { const c = JSON.parse(localStorage.getItem(cacheKey(k)) || 'null'); if (c && Array.isArray(c.items)) MOD_NAV[k] = {items: c.items, view: null, role: null, cached: true}; } catch(e){} }); }
 function MOD_NAV_RESET(){ Object.keys(MOD_NAV).forEach(k => delete MOD_NAV[k]); }
 function cleanItems(a){ return (Array.isArray(a) ? a : []).slice(0, 40).map(it => ({k: String(it.k || ''), label: String(it.label || ''), role: it.role ? String(it.role) : '', badge: Number(it.badge) || 0, children: it.children ? cleanItems(it.children) : null})); }
-function isOn(m, it){ const info = MOD_NAV[m] || {}; return current === m && info.view === it.k && (!it.role || info.role === it.role); }
+function isOn(m, it){ const info = MOD_NAV[m] || {}, v = m === 'outstanding' && SAME_ITEM[info.view] && it.k === SAME_ITEM[info.view] ? it.k : info.view; return current === m && v === it.k && (!it.role || info.role === it.role); }
 function subBtn(m, it, l2){
   const bdg = it.badge ? `<span class="bdg">${it.badge}</span>` : '';
   return `<button class="si ${l2 ? 'l2' : ''} ${isOn(m, it) ? 'on' : ''}" data-m="${esc(m)}" data-k="${esc(it.k)}" data-role="${esc(it.role || '')}">${esc((RENAME[m] && RENAME[m][it.k]) || it.label)}${bdg}</button>`;
@@ -406,15 +409,22 @@ function buildNav(){
   // Inventory after Admin and Send Alert
   const inv = ['inv_stock', 'inv_item', 'inv_brand', 'inv_cat', 'inv_sub', 'inv_unit', 'inv_gst'].map(get).filter(Boolean);
   if (inv.length) h += groupHTML('inventory', 'Inventory', inv.map(it => itemHTML('outstanding', it)).join(''), inv.some(it => on('outstanding', it)));
-  // Sales
-  const sal = ['outstanding', 'billing', 'collection', 'contacts', 'cust_list'].map(get).filter(Boolean);
+  // the list of a voucher type (or its create page when only that is allowed); both keys are taken so neither shows again lower down
+  const vch = (reg, nw) => { const r = get(reg), c = get(nw); return r || c; };
+  // Outstanding: customer outstanding + collection
+  const ost = ['outstanding', 'collection'].map(get).filter(Boolean);
+  if (ost.length) h += groupHTML('outst', 'Outstanding', ost.map(it => itemHTML('outstanding', it)).join(''), ost.some(it => on('outstanding', it)));
+  // Sales: sales order, sales invoice, billing register, customers
+  const sal = [vch('mat_so', 'so_new'), vch('mat_si', 'si_new'), get('billing'), get('contacts'), get('cust_list')].filter(Boolean);
   if (sal.length) h += groupHTML('sales', 'Sales', sal.map(it => itemHTML('outstanding', it)).join(''), sal.some(it => on('outstanding', it)));
+  const purV = [vch('mat_po', 'po_new'), vch('mat_pi', 'pi_new'), vch('mat_in', 'mat_in_new')].filter(Boolean), purVH = purV.map(it => subBtn('outstanding', it, false)).join(''), purVOn = purV.some(it => on('outstanding', it));
+  if (!hasPay && purV.length) h += groupHTML('purchase', 'Purchase', purVH, purVOn);
   // Purchase + Expenses (from the Payment Request module; its "Supplier Payment" sub-group is flattened, "Expense" becomes its own group)
   if (hasPay){
     const info = MOD_NAV.payments;
     if (!info || !info.items.length){
       const note = !info ? (current === 'payments' ? 'Loading…' : 'Click to open') : (info.cached ? 'Click to open' : 'No Purchase access for this account — ask the Admin');
-      h += groupHTML('purchase', 'Purchase', `<div class="sl-note">${note}</div>`, current === 'payments');
+      h += groupHTML('purchase', 'Purchase', `<div class="sl-note">${note}</div>` + purVH, current === 'payments' || purVOn);
     } else {
       // Purchase: supplier list, PO Master, PO details …  Payment Request: supplier + expense requests, then the paid lists, then "Request Sent"
       const pur = [], pr = [], ORD = ['pay', 'exp', 'paid', 'expaid', 'sent', 'esent'];
@@ -423,15 +433,17 @@ function buildNav(){
       pr.sort((x, y) => ORD.indexOf(x.k) - ORD.indexOf(y.k));
       const prL = pr.map(c => ({...c, label:PRL[c.k] || (c.k === 'pay' && !/^Create/.test(c.label) ? 'Supplier Payment Request' : c.k === 'exp' && !/^Create/.test(c.label) ? 'Expenses Request' : c.label)}));
       const act = list => list.some(it => isOn('payments', it));
-      if (pur.length) h += groupHTML('purchase', 'Purchase', pur.map(it => subBtn('payments', it, false)).join(''), act(pur));
+      // supplier list, pending request, PO Master, then Purchase Order / Purchase Invoice / GRN, then PO Details
+      const pod = pur.filter(c => c.k === 'pod'), pur1 = pur.filter(c => c.k !== 'pod');
+      if (pur.length || purV.length) h += groupHTML('purchase', 'Purchase', pur1.map(it => subBtn('payments', it, false)).join('') + purVH + pod.map(it => subBtn('payments', it, false)).join(''), act(pur) || purVOn);
       if (prL.length) h += groupHTML('expenses', 'Payment Request', prL.map(it => subBtn('payments', it, false)).join(''), act(prL));
     }
   }
   // GRN / Delivery Challan / Receipt Note: a group each (create + list), right under Payment Request
   // Create Vouchers, then Vouchers Register, then Closing Stock Details
   const grp = (g, lab, ks) => { const its = ks.map(get).filter(Boolean); if (its.length) h += groupHTML(g, lab, its.map(it => itemHTML('outstanding', it)).join(''), its.some(it => on('outstanding', it))); };
-  grp('cdoc', 'Create Vouchers', ['po_new', 'pi_new', 'mat_in_new', 'so_new', 'si_new', 'dc_new', 'rdc_new', 'rn_new', 'ps_new']);
-  grp('dreg', 'Vouchers Register', ['mat_po', 'mat_pi', 'mat_in', 'mat_so', 'mat_si', 'mat_dc', 'mat_rn', 'mat_ps', 'po_rep']);
+  grp('cdoc', 'Create Vouchers', ['dc_new', 'rdc_new', 'rn_new', 'ps_new']);
+  grp('dreg', 'Vouchers Register', ['mat_dc', 'mat_rn', 'mat_ps', 'po_rep']);
   const cs = get('cls_stock'); if (cs) h += topBtn('outstanding', cs);
   ['smp_pend'].forEach(k => { const it = get(k); if (it) h += topBtn('outstanding', it); });
   ['chat', 'edits', 'activity'].forEach(k => { const it = get(k); if (it) h += topBtn('outstanding', it); });
