@@ -370,6 +370,7 @@ tr.flash td{background:#fef08a!important;transition:background .3s}
 .chok{display:inline-block;margin:1px 6px 1px 0;color:#0c7d70;font-weight:700}.chno{display:inline-block;margin:1px 6px 1px 0;color:#b42318;font-weight:700}
 @media (max-width:560px){.igrid{grid-template-columns:minmax(0,1fr)}.igrid>*{grid-column:auto!important}.igrid input,.igrid select{min-width:0;max-width:100%}}
 .tcards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:6px 0 4px;max-width:720px}@media (max-width:560px){.tcard{padding:8px 10px!important}.tcard b{font-size:14px!important}.tcard small,.tcard span{font-size:11px!important}}.tcard{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;gap:2px}.tcard span{font-size:12px;color:#64748b;font-weight:600}.tcard b{font-size:18px}.tcard small{color:#64748b}
+.cobar{display:inline-flex;gap:4px;padding:4px;margin:0 0 12px;background:#eef2f7;border-radius:12px}.cotab{border:0;background:transparent;padding:8px 18px;border-radius:9px;font:inherit;font-weight:700;color:#475569;cursor:pointer;min-height:38px}.cotab.on{background:#fff;color:#4338ca;box-shadow:0 1px 3px rgba(15,23,42,.15)}.cotab:focus-visible{outline:2px solid #4338ca;outline-offset:2px}
 .lnk{background:none;border:0;padding:0;color:#4338ca;text-decoration:underline;cursor:pointer;font:inherit;font-size:12px}
 </style>
 </head>
@@ -417,7 +418,7 @@ async function hashPw(pw, salt){
 }
 
 /* ---------- storage (shared db when available, local fallback) ---------- */
-const COLS_DB = ['users','entries','followups','payments','activity','edits','meta','chats','billing','wasent','contacts','mailthread','inv_items','inv_brands','inv_cats','inv_subs','inv_units','inv_gst','mat_po','mat_in','mat_dc','mat_rn','mat_map','cust_addr','mat_ps'];   // contacts: customer To/CC; mailthread: payment mail thread per customer (written by the send-mail service)   // wasent: last WhatsApp alert sent per person + type
+const COLS_DB = ['mat_pi','mat_so','mat_si','users','entries','followups','payments','activity','edits','meta','chats','billing','wasent','contacts','mailthread','inv_items','inv_brands','inv_cats','inv_subs','inv_units','inv_gst','mat_po','mat_in','mat_dc','mat_rn','mat_map','cust_addr','mat_ps'];   // contacts: customer To/CC; mailthread: payment mail thread per customer (written by the send-mail service)   // wasent: last WhatsApp alert sent per person + type
 const D = {}; COLS_DB.forEach(c => D[c] = new Map());
 const hasOut = u => !u || !Array.isArray(u.mods) || u.mods.includes('out'); // Payment Request-only people are not Customer Outstanding users
 const ALLU = new Map();   // every user doc (Sales and Purchase), used only by the Create pages
@@ -938,7 +939,16 @@ const inr = n => '₹' + r2(n).toLocaleString('en-IN', {minimumFractionDigits:2,
 const qtyF = n => r2(n).toLocaleString('en-IN');
 const GSTR = [5, 18];
 const OUR_GSTS = ['33AAHCB4086D1ZX', '33AAEFE2799Q1ZS'];
-const MATCOL = {mi:'mat_in', dc:'mat_dc', rn:'mat_rn', ps:'mat_ps', po:'mat_po'};
+const MATCOL = {mi:'mat_in', dc:'mat_dc', rn:'mat_rn', ps:'mat_ps', po:'mat_po', pi:'mat_pi', so:'mat_so', si:'mat_si'};
+// two companies in one app: every voucher belongs to one; numbers, registers and stock are kept per company
+const COS = {B:{key:'Excoso', name:'Branditude'}, E:{key:'Expert', name:'Expert'}};
+const CO_DEF = {mat_in:'B', mat_po:'B', mat_pi:'B', mat_dc:'E', mat_rn:'E', mat_ps:'E', mat_so:'E', mat_si:'E'};   // vouchers saved before this change: the company they printed in
+const coOf = (d, col) => d && (d.co === 'B' || d.co === 'E') ? d.co : (CO_DEF[col] || 'E');
+const curCo = () => { if (F.co !== 'B' && F.co !== 'E'){ try { F.co = localStorage.getItem('eo_co') === 'E' ? 'E' : 'B'; } catch(e){ F.co = 'B'; } } return F.co; };
+const inCo = (col, co) => d => coOf(d, col) === (co || curCo());
+const CO_VIEWS = {po_new:'po', pi_new:'pi', mat_in_new:'mi', so_new:'so', si_new:'si', dc_new:'dc', rdc_new:'dc', rn_new:'rn', ps_new:'ps', mat_po:1, mat_pi:1, mat_in:1, mat_so:1, mat_si:1, mat_dc:1, mat_rn:1, mat_ps:1, po_rep:1, inv_stock:1, cls_stock:1};
+function coBar(){ const c = curCo(); return `<div class="cobar" role="tablist" aria-label="Company">${['B', 'E'].map(k => `<button class="cotab${c === k ? ' on' : ''}" role="tab" aria-selected="${c === k}" data-act="coSet" data-co="${k}">${COS[k].name}</button>`).join('')}</div>`; }
+const coWrap = (v, html) => { const m = typeof CO_VIEWS[v] === 'string' ? CO_VIEWS[v] : ''; if (m && F[m] && !F[m].id && F[m].co !== curCo()) F[m].co = curCo(); return CO_VIEWS[v] ? coBar() + html : html; };
 const isInter = g => /^\d{2}[A-Z]/.test(String(g || '').toUpperCase()) && String(g).slice(0, 2) !== '33';
 const itemLbl = id => { const x = D.inv_items.get(id); return x ? `${x.part} · ${x.name}` : ''; };
 const normName = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -956,12 +966,13 @@ function guessItem(name, hsn){
 }
 const itemGst = id => { const x = D.inv_items.get(id), g = x && D.inv_gst.get(x.gst); return g ? +g.rate : ''; };
 // stock per item: in (GRN) - out (Delivery Challan) + back (Receipt Note); value goes out at the value it came in
-function stockMap(skip){
-  const M = new Map(), g = id => { if (!M.has(id)) M.set(id, {inQ:0, inV:0, outQ:0, outV:0, retQ:0, retV:0}); return M.get(id); };
-  D.mat_in.forEach(d => (d.lines || []).forEach(l => { if (l.item){ const s = g(l.item); s.inQ += +l.qty || 0; s.inV += +l.taxable || 0; } }));
-  D.mat_ps.forEach(d => { if (d.id === skip) return; (d.lines || []).forEach(l => { if (l.item){ const s = g(l.item); s.inQ += +l.qty || 0; s.inV += +l.value || 0; } }); });
-  D.mat_dc.forEach(d => { if (d.id === skip) return; (d.lines || []).forEach(l => { if (l.item){ const s = g(l.item); s.outQ += +l.qty || 0; s.outV += +l.value || 0; } }); });
-  D.mat_rn.forEach(d => { if (d.id === skip) return; (d.lines || []).forEach(l => { if (l.item){ const s = g(l.item); s.retQ += +l.qty || 0; s.retV += +l.value || 0; } }); });
+function stockMap(skip, co){
+  co = co || curCo(); const M = new Map(), g = id => { if (!M.has(id)) M.set(id, {inQ:0, inV:0, outQ:0, outV:0, retQ:0, retV:0}); return M.get(id); };
+  const on = col => d => coOf(d, col) === co;
+  [...D.mat_in.values()].filter(on('mat_in')).forEach(d => (d.lines || []).forEach(l => { if (l.item){ const s = g(l.item); s.inQ += +l.qty || 0; s.inV += +l.taxable || 0; } }));
+  [...D.mat_ps.values()].filter(on('mat_ps')).forEach(d => { if (d.id === skip) return; (d.lines || []).forEach(l => { if (l.item){ const s = g(l.item); s.inQ += +l.qty || 0; s.inV += +l.value || 0; } }); });
+  [...D.mat_dc.values()].filter(on('mat_dc')).forEach(d => { if (d.id === skip) return; (d.lines || []).forEach(l => { if (l.item){ const s = g(l.item); s.outQ += +l.qty || 0; s.outV += +l.value || 0; } }); });
+  [...D.mat_rn.values()].filter(on('mat_rn')).forEach(d => { if (d.id === skip) return; (d.lines || []).forEach(l => { if (l.item){ const s = g(l.item); s.retQ += +l.qty || 0; s.retV += +l.value || 0; } }); });
   M.forEach(s => { s.q = r2(s.inQ - s.outQ + s.retQ); s.v = r2(s.inV - s.outV + s.retV); s.rate = s.q > 0 ? s.v / s.q : (s.inQ ? s.inV / s.inQ : 0); });
   return M;
 }
@@ -970,7 +981,7 @@ function dcBack(dcId, skip){ const b = {}; D.mat_rn.forEach(r => { if (r.dc !== 
 function dcPending(d, skip){ const b = dcBack(d.id, skip); return (d.lines || []).map(l => ({...l, back: b[l.item] || 0, left: r2((+l.qty || 0) - (b[l.item] || 0))})); }
 const fyOf = dt => { const d = new Date(dt || TODAY), y = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1; return String(y % 100).padStart(2, '0') + String((y + 1) % 100).padStart(2, '0'); };
 // voucher numbers: GRN/001/2627, DC/001/2627, RDC/001/2627, RN/001/2627 (counting again from 001 each financial year)
-const vno = (col, pre, f = 'no', dt) => { const fy = fyOf(dt), re = new RegExp('^' + pre + '/(\\d+)/' + fy + '$'); let m = 0; D[col].forEach(d => { const k = String(d[f] || '').match(re); if (k) m = Math.max(m, +k[1]); }); return `${pre}/${String(m + 1).padStart(3, '0')}/${fy}`; };
+const vno = (col, pre, f = 'no', dt, co) => { const fy = fyOf(dt), re = new RegExp('^' + pre + '/(\\d+)/' + fy + '$'); let m = 0; co = co || curCo(); D[col].forEach(d => { if (coOf(d, col) !== co) return; const k = String(d[f] || '').match(re); if (k) m = Math.max(m, +k[1]); }); return `${pre}/${String(m + 1).padStart(3, '0')}/${fy}`; };
 const isAutoNo = v => /^[A-Z]+\/\d{3,}\/\d{4}$/.test(String(v || ''));
 function miTotals(d){
   const by = {}; let tx = 0;
@@ -1125,7 +1136,7 @@ function miFormHTML(){
 }
 
 // Receipt Note: pick the customer, see their DCs with items still out, receive against one DC
-const pendDCs = party => [...D.mat_dc.values()].filter(x => dcKind(x) === 'rdc' && (!party || normName(x.party) === normName(party)) && dcPending(x).some(l => l.left > 0)).sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.no).localeCompare(String(b.no)));
+const pendDCs = party => [...D.mat_dc.values()].filter(x => coOf(x, 'mat_dc') === curCo() && dcKind(x) === 'rdc' && (!party || normName(x.party) === normName(party)) && dcPending(x).some(l => l.left > 0)).sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.no).localeCompare(String(b.no)));
 const dcParties = () => [...new Set(pendDCs('').map(x => x.party))].sort((a, b) => a.localeCompare(b));
 const exName = id => D.users.get(id)?.name || '';
 const daysOut = d => Math.max(0, Math.round((new Date(TODAY) - new Date(d)) / 864e5));
@@ -1371,7 +1382,7 @@ async function teamSupplier(doc){ const s = supFind(doc); if (!s || !s.id || TEA
 async function poInMaster(no){ if (!Store.sb || !String(no || '').trim()) return false; const r = await Store.sb.rpc('po_master_has', {p_po:String(no).trim()}); return !r.error && r.data === true; }
 // the PO Master row for this PO number (requester), or null
 async function poMasterInfo(no){ if (!Store.sb || !String(no || '').trim()) return null; try { const r = await Store.sb.rpc('po_master_info', {p_po:String(no).trim()}); return r.error ? null : r.data; } catch(e){ return null; } }
-const poRegDup = (no, id) => [...D.mat_po.values()].find(x => x.id !== id && normName(x.no) === normName(no));
+const poRegDup = (no, id, co) => [...D.mat_po.values()].find(x => x.id !== id && coOf(x, 'mat_po') === (co || curCo()) && normName(x.no) === normName(no));
 async function poMasterEdit(oldNo, doc){
   const r = await Store.sb.rpc('po_master_edit', {p_old:oldNo || doc.no, p_po:doc.no, p_enq:[...new Set((doc.lines || []).map(l => l.enq).filter(Boolean))].join(', '), p_date:dMon(doc.date), p_sup:doc.supName, p_value:poGross(doc)});
   if (r.error) throw r.error; return r.data;
@@ -1388,7 +1399,7 @@ async function poSupplier(d){
 }
 function poFormHTML(){
   teamFill(F.po); const d = F.po, sups = [...new Set([...(SUPL || []).map(x => x.name), ...[...D.mat_po.values()].map(x => x.supName), ...[...D.mat_in.values()].map(x => x.supName)].filter(Boolean))].sort();
-  const rows = d.lines.map((l, i) => `<tr><td>${lInp('po', i, 'name', l.name, {al:'Product as on the PO'})}<div class="poi">${l.item && l.item !== '__new' ? 'Stock item: ' + esc(itemLbl(l.item)) + ` <button class="lnk" data-act="poNewItem" data-i="${i}">change</button>` : l.item === '__new' ? 'New stock item, created when you save (fill the box below)' : ''}</div></td><td>${lInp('po', i, 'enq', l.enq, {al:'ENQ number'})}</td><td>${lInp('po', i, 'hsn', l.hsn, {al:'HSN'})}</td><td>${lInp('po', i, 'qty', l.qty, {num:1, al:'Quantity'})}</td><td>${lInp('po', i, 'rate', l.rate, {num:1, al:'Rate per piece'})}</td><td>${lInp('po', i, 'value', l.value, {num:1, al:'Amount'})}</td><td><button class="btn sm" data-act="matDelL" data-m="po" data-i="${i}" aria-label="Remove row ${i + 1}">✕</button></td></tr>`).join('');
+  const rows = d.lines.map((l, i) => `<tr><td>${lInp('po', i, 'name', l.name, {al:'Product as on the PO'})}<div class="poi">${l.item && l.item !== '__new' ? 'Stock item: ' + esc(itemLbl(l.item)) : ''}</div></td><td>${lInp('po', i, 'enq', l.enq, {al:'ENQ number'})}</td><td>${lInp('po', i, 'hsn', l.hsn, {al:'HSN'})}</td><td>${lInp('po', i, 'qty', l.qty, {num:1, al:'Quantity'})}</td><td>${lInp('po', i, 'rate', l.rate, {num:1, al:'Rate per piece'})}</td><td>${lInp('po', i, 'value', l.value, {num:1, al:'Amount'})}</td><td><button class="btn sm" data-act="matDelL" data-m="po" data-i="${i}" aria-label="Remove row ${i + 1}">✕</button></td></tr>`).join('');
   return `<div class="card" id="mform"><h2 style="margin:0 0 8px">${d.id ? 'Edit Purchase Order' : 'New Purchase Order'}</h2>
     <div class="igrid">
       <label class="f">PO number *${mInp('po', 'no', d.no, {ph:'PO/991/26-27'})}</label>
@@ -1401,9 +1412,9 @@ function poFormHTML(){
     <datalist id="po_brs">${invList('inv_brands').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="po_cats">${invList('inv_cats').map(x => `<option value="${esc(x.name)}">`).join('')}</datalist><datalist id="po_subs">${[...new Set(invList('inv_subs').map(x => x.name))].map(x => `<option value="${esc(x)}">`).join('')}</datalist><datalist id="po_units">${invList('inv_units').map(x => `<option value="${esc(x.unit)}">${esc(x.name)}</option>`).join('')}</datalist>
     <div class="tw" style="margin-top:10px"><table class="mtab"><thead><tr><th>Product as on PO *</th><th>ENQ</th><th>HSN</th><th class="r">Qty *</th><th class="r">Rate / piece</th><th class="r">Amount</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     <div style="display:flex;gap:16px;align-items:center;margin-top:8px"><button class="btn" data-act="matAddL" data-m="po">+ Add product</button><div style="margin-left:auto">Total before tax: <span id="po_tot"><b>${inr(d.lines.reduce((a, l) => a + (+l.value || 0), 0))}</b></span></div></div>
-    ${shipBox('po', d, 'Ship to our office (Branditude)')}
-    ${niCards(d, 'po')}<div class="err" id="po_err"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="poSave">${d.id ? 'Save changes' : 'Save Purchase Order'}</button><button class="btn" data-act="poCancel">Cancel</button></div>
-    <p class="mut" style="margin:6px 0 0">The ENQ number is taken from the end of the product name (for example "-8478" or "-8521-D"). Products not in the stock list are created as stock items when you save. Saving also adds the PO to the PO Master (Purchase).</p></div>`;
+    ${shipBox('po', d, 'Ship to our office (' + COS[coOf(d, 'mat_po')].name + ')')}
+    <div class="err" id="po_err"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="poSave">${d.id ? 'Save changes' : 'Save Purchase Order'}</button><button class="btn" data-act="poCancel">Cancel</button></div>
+    <p class="mut" style="margin:6px 0 0">The ENQ number is taken from the end of the product name (for example "-8478" or "-8521-D"). A purchase order does not create stock items and does not change the stock; only GRN, Delivery Challan, Returnable DC, Receipt Note and Physical Stock do. Saving also adds the PO to the PO Master (Purchase).</p></div>`;
 }
 function viewPOnew(){
   loadSupl();
@@ -1414,7 +1425,7 @@ function viewPOnew(){
 function viewPOReg(){
   if (F.poView && D.mat_po.has(F.poView)) return viewPOOne(D.mat_po.get(F.poView));
   const M = poRecvMap(), q = (F.poq || '').trim().toLowerCase(), fs = F.pos || '', fp = F.pop || '', fT = F.poT || '';
-  let L = [...D.mat_po.values()].map(po => ({po, st:poStatus(po, M), X:poLinesX(po, M)}));
+  let L = [...D.mat_po.values()].filter(inCo('mat_po')).map(po => ({po, st:poStatus(po, M), X:poLinesX(po, M)}));
   const sups = [...new Set(L.map(x => x.po.supName).filter(Boolean))].sort();
   L = L.filter(x => (!fT || compOf(x.po.comp) === fT) && (!fs || x.st === fs) && (!fp || x.po.supName === fp) && (!q || [x.po.no, x.po.supName, x.po.enq, ...x.X.map(l => l.name + ' ' + l.enq + ' ' + itemLbl(l.item))].join(' ').toLowerCase().includes(q))).sort((a, b) => String(b.po.date).localeCompare(String(a.po.date)) || String(b.po.no).localeCompare(String(a.po.no)));
   const P = pg(L, 'poreg', 50), tot = L.reduce((a, x) => a + poGross(x.po), 0);
@@ -1444,7 +1455,7 @@ function poActs(po){ const X = poLinesX(po), open = !po.closed && X.some(l => l.
   return `${open ? `<button class="btn sm pri" data-act="poRecv" data-id="${esc(po.id)}">Receive (GRN)</button> ` : ''}${isAdm() ? `<button class="btn sm" data-act="poEdit" data-id="${esc(po.id)}">Edit</button> ` : ''}${open && hasG ? `<button class="btn sm" data-act="poClose" data-id="${esc(po.id)}">Close short</button> ` : po.closed ? `<button class="btn sm" data-act="poClose" data-id="${esc(po.id)}">Reopen</button> ` : ''}${isAdm() && !hasG ? `<button class="btn sm danger" data-act="poDel" data-id="${esc(po.id)}">Delete</button>` : ''}`; }
 function poRepRows(){
   const M = poRecvMap(), out = [];
-  D.mat_po.forEach(po => { const st = poStatus(po, M); poLinesX(po, M).forEach(l => { const diff = r2(l.recv - (+l.qty || 0)), lst = l.recv > (+l.qty || 0) + 1e-9 ? 'Excess received' : l.recv >= (+l.qty || 0) - 1e-9 ? 'Received' : po.closed ? 'Closed short' : l.recv > 0 ? 'Partly received' : 'Pending';
+  [...D.mat_po.values()].filter(inCo('mat_po')).forEach(po => { const st = poStatus(po, M); poLinesX(po, M).forEach(l => { const diff = r2(l.recv - (+l.qty || 0)), lst = l.recv > (+l.qty || 0) + 1e-9 ? 'Excess received' : l.recv >= (+l.qty || 0) - 1e-9 ? 'Received' : po.closed ? 'Closed short' : l.recv > 0 ? 'Partly received' : 'Pending';
     out.push({po, st, lst, l, diff, dv:r2(diff * (+l.rate || 0))}); }); });
   return out.sort((a, b) => String(b.po.date).localeCompare(String(a.po.date)) || String(b.po.no).localeCompare(String(a.po.no)) || a.l.i - b.l.i);
 }
@@ -1456,7 +1467,7 @@ function viewPORep(){
   const P = pg(R, 'porep', 50), T = k => R.reduce((a, r) => a + (+k(r) || 0), 0);
   const body = P.items.map(r => `<tr><td class="mono nowrap">${esc(r.po.no)}</td><td>${esc(fmtD(r.po.date))}</td><td>${esc(compOf(r.po.comp) || '—')}</td><td class="wrap">${esc(r.po.supName)}</td><td class="mono">${esc(r.l.enq || r.po.enq || '')}</td><td class="wrap">${esc(r.l.item ? itemLbl(r.l.item) : r.l.name)}</td><td class="r num">${qtyF(+r.l.qty || 0)}</td><td class="r num">${qtyF(r.l.recv)}</td><td class="r num" style="font-weight:700;color:${r.diff > 0 ? '#b42318' : r.diff < 0 ? '#92400e' : 'inherit'}">${r.diff > 0 ? '+' : ''}${qtyF(r.diff)}</td><td class="r num">${r.diff ? inr(r.dv) : ''}</td><td class="mono wrap">${esc(r.l.grns.join(', '))}</td><td class="wrap">${esc(r.l.why.join(', '))}</td><td>${poPill(r.lst)}</td><td class="nowrap">${r.l.i === 0 ? poActs(r.po) : ''}</td></tr>`).join('');
   return `<div class="head"><div><h1>PO vs Received</h1><p class="sub">Every purchase order line: PO quantity, quantity received in GRNs, and the difference (+ more than the PO, − still pending)</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-act="go" data-k="po_new">+ Create Purchase Order</button>${XB('xPoRep')}</div></div>
-  ${(() => { const P0 = [...D.mat_po.values()].filter(po => (!ff || po.date >= ff) && (!ft || po.date <= ft)); return teamCards(TEAMS.map(t => { const L = P0.filter(po => compOf(po.comp) === t); return [t, L.length + ' PO' + (L.length === 1 ? '' : 's'), inr(L.reduce((a, po) => a + poGross(po), 0))]; }), P0.some(po => !compOf(po.comp)) ? 'Some POs have no team yet: press Edit on the PO and pick the team.' : ''); })()}
+  ${(() => { const P0 = [...D.mat_po.values()].filter(inCo('mat_po')).filter(po => (!ff || po.date >= ff) && (!ft || po.date <= ft)); return teamCards(TEAMS.map(t => { const L = P0.filter(po => compOf(po.comp) === t); return [t, L.length + ' PO' + (L.length === 1 ? '' : 's'), inr(L.reduce((a, po) => a + poGross(po), 0))]; }), P0.some(po => !compOf(po.comp)) ? 'Some POs have no team yet: press Edit on the PO and pick the team.' : ''); })()}
   ${F.justSaved && D.mat_po.get(F.justSaved) ? `<div class="note good" style="margin-bottom:10px">Saved ${esc(D.mat_po.get(F.justSaved).no)} · also in the PO Master.</div>` : ''}
   <div class="bar sfb"><label class="sf"><span>Search</span><input id="prq" data-f="prq" type="search" placeholder="PO no, ENQ, item, GRN" value="${esc(F.prq || '')}" autocomplete="off"></label>
    <label class="sf"><span>From date</span><input data-f="prf" type="date" value="${esc(ff)}"></label><label class="sf"><span>To date</span><input data-f="prt" type="date" value="${esc(ft)}"></label>
@@ -1519,7 +1530,7 @@ const POACT = {
     try { await poSupplier(d); for (const l of nw) await niCreate(l); } catch(e){ t.disabled = false; forceRender = true; render(); return bad('Could not create: ' + (e.message || e)); }
     const id = d.id || uid('po'), clean = lines.map(l => ({name:String(l.name || '').trim() || (l.item ? D.inv_items.get(l.item)?.name || '' : ''), enq:String(l.enq || '').trim().toUpperCase() || enqOf(l.name) || '', item:l.item && l.item !== '__new' ? l.item : '', hsn:String(l.hsn || '').replace(/\D/g, ''), qty:r2(l.qty), unit:l.unit || '', rate:r2(l.rate), value:r2(l.value || (+l.qty || 0) * (+l.rate || 0)), gst:+l.gst || 0}));
     const doc = {...d, id, lines:clean, enq:[...new Set(clean.map(l => l.enq).filter(Boolean))].join(', '), value:r2(clean.reduce((a, l) => a + l.value, 0)), by:d.by || S.me, at:d.at || nowISO(), editedBy:d.id ? S.me : undefined, editedAt:d.id ? nowISO() : undefined};
-    doc.ship = shipClean(d); delete doc.bulk; delete doc.supAddr; delete doc.inMaster; delete doc.teamSet; delete doc.execSet; doc.execName = doc.exec ? userName(doc.exec) : ''; try { await teamItems(clean, doc.comp); await teamSupplier(doc); } catch(e){}
+    doc.co = coOf(d, 'mat_po'); doc.ship = shipClean(d); delete doc.bulk; delete doc.supAddr; delete doc.inMaster; delete doc.teamSet; delete doc.execSet; doc.execName = doc.exec ? userName(doc.exec) : ''; try { await teamItems(clean, doc.comp); await teamSupplier(doc); } catch(e){}
     try { await Store.set('mat_po', id, doc); await logAct('Inventory', `Purchase Order ${d.id ? 'edited' : 'saved'}: ${doc.no} · ${doc.supName}`); } catch(e){ t.disabled = false; return bad('Could not save: ' + (e.message || e)); }
     let pm = ''; try { pm = d.id ? await poMasterEdit(oldNo, doc) : await poMaster(doc); } catch(e){ toast('PO saved, but it could not be added to the PO Master: ' + (e.message || e)); }
     if (B){ F.po = null; F.poBulkDone = {doc, pm}; return true; }
@@ -1532,7 +1543,7 @@ const POACT = {
   poOpen:t => { F.poView = F.poLast = t.dataset.id; forceRender = true; render(); window.scrollTo(0, 0); },
   poBack:() => { F.poView = ''; forceRender = true; render(); stkFocus(); },
   xPoReg:() => exportSheet('Purchase_Orders', 'Purchase Orders', ['PO date', 'PO no', 'Supplier', 'Team', 'Executive', 'ENQ', 'Amount (with GST)'], [...D.mat_po.values()].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(po => [fmtD(po.date), po.no, po.supName, compOf(po.comp), po.execName || userName(po.exec), po.enq || '', poGross(po)])),
-  poEdit:t => { if (!isAdm()) return; const x = D.mat_po.get(t.dataset.id); if (!x) return; F.po = JSON.parse(JSON.stringify(x)); F.justSaved = ''; ACT.nav({dataset:{k:'po_new'}}); },
+  poEdit:t => { if (!isAdm()) return; const x = D.mat_po.get(t.dataset.id); if (!x) return; F.po = JSON.parse(JSON.stringify(x)); F.po.co = F.co = coOf(x, 'mat_po'); F.justSaved = ''; ACT.nav({dataset:{k:'po_new'}}); },
   poDel:async t => { if (!isAdm()) return; const x = D.mat_po.get(t.dataset.id); if (!x || !confirm(`Delete purchase order ${x.no}?`)) return; if (F.poView === x.id) F.poView = ''; await Store.del('mat_po', x.id); await logAct('Inventory', 'Purchase Order deleted: ' + x.no); forceRender = true; render(); },
   poClose:async t => { const x = D.mat_po.get(t.dataset.id); if (!x) return; if (!x.closed && !confirm(`Close ${x.no}? The quantity not received stays as "Closed short" and the PO no longer shows as open.`)) return;
     await Store.set('mat_po', x.id, {...x, closed:!x.closed, closedBy:S.me, closedAt:nowISO()}); await logAct('Inventory', `Purchase Order ${x.closed ? 'reopened' : 'closed short'}: ${x.no}`); forceRender = true; render(); },
@@ -1670,7 +1681,7 @@ function viewMatIn(mode){
     if (!F.mi) F.mi = {invNo:'', invDate:TODAY, supName:'', supGst:'', comp:'', lines:[blankLine('mi')]};
     loadPrDir();
     return `<div class="head"><div><h1>${F.mi.id ? 'Edit GRN' : 'Create GRN'}</h1><p class="sub">Goods received from a supplier. Upload the purchase invoice and AI fills the entry, or type it.</p></div><button class="btn" data-act="go" data-k="mat_in">GRN Register</button></div>
-    ${F.mi.id ? '' : aiBar('mi', 'purchase invoice')}${F.mi.id || F.mi.po ? '' : (L => L.length ? `<div class="bar" style="margin:6px 0 10px"><label class="sf"><span>Or receive against an open purchase order</span><select id="mi_pofill"><option value="">Pick a PO…</option>${L.map(po => `<option value="${esc(po.id)}">${esc(po.no + ' · ' + po.supName + (po.enq ? ' · ENQ ' + po.enq : ''))}</option>`).join('')}</select></label></div>` : '')([...D.mat_po.values()].filter(poOpen).sort((a, b) => String(b.date).localeCompare(String(a.date))))}${miFormHTML()}`;
+    ${F.mi.id ? '' : aiBar('mi', 'purchase invoice')}${F.mi.id || F.mi.po ? '' : (L => L.length ? `<div class="bar" style="margin:6px 0 10px"><label class="sf"><span>Or receive against an open purchase order</span><select id="mi_pofill"><option value="">Pick a PO…</option>${L.map(po => `<option value="${esc(po.id)}">${esc(po.no + ' · ' + po.supName + (po.enq ? ' · ENQ ' + po.enq : ''))}</option>`).join('')}</select></label></div>` : '')([...D.mat_po.values()].filter(inCo('mat_po')).filter(poOpen).sort((a, b) => String(b.date).localeCompare(String(a.date))))}${miFormHTML()}`;
   }
   return regHTML('mi', 'GRN Register', `${D.mat_in.size} GRN${D.mat_in.size === 1 ? '' : 's'} · saved items add to the closing stock`, '<button class="btn pri" data-act="go" data-k="mat_in_new">+ Create GRN</button>', {extra:[{h:'Team', v:d => esc(compOf(d.comp) || '—')}, {h:'Executive', v:d => esc(d.execName || userName(d.exec) || '—')}]});
 }
@@ -1801,7 +1812,7 @@ function docHTML(M){
 }
 function docModel(m, d){
   // the company printed is fixed per document: Purchase Order and GRN in Branditude, DC / Returnable DC / Receipt Note in Expert
-  const cid = m === 'mi' || m === 'po' ? 'Excoso' : 'Expert', co = COINFO[cid], it = id => D.inv_items.get(id) || {};
+  const cid = COS[coOf(d, MATCOL[m])].key, co = COINFO[cid], it = id => D.inv_items.get(id) || {};
   const coBlock = {title:co.name, logo:cid === 'Excoso' ? BRLOGO : '', short:cid === 'Expert' ? 'EXPERT' : '', pan:co.pan, lines:[...co.lines, co.mob ? 'Mob : ' + co.mob : '', 'GSTIN/UIN: ' + co.gstin, `State Name : ${co.state}, Code : ${co.code}`, co.cin ? 'CIN: ' + co.cin : '', co.email ? 'E-Mail : ' + co.email : ''].filter(Boolean)};
   const us = lab => ({label:lab, title:co.name, lines:[...co.lines, co.mob ? 'Mob : ' + co.mob : '', co.email ? 'e-mail : ' + co.email : '', 'GSTIN/UIN : ' + co.gstin, `State Name : ${co.state}, Code : ${co.code}`].filter(Boolean)});
   const stName = g => { const c = String(g || '').slice(0, 2); return STCODE[c] ? `${STCODE[c]}, Code : ${c}` : ''; };
@@ -1884,7 +1895,7 @@ function regHTML(m, title, sub, newBtns, opts = {}){
   const no = d => m === 'mi' ? (d.grnNo || '') : d.no;
   const party = d => m === 'mi' ? d.supName : m === 'ps' ? (d.remarks || '') : d.party;
   const val = d => (d.lines || []).reduce((a, l) => a + (+(m === 'mi' ? l.taxable : l.value) || 0), 0);
-  let docs = [...D[col].values()];
+  let docs = [...D[col].values()].filter(inCo(col));
   if (opts.filter) docs = docs.filter(opts.filter);
   const fFrom = F['rf_' + m] || '', fTo = F['rt_' + m] || '', fParty = F['rp_' + m] || '', fEx = F['re_' + m] || '', fItem = F['ri_' + m] || '';
   const partiesAll = [...new Set(docs.map(party).filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -2133,12 +2144,12 @@ document.addEventListener('keydown', ev => { const r = ev.target; if (r.tagName 
   let n = r; do { n = ev.key === 'ArrowDown' ? n.nextElementSibling : n.previousElementSibling; } while (n && !n.classList.contains('clk')); if (n){ n.focus({preventScroll:true}); n.scrollIntoView({block:'nearest'}); } });
 /* ---------- Stock List → item month summary → month vouchers → the entry (like Tally Stock Item Monthly Summary) ---------- */
 const MVT = {mi:'GRN', ps:'Physical Stock', dc:'Delivery Challan', rdc:'Returnable DC', rn:'Receipt Note'};
-function itemMoves(id){
-  const out = [], add = (m, d, date, party, no, l, dir) => out.push({m, id:d.id, date:String(date || '').slice(0, 10), party:party || '', no:no || '', type:MVT[m === 'dc' ? (dcKind(d) === 'dc' ? 'dc' : 'rdc') : m], inQ:dir > 0 ? +l.qty || 0 : 0, inV:dir > 0 ? +(m === 'mi' ? l.taxable : l.value) || 0 : 0, outQ:dir < 0 ? +l.qty || 0 : 0, outV:dir < 0 ? +l.value || 0 : 0});
-  D.mat_in.forEach(d => (d.lines || []).forEach(l => { if (l.item === id) add('mi', d, d.at || d.invDate, d.supName, d.grnNo || d.invNo, l, 1); }));
-  D.mat_ps.forEach(d => (d.lines || []).forEach(l => { if (l.item === id) add('ps', d, d.date, d.remarks ? 'Physical Stock · ' + d.remarks : 'Physical Stock', d.no, l, 1); }));
-  D.mat_dc.forEach(d => (d.lines || []).forEach(l => { if (l.item === id) add('dc', d, d.date, d.party, d.no, l, -1); }));
-  D.mat_rn.forEach(d => (d.lines || []).forEach(l => { if (l.item === id) add('rn', d, d.date, d.party, d.no, l, 1); }));
+function itemMoves(id, co){
+  co = co || curCo(); const on = col => d => coOf(d, col) === co; const out = [], add = (m, d, date, party, no, l, dir) => out.push({m, id:d.id, date:String(date || '').slice(0, 10), party:party || '', no:no || '', type:MVT[m === 'dc' ? (dcKind(d) === 'dc' ? 'dc' : 'rdc') : m], inQ:dir > 0 ? +l.qty || 0 : 0, inV:dir > 0 ? +(m === 'mi' ? l.taxable : l.value) || 0 : 0, outQ:dir < 0 ? +l.qty || 0 : 0, outV:dir < 0 ? +l.value || 0 : 0});
+  [...D.mat_in.values()].filter(on('mat_in')).forEach(d => (d.lines || []).forEach(l => { if (l.item === id) add('mi', d, d.at || d.invDate, d.supName, d.grnNo || d.invNo, l, 1); }));
+  [...D.mat_ps.values()].filter(on('mat_ps')).forEach(d => (d.lines || []).forEach(l => { if (l.item === id) add('ps', d, d.date, d.remarks ? 'Physical Stock · ' + d.remarks : 'Physical Stock', d.no, l, 1); }));
+  [...D.mat_dc.values()].filter(on('mat_dc')).forEach(d => (d.lines || []).forEach(l => { if (l.item === id) add('dc', d, d.date, d.party, d.no, l, -1); }));
+  [...D.mat_rn.values()].filter(on('mat_rn')).forEach(d => (d.lines || []).forEach(l => { if (l.item === id) add('rn', d, d.date, d.party, d.no, l, 1); }));
   const O = {ps:0, mi:1, dc:2, rn:3};   // same day: opening stock, then purchases, then samples out, then samples back
   return out.sort((a, b) => a.date.localeCompare(b.date) || (O[a.m] - O[b.m]) || a.no.localeCompare(b.no));
 }
@@ -2182,10 +2193,10 @@ function viewStockItem(id){
 function viewStock(){
   if (F.stkI) return viewStockItem(F.stkI);
   const q = (F.stq || '').trim().toLowerCase(), nm = (col, id) => D[col].get(id)?.name || '';
-  const list = [...D.inv_items.values()].filter(x => !q || [x.name, x.part, x.code, nm('inv_brands', x.brand), nm('inv_cats', x.cat), nm('inv_subs', x.sub)].join(' ').toLowerCase().includes(q)).sort((a, b) => String(a.part).localeCompare(String(b.part)));
+  const used = stockMap(), list = [...D.inv_items.values()].filter(x => used.has(x.id)).filter(x => !q || [x.name, x.part, x.code, nm('inv_brands', x.brand), nm('inv_cats', x.cat), nm('inv_subs', x.sub)].join(' ').toLowerCase().includes(q)).sort((a, b) => String(a.part).localeCompare(String(b.part)));
   const P = pg(list, 'stklist', 50);
   const body = P.items.map(x => `<tr class="clk${F.stkLast === x.id ? ' sel' : ''}" data-act="stkOpen" data-id="${esc(x.id)}" tabindex="0" title="Show in / out details"><td class="mono">${esc(x.part)}</td><td class="wrap"><b>${esc(x.name)}</b></td><td>${esc(nm('inv_brands', x.brand))}</td><td>${esc(nm('inv_cats', x.cat))}</td><td>${esc(nm('inv_subs', x.sub))}</td><td>${compOf(x.comp) ? esc(compOf(x.comp)) : '<span class="mut">—</span>'}</td><td class="nowrap">${canMEdit() ? `<button class="btn sm" data-act="stkEdit" data-id="${esc(x.id)}">Edit</button>` : ''}${isAdm() ? ` <button class="btn sm dng" data-act="invDel" data-id="${esc(x.id)}">Delete</button>` : ''}</td></tr>`).join('');
-  return `<div class="head"><div><h1>Stock List</h1><p class="sub">${list.length} stock items · click one to see month-wise in, out and closing stock</p></div>${XB('xStock')}</div>
+  return `<div class="head"><div><h1>Stock List</h1><p class="sub">${list.length} stock items with entries in ${COS[curCo()].name} · click one to see month-wise in, out and closing stock</p></div>${XB('xStock')}</div>
   <div class="bar sfb"><label class="sf"><span>Search</span><input id="stq" data-f="stq" type="search" placeholder="Product, part no, brand, category" value="${esc(F.stq || '')}" autocomplete="off"></label></div>
   <div class="tw"><table class="stkl"><thead><tr><th>Part no</th><th>Product</th><th>Brand</th><th>Category</th><th>Sub category</th><th>Team</th><th></th></tr></thead><tbody>${body || '<tr><td colspan="7" class="empty">No stock items yet. Create them in Create Stock Item or from a GRN.</td></tr>'}</tbody></table></div>${P.html}`;
 }
@@ -2197,6 +2208,7 @@ function matRecalc(m){
 function matInput(t){
   const m = t.dataset.m, d = F[m]; if (!d) return;
   const k = t.dataset.k, v = t.type === 'checkbox' ? t.checked : t.value;
+  if (AVK[m]) return avInput(t, m, d, k, v);
   if (k.startsWith('ks.')){ const kk = k.slice(3); d.ks = d.ks || {}; d.ks[kk] = v;
     if (kk === 'exec'){ const x = (PRDIR || []).find(y => y.id === v); if (x && x.manager_id){ d.ks.mgr = x.manager_id; const e = document.getElementById('mi_ks_mgr'); if (e) e.value = x.manager_id; } } return; }
   if (k.startsWith('ns.')){ const kk = k.slice(3); d.ns = d.ns || {}; d.ns[kk] = v;
@@ -2263,7 +2275,10 @@ const ymdOk = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) ? s : '';
 
 /* ---------- Purchase Order from a Tally XML file (no AI needed to read it) ---------- */
 // Tally export (Alt+E → XML) of one or more Purchase Order vouchers, or the ExpertOne TDL format (EPPOST)
-function tallyPOXml(text){
+// kind: po (Purchase Order), pi (Purchase), so (Sales Order), si (Sales); the voucher type name decides
+const VCH_RE = {po:t => /purchase/i.test(t) && /order/i.test(t) || (/order/i.test(t) && !/sales/i.test(t)), pi:t => /purchase/i.test(t) && !/order/i.test(t), so:t => /sales/i.test(t) && /order/i.test(t), si:t => /sales/i.test(t) && !/order/i.test(t)};
+const tallyPOXml = text => tallyXml(text, 'po');
+function tallyXml(text, kind){
   text = String(text || '').replace(/^﻿/, '').replace(/&#(?:[0-8]|1[124-9]|2\d|3[01]);/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
   const doc = new DOMParser().parseFromString(text, 'text/xml');
   if (doc.getElementsByTagName('parsererror').length) throw new Error('This is not a valid XML file. Export it again from Tally (Alt+E → XML).');
@@ -2281,7 +2296,7 @@ function tallyPOXml(text){
   // Tally voucher export
   [...doc.getElementsByTagName('VOUCHER')].forEach(v => {
     const type = (v.getAttribute('VCHTYPE') || one(v, 'VOUCHERTYPENAME')).trim();
-    if (type && !/order/i.test(type)) return;   // only Purchase Orders
+    if (kind === 'po' ? type && !VCH_RE.po(type) : !VCH_RE[kind](type)) return;   // only this kind of voucher
     if (/^yes$/i.test(one(v, 'ISCANCELLED')) || /^yes$/i.test(one(v, 'ISOPTIONAL'))) return;
     const party = one(v, 'PARTYLEDGERNAME', 'PARTYNAME', 'BASICBUYERNAME');
     const addr = [...v.getElementsByTagName('ADDRESS.LIST')].filter(a => a.parentElement === v).flatMap(a => kids(a, 'ADDRESS').map(x => x.textContent.trim())).filter(Boolean);
@@ -2303,7 +2318,12 @@ function tallyPOXml(text){
       supplier_addr1:addr[0] || '', supplier_addr2:addr[1] || '', supplier_addr3:addr.slice(2).join(', ') + (one(v, 'PARTYPINCODE') && !addr.join(' ').includes(one(v, 'PARTYPINCODE')) ? ' ' + one(v, 'PARTYPINCODE') : ''),
       enq:(String(ref).match(/\d{3,6}(?:-[A-Za-z]{1,3})?/) || [''])[0], notes:one(v, 'NARRATION'), total:partyAmt || r2(taxable + tax), lines});
   });
-  return out.filter(x => x.po_no && x.lines.length);
+  // the Tally company of the file: Branditude or Expert
+  const cur = [...doc.getElementsByTagName('SVCURRENTCOMPANY')].map(x => x.textContent).join(' ') + ' ' + [...doc.getElementsByTagName('COMPANYNAME')].map(x => x.textContent).join(' ');
+  const co = /branditude|excoso/i.test(cur) ? 'B' : /expert/i.test(cur) ? 'E' : '';
+  out.forEach(x => { x.co = co; x.types = undefined; });
+  out.types = [...new Set([...doc.getElementsByTagName('VOUCHER')].map(v => (v.getAttribute('VCHTYPE') || (v.getElementsByTagName('VOUCHERTYPENAME')[0] || {}).textContent || '').trim()).filter(Boolean))];
+  const R = out.filter(x => x.po_no && x.lines.length); R.types = out.types; return R;
 }
 // brand / category / sub category for new stock items made from an XML PO (AI suggestion; you can change it)
 async function poClassify(d){
@@ -2320,6 +2340,109 @@ async function poClassify(d){
     const j = await r.json().catch(() => ({})); (j.result || []).forEach((c, i) => { const n = nw[i] && nw[i].ni; if (!n || !c) return; n.brand = n.brand || String(c.brand || '').trim(); n.cat = n.cat || String(c.category || '').trim(); n.sub = n.sub || String(c.sub_category || '').trim(); });
   } catch(e){}
 }
+
+/* ---------- Purchase Invoice, Sales Order, Sales Invoice: records only (no stock items, no stock change) ---------- */
+const AVK = {
+  pi:{col:'mat_pi', one:'Purchase Invoice', reg:'Purchase Register', party:'Supplier', pre:'PI', ref:"Supplier invoice / PO no", newK:'pi_new', regK:'mat_pi'},
+  so:{col:'mat_so', one:'Sales Order', reg:'Sales Order Register', party:'Customer', pre:'SO', ref:"Customer PO / order ref", newK:'so_new', regK:'mat_so'},
+  si:{col:'mat_si', one:'Sales Invoice', reg:'Sales Invoice Register', party:'Customer', pre:'SI', ref:'Order ref', newK:'si_new', regK:'mat_si'}};
+const blankAvL = () => ({name:'', hsn:'', qty:'', unit:'', rate:'', value:'', gst:18});
+const avNewDoc = m => ({co:curCo(), no:'', date:TODAY, party:'', gstin:'', addr1:'', addr2:'', addr3:'', ref:'', enq:'', remarks:'', lines:[blankAvL()]});
+function avTot(d){ const L = d.lines || [], tx = r2(L.reduce((a, l) => a + (+l.value || 0), 0)), tax = r2(L.reduce((a, l) => a + (+l.value || 0) * (+l.gst || 0) / 100, 0)); return {tx, tax, total:r2(d.total && Math.abs(d.total - (tx + tax)) <= 2 ? d.total : tx + tax)}; }
+const avParties = m => m === 'pi' ? (SUPL || []).map(x => x.name) : matParties();
+function avPartyInfo(m, name){
+  if (m === 'pi'){ const x = (SUPL || []).find(y => normName(y.name) === normName(name)); return x ? {gstin:x.gstin || '', addr1:x.addr1 || '', addr2:x.addr2 || '', addr3:x.addr3 || ''} : null; }
+  const c = D.cust_addr.get(mapKey(name)); return c ? {gstin:c.gstin || '', addr1:c.addr1 || '', addr2:c.addr2 || '', addr3:c.addr3 || ''} : null;
+}
+function avInput(t, m, d, k, v){
+  if (t.dataset.l == null){ d[k] = v;
+    if (k === 'party'){ const i = avPartyInfo(m, v); if (i) ['gstin', 'addr1', 'addr2', 'addr3'].forEach(f => { if (!d[f]){ d[f] = i[f]; const e = document.getElementById(m + '_' + f); if (e) e.value = i[f]; } }); }
+    return; }
+  const i = +t.dataset.l, l = d.lines[i]; if (!l) return; l[k] = v;
+  if (k === 'qty' || k === 'rate'){ if (+l.qty && +l.rate){ l.value = r2(+l.qty * +l.rate); const e = document.getElementById(`${m}_l${i}_value`); if (e) e.value = l.value; } }
+  if (['qty', 'rate', 'value', 'gst'].includes(k)){ const T = avTot(d), e = document.getElementById(m + '_tot'); if (e) e.innerHTML = avTotHTML(T); }
+}
+const avTotHTML = T => `Taxable <b>${inr(T.tx)}</b> · GST <b>${inr(T.tax)}</b> · Total <b>${inr(T.total)}</b>`;
+function viewAvNew(m){
+  const K = AVK[m]; if (!F[m]) F[m] = avNewDoc(m); const d = F[m]; loadSupl();
+  const rows = d.lines.map((l, i) => `<tr><td>${lInp(m, i, 'name', l.name, {al:'Product'})}</td><td>${lInp(m, i, 'hsn', l.hsn, {al:'HSN'})}</td><td>${lInp(m, i, 'qty', l.qty, {num:1, al:'Qty'})}</td><td>${lInp(m, i, 'unit', l.unit, {al:'Unit'})}</td><td>${lInp(m, i, 'rate', l.rate, {num:1, al:'Rate'})}</td><td>${lInp(m, i, 'value', l.value, {num:1, al:'Amount'})}</td><td>${lInp(m, i, 'gst', l.gst, {num:1, al:'GST %'})}</td><td><button class="btn sm" data-act="avDelL" data-m="${m}" data-i="${i}" aria-label="Remove row">✕</button></td></tr>`).join('');
+  return `<div class="head"><div><h1>${d.id ? 'Edit' : 'Create'} ${K.one}</h1><p class="sub">${COS[coOf(d, K.col)].name} · a record only: it does not create stock items or change the stock</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${d.id ? '' : `<label class="btn" for="${m}_xml" style="cursor:pointer">📄 Import Tally XML</label><input id="${m}_xml" class="avxml" data-m="${m}" type="file" accept=".xml,text/xml,application/xml" style="position:absolute;opacity:0;width:1px;height:1px">`}<button class="btn" data-act="go" data-k="${K.regK}">${K.reg}</button></div></div>
+  <div class="card" id="mform"><div class="igrid">
+    <label class="f">Voucher no *${mInp(m, 'no', d.no, {ph:K.pre + '/001/26-27'})}</label><label class="f">Date *${mInp(m, 'date', d.date, {type:'date'})}</label>
+    <label class="f">${K.party} *${mInp(m, 'party', d.party, {list:m + '_parties'})}</label><label class="f">${K.party} GSTIN${mInp(m, 'gstin', d.gstin)}</label>
+    <label class="f">Address line 1${mInp(m, 'addr1', d.addr1)}</label><label class="f">Address line 2${mInp(m, 'addr2', d.addr2)}</label><label class="f">Address line 3${mInp(m, 'addr3', d.addr3)}</label>
+    <label class="f">${K.ref}${mInp(m, 'ref', d.ref)}</label><label class="f">ENQ${mInp(m, 'enq', d.enq)}</label><label class="f" style="grid-column:span 2">Remarks${mInp(m, 'remarks', d.remarks)}</label>
+  </div><datalist id="${m}_parties">${avParties(m).map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+  <div class="tw" style="margin-top:12px"><table class="mtab"><thead><tr><th>Product *</th><th>HSN</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th><th>GST %</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+  <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px"><button class="btn" data-act="avAddL" data-m="${m}">+ Add product</button><span id="${m}_tot">${avTotHTML(avTot(d))}</span></div>
+  <div class="err" id="${m}_err"></div><div class="acts" style="justify-content:flex-start"><button class="btn pri" data-act="avSave" data-m="${m}">Save ${K.one}</button><button class="btn" data-act="avCancel" data-m="${m}">Cancel</button></div></div>`;
+}
+function viewAvReg(m){
+  const K = AVK[m]; F.avView = F.avView || {};
+  const one = F.avView[m] && D[K.col].get(F.avView[m]); if (one) return viewAvOne(m, one);
+  const q = (F['avq_' + m] || '').trim().toLowerCase(), fp = F['avp_' + m] || '';
+  let L = [...D[K.col].values()].filter(inCo(K.col));
+  const parties = [...new Set(L.map(x => x.party).filter(Boolean))].sort();
+  L = L.filter(x => (!fp || x.party === fp) && (!q || [x.no, x.party, x.ref, x.enq, ...(x.lines || []).map(l => l.name)].join(' ').toLowerCase().includes(q))).sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.no).localeCompare(String(a.no)));
+  const P = pg(L, 'av' + m, 50), tot = L.reduce((a, x) => a + avTot(x).total, 0);
+  const body = P.items.map(x => `<tr class="clk${F['avLast_' + m] === x.id ? ' sel' : ''}" data-act="avOpen" data-m="${m}" data-id="${esc(x.id)}" tabindex="0"><td class="nowrap">${esc(fmtD(x.date))}</td><td class="mono nowrap"><b>${esc(x.no)}</b></td><td class="wrap">${esc(x.party)}</td><td class="mono">${esc(x.ref || '')}</td><td class="mono">${esc(x.enq || '')}</td><td class="r num">${inr(avTot(x).total)}</td><td class="nowrap">${avActs(m, x)}</td></tr>`).join('');
+  return `<div class="head"><div><h1>${K.reg}</h1><p class="sub">${L.length} ${K.one.toLowerCase()}${L.length === 1 ? '' : 's'} in ${COS[curCo()].name} · records only, no stock effect</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri" data-act="go" data-k="${K.newK}">+ Create ${K.one}</button>${canStock() ? `<label class="btn" for="${m}_xmlr" style="cursor:pointer">📄 Import Tally XML</label><input id="${m}_xmlr" class="avxml" data-m="${m}" type="file" accept=".xml,text/xml,application/xml" style="position:absolute;opacity:0;width:1px;height:1px">` : ''}<button class="btn" data-act="avExport" data-m="${m}">Export Excel</button></div></div>
+  ${F['avRes_' + m] ? `<div class="note ${F['avRes_' + m].bad ? '' : 'good'}" style="margin-bottom:10px">${esc(F['avRes_' + m].msg)}</div>` : ''}
+  <div class="bar sfb"><label class="sf"><span>Search</span><input data-f="avq_${m}" type="search" placeholder="No, ${K.party.toLowerCase()}, product" value="${esc(F['avq_' + m] || '')}" autocomplete="off"></label>
+   <label class="sf"><span>${K.party}</span><select data-f="avp_${m}"><option value="">All</option>${parties.map(x => `<option ${fp === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label></div>
+  <div class="tw"><table><thead><tr class="ttop"><td colspan="4"></td><td class="r">Total (${L.length})</td><td class="r num">${inr(tot)}</td><td></td></tr><tr><th>Date</th><th>Voucher no</th><th>${K.party}</th><th>Reference</th><th>ENQ</th><th class="r">Amount (with GST)</th><th></th></tr></thead><tbody>${body || `<tr><td colspan="7" class="empty">No ${K.one.toLowerCase()}s in ${COS[curCo()].name} yet. Create one or import the Tally XML.</td></tr>`}</tbody></table></div>${P.html}`;
+}
+const avActs = (m, x) => isAdm() ? `<button class="btn sm" data-act="avEdit" data-m="${m}" data-id="${esc(x.id)}">Edit</button> <button class="btn sm dng" data-act="avDel" data-m="${m}" data-id="${esc(x.id)}">Delete</button>` : '';
+function viewAvOne(m, x){
+  const K = AVK[m], T = avTot(x), f = (k, v) => `<div><div class="mut" style="font-size:12px">${k}</div><b>${v || '—'}</b></div>`;
+  const rows = (x.lines || []).map((l, i) => `<tr><td class="c">${i + 1}</td><td class="wrap"><b>${esc(l.name)}</b></td><td class="mono">${esc(l.hsn || '')}</td><td class="r">${esc(String(+l.gst || 0))}%</td><td class="r num">${qtyF(l.qty)} ${esc(String(l.unit || '').toUpperCase())}</td><td class="r num">${inr(l.rate)}</td><td class="r num">${inr(l.value)}</td></tr>`).join('');
+  return `<div class="head"><div><button class="btn sm" data-act="avBack" data-m="${m}">← ${K.reg}</button><h1 style="margin-top:8px">${esc(x.no)}</h1><p class="sub">${esc(x.party)} · ${COS[coOf(x, K.col)].name}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${avActs(m, x)}</div></div>
+  <div class="card"><div class="igrid">${f('Voucher no', esc(x.no))}${f('Date', esc(fmtD(x.date)))}${f(K.party, esc(x.party))}${f('GSTIN', esc(x.gstin || ''))}${f('Address', esc([x.addr1, x.addr2, x.addr3].filter(Boolean).join(', ')))}${f(K.ref, esc(x.ref || ''))}${f('ENQ', esc(x.enq || ''))}${f('Remarks', esc(x.remarks || ''))}</div></div>
+  <div class="tw" style="margin-top:12px"><table><thead><tr><th>Sl</th><th>Product</th><th>HSN</th><th class="r">GST</th><th class="r">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead><tbody>${rows}</tbody>
+  <tfoot><tr><td colspan="6" class="r">Taxable value</td><td class="r num">${inr(T.tx)}</td></tr><tr><td colspan="6" class="r">GST</td><td class="r num">${inr(T.tax)}</td></tr><tr><td colspan="6" class="r"><b>Total</b></td><td class="r num"><b>${inr(T.total)}</b></td></tr></tfoot></table></div>`;
+}
+const avDup = (m, no, id, co) => [...D[AVK[m].col].values()].find(x => x.id !== id && coOf(x, AVK[m].col) === (co || curCo()) && normName(x.no) === normName(no));
+function avClean(m, d){
+  const lines = (d.lines || []).filter(l => String(l.name || '').trim()).map(l => ({name:String(l.name).trim(), hsn:String(l.hsn || '').replace(/\D/g, ''), qty:+l.qty || 0, unit:String(l.unit || '').toUpperCase().trim(), rate:+l.rate || 0, value:r2(+l.value || (+l.qty || 0) * (+l.rate || 0)), gst:+l.gst || 0, enq:enqOf(l.name) || ''}));
+  const doc = {...d, lines, no:String(d.no || '').trim(), party:String(d.party || '').trim(), gstin:String(d.gstin || '').toUpperCase().trim(), co:coOf(d, AVK[m].col)};
+  doc.enq = String(d.enq || '').trim() || [...new Set(lines.map(l => l.enq).filter(Boolean))].join(', ');
+  const T = avTot(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; return doc;
+}
+async function avStore(m, doc){ const K = AVK[m], id = doc.id || uid(m); await Store.set(K.col, id, {...doc, id, by:doc.by || S.me, at:doc.at || nowISO(), editedBy:doc.id ? S.me : undefined, editedAt:doc.id ? nowISO() : undefined}); await logAct('Inventory', `${K.one} ${doc.id ? 'edited' : 'saved'}: ${doc.no} · ${doc.party}`); return id; }
+async function avXmlFile(t){
+  const m = t.dataset.m, K = AVK[m], file = t.files[0]; if (!file) return; t.value = '';
+  let L; try { L = tallyXml(await file.text(), m); } catch(e){ toast(e.message || 'Could not read the XML file.'); return; }
+  if (!L.length){ toast(`No ${K.one} found in this XML.${L.types && L.types.length ? ' Voucher types in the file: ' + L.types.join(', ') + '.' : ''} In Tally open the voucher, press Alt+E, pick XML (Data Interchange).`); return; }
+  if (L[0].co && L[0].co !== curCo()){ F.co = L[0].co; try { localStorage.setItem('eo_co', F.co); } catch(e){} }
+  let n = 0, skip = 0; const bad = [];
+  for (const x of L){
+    if (avDup(m, x.po_no)){ skip++; continue; }
+    const doc = avClean(m, {co:curCo(), no:x.po_no, date:x.po_date || TODAY, party:x.supplier_name, gstin:x.supplier_gstin || '', addr1:x.supplier_addr1 || '', addr2:x.supplier_addr2 || '', addr3:x.supplier_addr3 || '', ref:'', enq:x.enq || '', remarks:String(x.notes || '').trim().slice(0, 300), total:x.total || 0,
+      lines:x.lines.map(l => ({name:l.name, hsn:l.hsn, qty:l.qty, unit:l.unit, rate:l.rate, value:l.amount, gst:l.gst})), src:'tally_xml'});
+    try { await avStore(m, doc); n++; } catch(e){ bad.push(x.po_no + ': ' + (e.message || e)); }
+  }
+  F['avRes_' + m] = {bad:bad.length, msg:`Saved ${n} of ${L.length} ${K.one.toLowerCase()}${L.length === 1 ? '' : 's'} from ${file.name} in ${COS[curCo()].name}${skip ? ` · ${skip} already in the register (skipped)` : ''}${bad.length ? ' · Not saved: ' + bad.join(' · ') : ''}.`};
+  F.avView = {}; ACT.nav({dataset:{k:K.regK, keep:1}}); forceRender = true; render();
+}
+document.addEventListener('change', ev => { if (ev.target.classList && ev.target.classList.contains('avxml')) avXmlFile(ev.target); });
+const AVACT = {
+  avAddL:t => { const d = F[t.dataset.m]; if (!d) return; d.lines.push(blankAvL()); forceRender = true; render(); },
+  avDelL:t => { const d = F[t.dataset.m]; if (!d) return; d.lines.splice(+t.dataset.i, 1); if (!d.lines.length) d.lines.push(blankAvL()); forceRender = true; render(); },
+  avCancel:t => { const m = t.dataset.m; F[m] = null; ACT.nav({dataset:{k:AVK[m].regK}}); },
+  avSave:async t => { const m = t.dataset.m, K = AVK[m], d = F[m], err = document.getElementById(m + '_err'), bad = x => { if (err) err.textContent = x; toast(x); return false; };
+    if (!d) return; const doc = avClean(m, d);
+    if (!doc.no || !doc.date || !doc.party) return bad(`Fill the voucher no, date and ${K.party.toLowerCase()}.`);
+    if (!doc.lines.length) return bad('Add at least one product.');
+    if (avDup(m, doc.no, d.id, doc.co)) return bad(`${doc.no} is already in the ${COS[doc.co].name} ${K.reg}.`);
+    t.disabled = true; let id; try { id = await avStore(m, doc); } catch(e){ t.disabled = false; return bad('Could not save: ' + (e.message || e)); }
+    toastOk(`Saved ${doc.no}.`); F[m] = null; F['avLast_' + m] = id; F.avView = {}; ACT.nav({dataset:{k:K.regK}}); },
+  avOpen:t => { F.avView = F.avView || {}; F.avView[t.dataset.m] = F['avLast_' + t.dataset.m] = t.dataset.id; forceRender = true; render(); window.scrollTo(0, 0); },
+  avBack:t => { F.avView = F.avView || {}; F.avView[t.dataset.m] = ''; forceRender = true; render(); stkFocus(); },
+  avEdit:t => { if (!isAdm()) return; const m = t.dataset.m, x = D[AVK[m].col].get(t.dataset.id); if (!x) return; F[m] = JSON.parse(JSON.stringify(x)); F[m].co = F.co = coOf(x, AVK[m].col); F.avView = {}; ACT.nav({dataset:{k:AVK[m].newK}}); },
+  avDel:async t => { if (!isAdm()) return; const m = t.dataset.m, x = D[AVK[m].col].get(t.dataset.id); if (!x || !confirm(`Delete ${AVK[m].one} ${x.no}?`)) return; await Store.del(AVK[m].col, x.id); await logAct('Inventory', `${AVK[m].one} deleted: ${x.no}`); F.avView = {}; forceRender = true; render(); },
+  avExport:t => { const m = t.dataset.m, K = AVK[m]; exportSheet(K.reg.replace(/\s+/g, '_') + '_' + COS[curCo()].name, K.reg, ['Date', 'Voucher no', K.party, 'GSTIN', 'Reference', 'ENQ', 'Product', 'HSN', 'Qty', 'Unit', 'Rate', 'Amount', 'GST %'],
+    [...D[K.col].values()].filter(inCo(K.col)).sort((a, b) => String(b.date).localeCompare(String(a.date))).flatMap(x => (x.lines || []).map(l => [fmtD(x.date), x.no, x.party, x.gstin || '', x.ref || '', x.enq || '', l.name, l.hsn || '', +l.qty || 0, l.unit || '', +l.rate || 0, +l.value || 0, +l.gst || 0]))); },
+};
 // Purchase Order Register → Export Excel → type Team / Executive → Import Excel (Admin): only those two columns are taken
 async function poTeamXls(t){
   const f = t.files[0]; if (!f || !isAdm()) return; t.value = '';
@@ -2342,8 +2465,9 @@ async function poXmlFile(t){
   const file = t.files[0]; if (!file) return; t.value = '';
   let L; try { L = tallyPOXml(await file.text()); } catch(e){ toast(e.message || 'Could not read the XML file.'); return; }
   if (!L.length){ toast('No Purchase Order found in this XML file. In Tally open the PO, press Alt+E, pick XML (Data Interchange) and export.'); return; }
+  if (L[0].co && L[0].co !== curCo()){ F.co = L[0].co; try { localStorage.setItem('eo_co', F.co); } catch(e){} }
   const fresh = L.filter(x => !poRegDup(x.po_no)), skip = L.length - fresh.length;
-  if (!fresh.length){ toast(`${L.map(x => x.po_no).join(', ')} ${L.length === 1 ? 'is' : 'are'} already in the Purchase Order Register.`); return; }
+  if (!fresh.length){ toast(`${L.map(x => x.po_no).join(', ')} ${L.length === 1 ? 'is' : 'are'} already in the ${COS[curCo()].name} Purchase Order Register.`); return; }
   F.poQueue = []; F.poXmlRes = {busy:true, n:fresh.length, done:[], fail:[], skip}; ACT.nav({dataset:{k:'mat_po'}});
   for (const x of fresh){
     F.po = null; F.poBadMsg = ''; F.poBulkDone = null;
@@ -2363,14 +2487,14 @@ async function poXmlFile(t){
 async function poFill(x, say, quiet){
       let g = String(x.supplier_gstin || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); if (OUR_GSTS.includes(g)) g = '';
       const sm = supFind({supGst:g, supName:String(x.supplier_name || '').trim()});
-      const lines = (x.lines || []).filter(l => l && String(l.name || '').trim() && (+l.qty > 0 || +l.amount > 0)).map(l => { const nm = String(l.name || '').replace(/\s+/g, ' ').trim(), it = guessItem(nm, l.hsn) || guessItem(enqStrip(nm), l.hsn); return {name:nm, enq:enqOf(nm) || String(x.enq || '').replace(/[^\dA-Za-z\-]/g, '').toUpperCase(), item:it || '__new', brand:l.brand, category:l.category, sub_category:l.sub_category, hsn:String(l.hsn || '').replace(/\D/g, ''), qty:r2(l.qty) || '', unit:String(l.unit || '').toUpperCase(), rate:r2(l.rate) || (+l.qty ? r2(l.amount / l.qty) : ''), value:r2(l.amount) || r2((+l.qty || 0) * (+l.rate || 0)), gst:+l.gst || 18}; });
+      const lines = (x.lines || []).filter(l => l && String(l.name || '').trim() && (+l.qty > 0 || +l.amount > 0)).map(l => { const nm = String(l.name || '').replace(/\s+/g, ' ').trim(), it = guessItem(nm, l.hsn) || guessItem(enqStrip(nm), l.hsn); return {name:nm, enq:enqOf(nm) || String(x.enq || '').replace(/[^\dA-Za-z\-]/g, '').toUpperCase(), item:it || '', brand:l.brand, category:l.category, sub_category:l.sub_category, hsn:String(l.hsn || '').replace(/\D/g, ''), qty:r2(l.qty) || '', unit:String(l.unit || '').toUpperCase(), rate:r2(l.rate) || (+l.qty ? r2(l.amount / l.qty) : ''), value:r2(l.amount) || r2((+l.qty || 0) * (+l.rate || 0)), gst:+l.gst || 18}; });
       const no = String(x.po_no || '').trim(), dup = [...D.mat_po.values()].find(d => normName(d.no) === normName(no));
       F.po = {no, date:ymdOk(x.po_date) || TODAY, supName:sm ? sm.name : String(x.supplier_name || '').replace(/\s+/g, ' ').trim(), supGst:sm && sm.gstin ? sm.gstin : g, supAddr:{addr1:String(x.supplier_addr1 || '').trim(), addr2:String(x.supplier_addr2 || '').trim(), addr3:String(x.supplier_addr3 || '').trim()}, comp:(sm && TEAMS.includes(sm.team) ? sm.team : '') || myTeam(), remarks:String(x.notes || '').trim().slice(0, 300), aiTotal:r2(x.total) || 0, lines:lines.length ? lines : [blankPOL()]};
       if (dup){ F.po = {no:'', date:TODAY, supName:'', supGst:'', comp:myTeam(), remarks:'', lines:[blankPOL()]}; forceRender = true; render(); say(`${no} is already in the Purchase Order Register, so it was not taken again.`, true); return false; }
       // already in the PO Master (entered by the executive): the register still gets it; the PO Master row stays as it is
       const pm = await poMasterInfo(no); F.po.inMaster = !!pm;
       if (pm && pm.requester){ const u = [...(ALLU.size ? ALLU : D.users).values()].find(y => normName(y.name) === normName(pm.requester)); if (u && isPurExec(u)){ F.po.exec = u.id; F.po.execName = u.name; const t = teamOfUser(u); if (t) F.po.comp = t; } }
-      F.po.lines.forEach(l => { if (l.item === '__new') l.ni = poNi(l, F.po); delete l.brand; delete l.category; delete l.sub_category; });
+      F.po.lines.forEach(l => { delete l.ni; delete l.brand; delete l.category; delete l.sub_category; });
       const gw = String(x.supplier_gstin || '').toUpperCase().replace(/[^0-9A-Z]/g, ''), ourG = OUR_GSTS.includes(gw);
       const nNew = F.po.lines.filter(l => l.item === '__new').length, enqs = [...new Set(F.po.lines.map(l => l.enq).filter(Boolean))].join(', ');
       say(`${F.po.inMaster ? 'Already in the PO Master: saving adds it to the Purchase Order Register only, the PO Master stays as it is. ' : ''}Done: ${lines.length} product row${lines.length === 1 ? '' : 's'} read${enqs ? ' · ENQ ' + enqs : ''}.${nNew ? ' ' + nNew + ' new stock item' + (nNew === 1 ? '' : 's') + ' will be created (check the yellow boxes).' : ''}${ourG ? ' The supplier GST number on this PO is our own GST number; correct the supplier in Tally and type their GST number here.' : ''} Check and save.`);
@@ -2407,8 +2531,13 @@ async function matFile(t){
 }
 const MATACT = {
   ...POACT,
+  ...AVACT,
   moTab:t => { F.moTab = t.dataset.t; forceRender = true; render(); },
-  matNew:t => { const m = t.dataset.m; F[m + 'Ais'] = ''; F[m] = m === 'mi' ? {invNo:'', invDate:TODAY, supName:'', supGst:'', comp:myTeam(), lines:[blankLine('mi')]} : {no:vno(MATCOL[m], m === 'dc' ? 'RDC' : 'RN'), date:TODAY, party:'', exec:'', dc:'', remarks:'', lines:m === 'rn' ? [] : [blankLine(m)]}; forceRender = true; render(); },
+  coSet:t => { const c = t.dataset.co === 'E' ? 'E' : 'B'; F.co = c; try { localStorage.setItem('eo_co', c); } catch(e){}
+    const m = typeof CO_VIEWS[S.view] === 'string' ? CO_VIEWS[S.view] : '';
+    if (m && F[m]){ F[m].co = c; if (!F[m].id && F[m].no && isAutoNo(F[m].no)) F[m].no = vno(MATCOL[m], F[m].no.split('/')[0], 'no', F[m].date, c); }
+    F.stkI = ''; F.csI = ''; F.poView = ''; F.avView = {}; forceRender = true; render(); },
+  matNew:t => { const m = t.dataset.m; F[m + 'Ais'] = ''; F[m] = m === 'mi' ? {co:curCo(), invNo:'', invDate:TODAY, supName:'', supGst:'', comp:myTeam(), lines:[blankLine('mi')]} : {co:curCo(), no:vno(MATCOL[m], m === 'dc' ? 'RDC' : 'RN'), date:TODAY, party:'', exec:'', dc:'', remarks:'', lines:m === 'rn' ? [] : [blankLine(m)]}; forceRender = true; render(); },
   matAddL:t => { const m = t.dataset.m; F[m].lines.push(blankLine(m)); forceRender = true; render(); },
   matDelL:t => { const m = t.dataset.m; F[m].lines.splice(+t.dataset.i, 1); if (!F[m].lines.length && m !== 'rn' && m !== 'dc') F[m].lines.push(blankLine(m)); forceRender = true; render(); },
   matNiCreate:async t => { const mm = t.dataset.m || 'mi', i = +t.dataset.i, l = F[mm].lines[i]; if (l && l.ni) l.ni.comp = F[mm].comp; const nw = F[mm].lines.filter(x => x.item === '__new'), e = niCheck(l, nw.indexOf(l)), er = document.getElementById(mm + '_nierr' + i);
@@ -2451,7 +2580,7 @@ const MATACT = {
   stkDoc:t => { F.stkLastD = t.dataset.id; F.stkRet = {i:S.view === 'cls_stock' ? F.csI : F.stkI, m:F.stkM, y:F.stkY, v:S.view}; ACT.matEdit(t); },
   stkRet:() => { const r = F.stkRet; F.stkRet = null; if (!r) return; if (r.v === 'cls_stock') F.csI = r.i; else F.stkI = r.i; F.stkM = r.m; F.stkY = r.y; ['mi','dc','rn','ps'].forEach(k => { if (F[k] && F[k].id) F[k] = null; }); ACT.nav({dataset:{k:r.v === 'cls_stock' ? 'cls_stock' : 'inv_stock', keep:'1'}}); stkFocus(); },
   matCancel:t => { const m = t.dataset.m; F[m] = null; ACT.nav({dataset:{k:m === 'mi' ? 'mat_in' : m === 'dc' ? 'mat_dc' : m === 'ps' ? 'mat_ps' : 'mat_rn'}}); },
-  matEdit:t => { const m = t.dataset.m, d = D[MATCOL[m]].get(t.dataset.id); if (!d) return; F[m] = JSON.parse(JSON.stringify(d)); (F[m].lines || []).forEach(l => { l.rateTyped = 1; l.gstTouched = 1; }); F.justSaved = ''; ACT.nav({dataset:{k:m === 'mi' ? 'mat_in_new' : m === 'rn' ? 'rn_new' : m === 'ps' ? 'ps_new' : (dcKind(d) === 'dc' ? 'dc_new' : 'rdc_new')}}); },
+  matEdit:t => { const m = t.dataset.m, d = D[MATCOL[m]].get(t.dataset.id); if (!d) return; F[m] = JSON.parse(JSON.stringify(d)); F[m].co = F.co = coOf(d, MATCOL[m]); (F[m].lines || []).forEach(l => { l.rateTyped = 1; l.gstTouched = 1; }); F.justSaved = ''; ACT.nav({dataset:{k:m === 'mi' ? 'mat_in_new' : m === 'rn' ? 'rn_new' : m === 'ps' ? 'ps_new' : (dcKind(d) === 'dc' ? 'dc_new' : 'rdc_new')}}); },
   matDel:async t => { const m = t.dataset.m, col = MATCOL[m], d = D[col].get(t.dataset.id); if (!d) return;
     if (m === 'dc' && [...D.mat_rn.values()].some(r => r.dc === d.id)){ toast('Delete its Receipt Notes first.'); return; }
     if (!confirm(`Delete ${m === 'mi' ? 'GRN ' + d.invNo : d.no}? Stock changes back.`)) return;
@@ -2500,11 +2629,11 @@ const MATACT = {
     const doc = {...d, id, lines:clean, by:d.by || S.me, at:d.at || nowISO(), editedBy:d.id ? S.me : undefined, editedAt:d.id ? nowISO() : undefined};
     if (m === 'dc' || m === 'rn') doc.ship = shipClean(d);
     if (m === 'rn'){ const dc0 = D.mat_dc.get(d.dc) || {}; ['addr1', 'addr2', 'addr3', 'gstin'].forEach(f => { if (doc[f] == null) doc[f] = dc0[f] || ''; }); }
-    delete doc.aiTotal; delete doc.ks; delete doc.teamSet; delete doc.execSet; doc.execName = doc.exec ? userName(doc.exec) : ''; if (m === 'mi'){ const T = miTotals(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; doc.igst = T.inter; doc.comp = compOf(doc.comp); if (!doc.grnNo) doc.grnNo = vno('mat_in', 'GRN', 'grnNo', doc.at);
+    doc.co = coOf(d, col); delete doc.aiTotal; delete doc.ks; delete doc.teamSet; delete doc.execSet; doc.execName = doc.exec ? userName(doc.exec) : ''; if (m === 'mi'){ const T = miTotals(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; doc.igst = T.inter; doc.comp = compOf(doc.comp); if (!doc.grnNo) doc.grnNo = vno('mat_in', 'GRN', 'grnNo', doc.at, doc.co);
       const sm = (SUPL || []).find(x => (doc.supGst && x.gstin === doc.supGst) || normName(x.name) === normName(doc.supName)), sp = d.ks && d.ks.addr1 ? d.ks : sm && sm.addr1 ? sm : (d.ns && d.ns.addr1 ? d.ns : sm); if (sp) doc.supAddr = {addr1:sp.addr1 || '', addr2:sp.addr2 || '', addr3:sp.addr3 || ''}; }
     if (m === 'dc'){ doc.kind = dcKind(doc); doc.comp = 'Expert'; if (doc.sale){ doc.saleInv = doc.sale.inv; delete doc.sale; } delete doc.nc; delete doc.keepCust; }
-    if (m !== 'mi' && !d.id && isAutoNo(doc.no) && !doc.no.endsWith('/' + fyOf(doc.date))) doc.no = vno(col, doc.no.split('/')[0], 'no', doc.date);
-    if (m === 'ps' && !d.id) doc.no = vno('mat_ps', 'PS', 'no', doc.date);
+    if (m !== 'mi' && !d.id && isAutoNo(doc.no) && !doc.no.endsWith('/' + fyOf(doc.date))) doc.no = vno(col, doc.no.split('/')[0], 'no', doc.date, doc.co);
+    if (m === 'ps' && !d.id) doc.no = vno('mat_ps', 'PS', 'no', doc.date, doc.co);
     if (m === 'dc' || m === 'rn'){ ['contact', 'terms', 'refNo', 'otherRef', 'orderNo', 'orderDate', 'dispDoc', 'dispatch', 'dest', 'tod'].forEach(k => { if (!doc[k]) delete doc[k]; }); }
     if (m === 'rn') doc.comp = 'Expert';
     t.disabled = true;
@@ -2871,7 +3000,7 @@ function viewCollection(){
 const NAVIC = {"mail": "<rect x=\"3\" y=\"5\" width=\"18\" height=\"14\" rx=\"2\"/><path d=\"m3 7 9 6 9-6\"/>", "contacts": "<rect x=\"4\" y=\"3\" width=\"16\" height=\"18\" rx=\"2\"/><circle cx=\"12\" cy=\"10\" r=\"3\"/><path d=\"M7.5 17c.8-2 2.5-3 4.5-3s3.7 1 4.5 3\"/>", "billing": "<path d=\"M6 3h12v18l-3-2-3 2-3-2-3 2z\"/><path d=\"M9 8h6M9 12h6\"/>", "chat": "<path d=\"M21 12a8 8 0 0 1-11.7 7.1L4 20l1-4.6A8 8 0 1 1 21 12z\"/>", "collection": "<path d=\"M3 7a2 2 0 0 1 2-2h13v4\"/><path d=\"M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H5a2 2 0 0 1-2-2z\"/><circle cx=\"16\" cy=\"14.5\" r=\"1.2\"/>", "wa": "<path d=\"M21 12a8 8 0 0 1-11.7 7.1L4 20l1-4.6A8 8 0 1 1 21 12z\"/><path d=\"M9 10.5c.3 1.6 1.9 3.2 3.5 3.5l1-1 1.5.6v1.4c-2.9.3-6.4-3.2-6.1-6.1H10l.6 1.5z\"/>", "dashboard": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"2\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"2\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"2\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"2\"/>", "create": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 8v8M8 12h8\"/>", "outstanding": "<path d=\"M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z\"/><path d=\"M14 3v5h5M9 13h6M9 17h6\"/>", "parties": "<circle cx=\"9\" cy=\"8\" r=\"3.5\"/><path d=\"M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14c2 .8 3.5 2.7 3.5 6\"/>", "followups": "<path d=\"M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0\"/>", "edits": "<path d=\"M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z\"/>", "activity": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/>"};
 const ico = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${NAVIC[k] || ''}</svg>`;
 const NAV = [
-  ['dashboard','Dashboard',viewDashboard,()=>!noSales()],['wa','Send WhatsApp Alert',viewWA,()=>canAlert() && waPeople().length > 0],['mail','Send Payment Mail',viewMail,canAlert],['create','Create',viewCreate,isAdm],['outstanding','Outstanding',viewOutstanding,()=>!noSales()],['billing','Billing',viewBilling,()=>!noSales()],['collection','Collection',viewCollection,()=>!noSales()],['contacts','Customer Contacts',viewContacts,isTop],['inv_stock','Stock List',viewStock,canStock],['inv_item','Create Stock Item',viewInvItems,canStock],['po_new','Create Purchase Order',viewPOnew,canStock],['mat_in_new','Create GRN',()=>viewMatIn('new'),canStock],['mat_in','GRN Register',()=>viewMatIn('list'),canStock],['mat_po','Purchase Order Register',viewPOReg,canStock],['po_rep','PO vs Received',viewPORep,canStock],['dc_new','Create Delivery Challan',()=>viewMatOut('dc','dc'),canStock],['rdc_new','Create Returnable DC',()=>viewMatOut('dc','rdc'),canStock],['mat_dc','Delivery Challan Register',()=>viewMatOut('dc'),canStock],['rn_new','Create Receipt Note',()=>viewMatOut('rn','new'),canStock],['mat_rn','Receipt Note Register',()=>viewMatOut('rn'),canStock],['backup','Backup Download',viewBackup,isAdm],['cust_list','Customer List',viewCustList,()=>isTop() || (role() === 'Manager' && !noSales())],['ps_new','Create Physical Stock',()=>viewPS('new'),canStock],['cls_stock','Closing Stock Details',viewClosing,()=>true],['mat_ps','Physical Stock Register',()=>viewPS('list'),canStock],['smp_pend','Pending Samples',viewSamplesPending,()=>true],['inv_brand','Brand',()=>viewMaster('brand'),canStock],['inv_cat','Category',()=>viewMaster('cat'),canStock],['inv_sub','Sub Category',()=>viewMaster('sub'),canStock],['inv_unit','Units',()=>viewMaster('unit'),canStock],['inv_gst','GST Percentage',()=>viewMaster('gst'),canStock],['chat','Chat',viewChat,()=>true],
+  ['dashboard','Dashboard',viewDashboard,()=>!noSales()],['wa','Send WhatsApp Alert',viewWA,()=>canAlert() && waPeople().length > 0],['mail','Send Payment Mail',viewMail,canAlert],['create','Create',viewCreate,isAdm],['outstanding','Outstanding',viewOutstanding,()=>!noSales()],['billing','Billing',viewBilling,()=>!noSales()],['collection','Collection',viewCollection,()=>!noSales()],['contacts','Customer Contacts',viewContacts,isTop],['inv_stock','Stock List',viewStock,canStock],['inv_item','Create Stock Item',viewInvItems,canStock],['po_new','Create Purchase Order',viewPOnew,canStock],['mat_in_new','Create GRN',()=>viewMatIn('new'),canStock],['mat_in','GRN Register',()=>viewMatIn('list'),canStock],['mat_po','Purchase Order Register',viewPOReg,canStock],['pi_new','Create Purchase Invoice',()=>viewAvNew('pi'),canStock],['mat_pi','Purchase Register',()=>viewAvReg('pi'),canStock],['so_new','Create Sales Order',()=>viewAvNew('so'),canStock],['mat_so','Sales Order Register',()=>viewAvReg('so'),canStock],['si_new','Create Sales Invoice',()=>viewAvNew('si'),canStock],['mat_si','Sales Invoice Register',()=>viewAvReg('si'),canStock],['po_rep','PO vs Received',viewPORep,canStock],['dc_new','Create Delivery Challan',()=>viewMatOut('dc','dc'),canStock],['rdc_new','Create Returnable DC',()=>viewMatOut('dc','rdc'),canStock],['mat_dc','Delivery Challan Register',()=>viewMatOut('dc'),canStock],['rn_new','Create Receipt Note',()=>viewMatOut('rn','new'),canStock],['mat_rn','Receipt Note Register',()=>viewMatOut('rn'),canStock],['backup','Backup Download',viewBackup,isAdm],['cust_list','Customer List',viewCustList,()=>isTop() || (role() === 'Manager' && !noSales())],['ps_new','Create Physical Stock',()=>viewPS('new'),canStock],['cls_stock','Closing Stock Details',viewClosing,()=>true],['mat_ps','Physical Stock Register',()=>viewPS('list'),canStock],['smp_pend','Pending Samples',viewSamplesPending,()=>true],['inv_brand','Brand',()=>viewMaster('brand'),canStock],['inv_cat','Category',()=>viewMaster('cat'),canStock],['inv_sub','Sub Category',()=>viewMaster('sub'),canStock],['inv_unit','Units',()=>viewMaster('unit'),canStock],['inv_gst','GST Percentage',()=>viewMaster('gst'),canStock],['chat','Chat',viewChat,()=>true],
   ['edits','Edit History',viewEdits,()=>true],
   ['activity','Activity log',viewActivity,()=>true]
 ];
@@ -2901,7 +3030,7 @@ function render(){
     ${nav.map(n => n[0] === 'create' ? `<button class="nav ${S.view === 'create' ? 'on' : ''}" data-act="toggleCreate" aria-expanded="${S.createOpen}">${ico('create')}Create<span class="chev">${S.createOpen ? '▲' : '▼'}</span></button>${!S.createOpen ? '' : (isAdm() ? ['Area','Sub Admin','Manager','Executive'] : ['Area','Manager','Executive']).map(r => `<button class="nav navc ${S.view === 'create' && F.cr === r ? 'on' : ''}" data-act="nav" data-k="create" data-role="${r}">${r}</button>`).join('')}` : `<button class="nav ${S.view === n[0] ? 'on' : ''}" data-act="nav" data-k="${n[0]}">${ico(n[0])}${n[1]}${n[0] === 'chat' && chatUnread() ? `<span class="cnt chc2" style="background:#12a594;margin-left:auto" title="Unread messages">${chatUnread()}</span>` : ''}${n[0] === 'outstanding' && isTop() && missedN ? `<span class="cnt" title="Expected date missed">${missedN}</span>` : ''}</button>`).join('')}
     </aside>
     <main class="main" id="main"><div class="mtop"><button class="tg" data-act="toggleSide" aria-label="${S.sideHidden ? 'Show menu' : 'Hide menu'}" aria-expanded="${!S.sideHidden}" title="${S.sideHidden ? 'Show menu' : 'Hide menu'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><button class="tgh" data-act="toggleSide" aria-label="${S.sideHidden ? 'Show menu' : 'Hide menu'}"><span class="tga" aria-hidden="true">◀</span><span class="tgt">Hide / Unhide</span></button>
-  <div class="prof"><button class="av" data-act="myProfile" aria-label="Open my profile" title="My profile">${esc(me().name.trim().slice(0,1).toUpperCase())}</button><div class="pn"><b>${esc(me().name)}</b><small>${esc(me().role)}</small></div><button class="btn sm lo" data-act="logout">Log out</button></div></div>${me().mustChange && isAdm() ? '<div class="note bad" style="margin-bottom:14px">You are using a default password. <button class="btn sm" data-act="profile">Change password now</button></div>' : ''}${Store.mode === 'local' ? '<div class="note info" style="margin-bottom:14px">Local mode: data is saved only in this browser. Open the published link to share data with your team.</div>' : ''}${F.stkRet && /_new$/.test(S.view) ? `<div style="margin-bottom:10px"><button class="btn sm" data-act="stkRet">← Back to stock ${esc(D.inv_items.get(F.stkRet.i)?.name || '')}</button></div>` : ''}${cur[2]()}</main></div>`;
+  <div class="prof"><button class="av" data-act="myProfile" aria-label="Open my profile" title="My profile">${esc(me().name.trim().slice(0,1).toUpperCase())}</button><div class="pn"><b>${esc(me().name)}</b><small>${esc(me().role)}</small></div><button class="btn sm lo" data-act="logout">Log out</button></div></div>${me().mustChange && isAdm() ? '<div class="note bad" style="margin-bottom:14px">You are using a default password. <button class="btn sm" data-act="profile">Change password now</button></div>' : ''}${Store.mode === 'local' ? '<div class="note info" style="margin-bottom:14px">Local mode: data is saved only in this browser. Open the published link to share data with your team.</div>' : ''}${F.stkRet && /_new$/.test(S.view) ? `<div style="margin-bottom:10px"><button class="btn sm" data-act="stkRet">← Back to stock ${esc(D.inv_items.get(F.stkRet.i)?.name || '')}</button></div>` : ''}${coWrap(S.view, cur[2]())}</main></div>`;
   const m2 = $('#main'); if (m2) m2.scrollTop = st;
   if (aid){ const el = document.getElementById(aid); if (el){ el.focus(); if (sel && el.setSelectionRange) try { el.setSelectionRange(sel[0], sel[1]); } catch(e){} } }
   if (S.drawer) renderDrawer(true);
@@ -3450,7 +3579,7 @@ async function exportX(){
 
 /* ---------- events ---------- */
 const ACT = {
-  nav:t => { S.editRow = null; if (t.dataset.k === 'inv_stock' && !t.dataset.keep){ F.stkI = ''; F.stkM = null; } if (t.dataset.k === 'cls_stock' && !t.dataset.keep){ F.csI = ''; F.stkM = null; } if (t.dataset.k === 'mat_po' && !t.dataset.keep) F.poView = ''; if (t.dataset.k !== 'mat_po') F.poXmlRes = null; if (!t.dataset.keep && !/_new$/.test(t.dataset.k)) F.stkRet = null; S.view = t.dataset.k; if (t.dataset.role){ F.cr = t.dataset.role; createMsg = ''; S.createOpen = true; } closeDrawer(); forceRender = true; render(); },
+  nav:t => { S.editRow = null; if (t.dataset.k === 'inv_stock' && !t.dataset.keep){ F.stkI = ''; F.stkM = null; } if (t.dataset.k === 'cls_stock' && !t.dataset.keep){ F.csI = ''; F.stkM = null; } if (t.dataset.k === 'mat_po' && !t.dataset.keep) F.poView = ''; if (t.dataset.k !== 'mat_po') F.poXmlRes = null; ['pi', 'so', 'si'].forEach(m => { if (t.dataset.k !== AVK[m].regK) F['avRes_' + m] = null; if (t.dataset.k === AVK[m].regK && !t.dataset.keep && F.avView) F.avView[m] = ''; }); if (!t.dataset.keep && !/_new$/.test(t.dataset.k)) F.stkRet = null; S.view = t.dataset.k; if (t.dataset.role){ F.cr = t.dataset.role; createMsg = ''; S.createOpen = true; } closeDrawer(); forceRender = true; render(); },
   billDelAll:() => { if (!isAdm()) return; openModal(`<h2>Delete all bill details?</h2><p>This permanently deletes all <b>${D.billing.size}</b> billing rows for every area. You can import them again from Excel afterwards. This cannot be undone.</p><div class="acts"><button class="btn" data-act="closeModal">No</button><button class="btn dng" data-act="billDelAllYes">Yes, delete all</button></div>`); },
   billDelAllYes:async t => { if (!isAdm()) return; t.disabled = true; const n = D.billing.size; const ok = await Store.delAll('billing'); if (ok) await logAct('Billing delete all', n + ' billing rows deleted'); closeModal(); forceRender = true; render(); },
   addBill:() => { if (canBill()) billModal(); },
