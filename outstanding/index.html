@@ -1694,7 +1694,7 @@ function viewMatIn(mode){
   if (mode === 'new'){
     if (!F.mi) F.mi = {invNo:'', invDate:TODAY, supName:'', supGst:'', comp:'', lines:[blankLine('mi')]};
     loadPrDir();
-    return `<div class="head"><div><h1>${F.mi.id ? 'Edit GRN' : 'Create GRN'}</h1><p class="sub">Goods received from a supplier. Upload the purchase invoice and AI fills the entry, or type it.</p></div><button class="btn" data-act="go" data-k="mat_in">GRN List</button></div>
+    return `<div class="head"><div><h1>${F.mi.id ? 'Edit GRN' : 'Create GRN'}</h1><p class="sub">Goods received from a supplier. Upload the purchase invoice and AI fills the entry, or type it.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${F.mi.id ? '' : matXmlBtn('mi')}<button class="btn" data-act="go" data-k="mat_in">GRN List</button></div></div>
     ${F.mi.id ? '' : aiBar('mi', 'purchase invoice')}${F.mi.id || F.mi.po ? '' : (L => L.length ? `<div class="bar" style="margin:6px 0 10px"><label class="sf"><span>Or receive against an open purchase order</span><select id="mi_pofill"><option value="">Pick a PO…</option>${L.map(po => `<option value="${esc(po.id)}">${esc(po.no + ' · ' + po.supName + (po.enq ? ' · ENQ ' + po.enq : ''))}</option>`).join('')}</select></label></div>` : '')([...D.mat_po.values()].filter(poOpen).sort((a, b) => String(b.date).localeCompare(String(a.date))))}${miFormHTML()}`;
   }
   return regHTML('mi', 'GRN List', `${D.mat_in.size} GRN${D.mat_in.size === 1 ? '' : 's'} · saved items add to the closing stock`, '<button class="btn pri" data-act="go" data-k="mat_in_new">+ Create GRN</button>', {extra:[{h:'Team', v:d => esc(compOf(d.comp) || '—')}, {h:'Executive', v:d => esc(d.execName || userName(d.exec) || '—')}]});
@@ -1735,11 +1735,11 @@ function viewMatOut(m, mode){
   if (mode === 'dc' || mode === 'rdc'){
     if (!F.dc || (!F.dc.id && dcKind(F.dc) !== mode)) F.dc = {kind:mode, no:vno('mat_dc', mode === 'dc' ? 'DC' : 'RDC'), date:TODAY, comp:'Expert', party:'', exec:'', mgr:'', remarks:'', lines:[]};
     const k = dcKind(F.dc);
-    return `<div class="head"><div><h1>${F.dc.id ? 'Edit ' : 'Create '}${k === 'dc' ? 'DC' : 'Returnable DC'}</h1><p class="sub">${k === 'dc' ? 'Stock going out (not samples)' : 'Samples an executive takes to a customer and brings back'}</p></div><button class="btn" data-act="go" data-k="${k === 'dc' ? 'mat_dc' : 'mat_rdc'}">${k === 'dc' ? 'Delivery Challan Register' : 'Returnable DC Register'}</button></div>${k === 'dc' ? saleBox(F.dc) : ''}${dcFormHTML()}`;
+    return `<div class="head"><div><h1>${F.dc.id ? 'Edit ' : 'Create '}${k === 'dc' ? 'DC' : 'Returnable DC'}</h1><p class="sub">${k === 'dc' ? 'Stock going out (not samples)' : 'Samples an executive takes to a customer and brings back'}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${F.dc.id ? '' : matXmlBtn(k)}<button class="btn" data-act="go" data-k="${k === 'dc' ? 'mat_dc' : 'mat_rdc'}">${k === 'dc' ? 'Delivery Challan Register' : 'Returnable DC Register'}</button></div></div>${k === 'dc' ? saleBox(F.dc) : ''}${dcFormHTML()}`;
   }
   if (mode === 'new'){
     if (!F.rn) F.rn = {no:vno('mat_rn', 'RN'), date:TODAY, party:'', dc:'', remarks:'', lines:[]};
-    return `<div class="head"><div><h1>${F.rn.id ? 'Edit' : 'Create'} Receipt Note</h1><p class="sub">Samples coming back from a customer, against a returnable DC</p></div><button class="btn" data-act="go" data-k="mat_rn">Receipt Note Register</button></div>${rnFormHTML()}`;
+    return `<div class="head"><div><h1>${F.rn.id ? 'Edit' : 'Create'} Receipt Note</h1><p class="sub">Samples coming back from a customer, against a returnable DC</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${F.rn.id ? '' : matXmlBtn('rn')}<button class="btn" data-act="go" data-k="mat_rn">Receipt Note Register</button></div></div>${rnFormHTML()}`;
   }
   if (m === 'dc'){ const ty = F.dcty || 'all', nD = [...D.mat_dc.values()].filter(d => dcKind(d) === 'dc').length, nR = D.mat_dc.size - nD;
     const tabs = `<div class="mtabs" role="tablist">${[['all', 'All'], ['dc', 'Delivery DC'], ['rdc', 'Returnable DC']].map(([k, l]) => `<button role="tab" aria-selected="${ty === k}" class="${ty === k ? 'on' : ''}" data-act="dcTy" data-t="${k}">${l}</button>`).join('')}</div>`;
@@ -1924,7 +1924,7 @@ function regHTML(m, title, sub, newBtns, opts = {}){
   const qbar = canQ ? `<div class="nibox" style="margin:0 0 10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;${QS.size ? 'background:#eff6ff;border-color:#93c5fd' : ''}">${QS.size ? `<b>${QS.size} ${m === 'mi' ? 'GRN' : 'Physical Stock'}${QS.size > 1 ? 's' : ''} selected · ${qrCount(m, [...QS])} labels</b><button class="btn sm pri" data-act="qrSel" data-m="${m}">Print QR labels together</button><button class="btn sm" data-act="qrSelClr" data-m="${m}">Clear selection</button>` : `<span class="mut">Tick 2 or more ${m === 'mi' ? 'GRNs' : 'entries'} to print all their QR labels together, so no label on the row is wasted.</span>`}</div>` : '';
   const body = P.items.map(d => `<tr class="${F.justSaved === d.id ? 'pon' : ''}">${canQ ? `<td><input type="checkbox" class="qsel" data-m="${m}" value="${esc(d.id)}" ${QS.has(d.id) ? 'checked' : ''} aria-label="Select ${esc(no(d))} for QR labels"></td>` : ''}<td>${esc(fmtD(dt(d)))}</td><td class="mono">${esc(no(d))}</td>${ex.map(e => `<td>${e.v(d)}</td>`).join('')}<td class="wrap">${esc(party(d) || '')}</td><td class="r num">${inr(val(d))}</td><td class="nowrap">${m === 'ps' ? '' : `<button class="btn sm" data-act="matPrint" data-m="${m}" data-id="${esc(d.id)}">Print</button> `}${m === 'mi' || m === 'ps' ? `<button class="btn sm" data-act="qrOpen" data-m="${m}" data-id="${esc(d.id)}">QR labels</button> ` : ''}<button class="btn sm" data-act="matEdit" data-m="${m}" data-id="${esc(d.id)}">Edit</button> ${isAdm() ? `<button class="btn sm dng" data-act="matDel" data-m="${m}" data-id="${esc(d.id)}">Delete</button>` : ''}</td></tr>`).join('');
   return `<div class="head"><div><h1>${esc(title)}</h1><p class="sub">${sub}</p></div><div style="display:flex;gap:8px;flex-wrap:wrap">${newBtns}<button class="btn" data-act="xReg" data-m="${m}">Export Excel</button></div></div>
-  ${savedBar(m)}${opts.tabs || ''}${qbar}
+  ${matXmlNote(m === 'dc' ? (S.view === 'mat_rdc' ? 'rdc' : 'dc') : m)}${savedBar(m)}${opts.tabs || ''}${qbar}
   <div class="bar sfb"><label class="sf"><span>Search</span><input id="rq_${m}" data-f="rq_${m}" type="search" placeholder="Number, ${m === 'mi' ? 'supplier' : m === 'ps' ? 'remarks' : 'customer'}, item" value="${esc(F['rq_' + m] || '')}" autocomplete="off"></label>
    <label class="sf"><span>From date</span><input id="rf_${m}" data-f="rf_${m}" type="date" value="${esc(fFrom)}"></label><label class="sf"><span>To date</span><input id="rt_${m}" data-f="rt_${m}" type="date" value="${esc(fTo)}"></label>
    ${m === 'ps' ? '' : `<label class="sf"><span>${m === 'mi' ? 'Supplier' : 'Customer'}</span><select data-f="rp_${m}"><option value="">All</option>${partiesAll.map(p => `<option ${fParty === p ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></label>`}
@@ -2290,7 +2290,9 @@ const ymdOk = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) ? s : '';
 /* ---------- Purchase Order from a Tally XML file (no AI needed to read it) ---------- */
 // Tally export (Alt+E → XML) of one or more Purchase Order vouchers, or the ExpertOne TDL format (EPPOST)
 // kind: po (Purchase Order), pi (Purchase), so (Sales Order), si (Sales); the voucher type name decides
-const VCH_RE = {po:t => /purchase/i.test(t) && /order/i.test(t) || (/order/i.test(t) && !/sales/i.test(t)), pi:t => /purchase/i.test(t) && !/order/i.test(t), so:t => /sales/i.test(t) && /order/i.test(t), si:t => /sales/i.test(t) && !/order/i.test(t)};
+const VCH_RE = {po:t => /purchase/i.test(t) && /order/i.test(t) || (/order/i.test(t) && !/sales/i.test(t)), pi:t => /purchase/i.test(t) && !/order/i.test(t), so:t => /sales/i.test(t) && /order/i.test(t), si:t => /sales/i.test(t) && !/order/i.test(t),
+  // GRN = Tally Receipt Note; DC / Returnable DC = Delivery Note (a type name with "returnable" → returnable DC); samples back = Rejection In / Return / Receipt
+  grn:t => /receipt\s*note|grn|goods\s*receipt|material\s*in/i.test(t) && !/rejection|sample/i.test(t), dcx:t => /delivery|challan|\bdc\b|rdc|returnable|material\s*out/i.test(t), rnx:t => /receipt|rejection\s*in|return|sample/i.test(t) && !/returnable|order/i.test(t)};
 const tallyPOXml = text => tallyXml(text, 'po');
 function tallyXml(text, kind){
   text = String(text || '').replace(/^﻿/, '').replace(/&#(?:[0-8]|1[124-9]|2\d|3[01]);/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
@@ -2328,7 +2330,7 @@ function tallyXml(text, kind){
       return {name, qty:num(qv), unit:unitOfQ(qv) || unitOfQ(one(e, 'RATE')), rate:num(String(one(e, 'RATE')).split('/')[0]), amount:num(one(e, 'AMOUNT')), gst, hsn:one(e, 'GSTHSNNAME', 'HSNCODE', 'GSTHSNSACCODE').replace(/\D/g, '')};
     }).filter(l => l.name);
     const ref = one(v, 'BASICORDERREF', 'OTHERREFERENCES', 'REFERENCE');
-    out.push({fromXml:true, po_no:one(v, 'VOUCHERNUMBER', 'REFERENCE'), po_date:ymd(one(v, 'DATE')), supplier_name:party, supplier_gstin:one(v, 'PARTYGSTIN', 'GSTREGISTRATIONNUMBER'),
+    out.push({fromXml:true, vtype:type, vno:one(v, 'VOUCHERNUMBER'), ref_no:one(v, 'REFERENCE'), ref_date:ymd(one(v, 'REFERENCEDATE')), po_no:one(v, 'VOUCHERNUMBER', 'REFERENCE'), po_date:ymd(one(v, 'DATE')), supplier_name:party, supplier_gstin:one(v, 'PARTYGSTIN', 'GSTREGISTRATIONNUMBER'),
       supplier_addr1:addr[0] || '', supplier_addr2:addr[1] || '', supplier_addr3:addr.slice(2).join(', ') + (one(v, 'PARTYPINCODE') && !addr.join(' ').includes(one(v, 'PARTYPINCODE')) ? ' ' + one(v, 'PARTYPINCODE') : ''),
       enq:(String(ref).match(/\d{3,6}(?:-[A-Za-z]{1,3})?/) || [''])[0], notes:one(v, 'NARRATION'), total:partyAmt || r2(taxable + tax), lines});
   });
@@ -2502,6 +2504,68 @@ async function poXmlFile(t){
     (miss ? ` ${miss} new stock item${miss === 1 ? '' : 's'} without brand / category / unit: Create Stock Item → Export Excel, fill them, Import Excel.` : '');
   ACT.nav({dataset:{k:'mat_po'}}); forceRender = true; render();
 }
+
+// Bulk import from a Tally XML export: GRN (Receipt Note), DC / Returnable DC (Delivery Note), Receipt Note (samples back).
+// Each voucher is saved the normal way; team / executive may be missing (fill later with Edit). A voucher whose stock item
+// is not in our list (DC / Receipt Note), or that needs more stock than we have, is not saved and is listed.
+const MX_REG = {mi:'mat_in', dc:'mat_dc', rdc:'mat_rdc', rn:'mat_rn'};
+const matXmlBtn = pg => canStock() ? `<label class="btn" for="mx_${pg}" style="cursor:pointer">📄 Import Tally XML (bulk)</label><input id="mx_${pg}" class="matxml" data-pg="${pg}" type="file" accept=".xml,text/xml,application/xml" style="position:absolute;opacity:0;width:1px;height:1px">` : '';
+const matXmlNote = pg => { const R = F.matXmlRes; if (!R || R.pg !== pg) return ''; return `<div class="note ${R.fail.length ? '' : 'good'}" style="margin-bottom:10px">${R.busy ? `Importing ${R.n} voucher${R.n === 1 ? '' : 's'} from the XML…` : esc(R.msg)}${R.fail.length ? `<div style="margin-top:4px;color:#b42318">Not saved: ${esc(R.fail.join(' · '))}</div>` : ''}</div>`; };
+// by name only (saved name mapping, same name, product code); not by HSN, many items share one HSN code
+function mxItem(l){ const nm = String(l.name || '').replace(/\s+/g, ' ').trim(); return guessItem(nm) || guessItem(enqStrip(nm)) || ''; }
+async function matXmlFile(t){
+  const pg = t.dataset.pg, file = t.files[0]; if (!file) return; t.value = '';
+  const kind = pg === 'mi' ? 'grn' : pg === 'rn' ? 'rnx' : 'dcx', NAME = {mi:'GRN (Tally Receipt Note)', dc:'Delivery Note', rdc:'Delivery Note', rn:'Rejection In / Receipt'}[pg];
+  let L; try { L = tallyXml(await file.text(), kind); } catch(e){ toast(e.message || 'Could not read the XML file.'); return; }
+  if (!L.length){ toast(`No ${NAME} voucher found in this XML file. In Tally open the Day Book or the voucher register, press Alt+E, pick XML (Data Interchange) and export.`); return; }
+  const m = pg === 'mi' ? 'mi' : pg === 'rn' ? 'rn' : 'dc', R = F.matXmlRes = {pg, busy:true, n:L.length, done:[], fail:[], skip:0};
+  ACT.nav({dataset:{k:MX_REG[pg]}}); forceRender = true; render();
+  for (const x of L){
+    const vn = String(x.vno || x.po_no || '').trim(), party = String(x.supplier_name || '').replace(/\s+/g, ' ').trim(), say = s => R.fail.push((vn || party || 'voucher') + ': ' + s);
+    try {
+      F.matBadMsg = ''; F.matBulkDone = null; let d;
+      if (m === 'mi'){
+        let g = String(x.supplier_gstin || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); if (OUR_GSTS.includes(g)) g = '';
+        const sm = supFind({supGst:g, supName:party}), invNo = String(x.ref_no || vn).trim(), supName = sm ? sm.name : party;
+        if ([...D.mat_in.values()].some(y => normName(y.invNo) === normName(invNo) && normName(y.supName) === normName(supName))){ R.skip++; continue; }
+        const team = sm && TEAMS.includes(sm.team) ? sm.team : '';
+        d = {bulk:true, invNo, invDate:x.ref_date || x.po_date || TODAY, supName, supGst:sm && sm.gstin ? sm.gstin : g, comp:team, exec:'', execName:'',
+          ns:{on:!sm && /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(g), addr1:x.supplier_addr1 || '', addr2:x.supplier_addr2 || '', addr3:x.supplier_addr3 || ''},
+          lines:(x.lines || []).filter(l => +l.qty > 0).map(l => { const it = mxItem(l), gst = GSTR.includes(Math.round(+l.gst)) ? Math.round(+l.gst) : (it && itemGst(it)) || 18, tx = r2(+l.amount || (+l.qty || 0) * (+l.rate || 0));
+            return {name:String(l.name || '').trim(), item:it || '__new', ni:it ? undefined : {name:enqStrip(l.name) || String(l.name || '').trim(), code:'', comp:team, brand:'', cat:'', sub:'', unit:String(l.unit || '').toUpperCase()}, hsn:l.hsn || '', qty:+l.qty, unit:l.unit || '', rate:r2(+l.rate || (l.qty ? tx / l.qty : 0)), taxable:tx, gst, rateTyped:1, enq:enqOf(l.name) || ''}; })};
+      } else {
+        const lines = (x.lines || []).filter(l => +l.qty > 0).map(l => ({l, it:mxItem(l)})), miss = lines.filter(z => !z.it);
+        if (miss.length){ say(`stock item not found: ${miss.map(z => z.l.name).join(', ')}`); continue; }
+        if (m === 'dc'){
+          const k = /returnable|rdc|sample/i.test(x.vtype || '') ? 'rdc' : 'dc';
+          if (vn && [...D.mat_dc.values()].some(y => normName(y.no) === normName(vn))){ R.skip++; continue; }
+          d = {bulk:true, kind:k, no:vn || vno('mat_dc', k === 'dc' ? 'DC' : 'RDC', 'no', x.po_date), date:x.po_date || TODAY, comp:'Expert', party, exec:'', mgr:'', remarks:String(x.notes || '').trim(),
+            addr1:x.supplier_addr1 || '', addr2:x.supplier_addr2 || '', addr3:x.supplier_addr3 || '', gstin:String(x.supplier_gstin || '').toUpperCase(),
+            lines:lines.map(({l, it}) => ({item:it, qty:+l.qty, rate:r2(+l.rate || 0), value:r2(+l.amount || (+l.qty || 0) * (+l.rate || 0))}))};
+        } else {
+          if (vn && [...D.mat_rn.values()].some(y => normName(y.no) === normName(vn))){ R.skip++; continue; }
+          // the returnable DC it came back against: the DC number in the reference, else the latest open one of this customer that still has these items out
+          const open = [...D.mat_dc.values()].filter(y => dcKind(y) === 'rdc' && normName(y.party) === normName(party)).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+          const fits = y => { const p = dcPending(y); return lines.every(({l, it}) => ((p.find(z => z.item === it) || {}).left || 0) + 1e-9 >= +l.qty); };
+          const dc = open.find(y => x.ref_no && normName(y.no) === normName(x.ref_no)) || open.find(fits);
+          if (!dc){ say(`no open returnable DC of ${party || 'this customer'} with these items`); continue; }
+          d = {bulk:true, no:vn || vno('mat_rn', 'RN', 'no', x.po_date), date:x.po_date || TODAY, party:dc.party, dc:dc.id, remarks:String(x.notes || '').trim(), lines:lines.map(({l, it}) => ({item:it, qty:+l.qty, rate:r2(+l.rate || 0), value:r2(+l.amount || 0)}))};
+        }
+      }
+      F[m] = d; const ok = await MATACT.matSave2({dataset:{m}, disabled:false});
+      if (ok && F.matBulkDone){ const doc = F.matBulkDone; R.done.push({no:m === 'mi' ? doc.grnNo : doc.no, noTeam:m === 'mi' && !TEAMS.includes(doc.comp), noExec:!doc.exec, rdc:m === 'dc' && dcKind(doc) === 'rdc'}); }
+      else say(F.matBadMsg || 'not saved');
+    } catch(e){ say(e.message || String(e)); }
+    F[m] = null;
+  }
+  R.busy = false;
+  const lab = {mi:'GRN', dc:'DC', rdc:'DC', rn:'receipt note'}[pg], nt = R.done.filter(r => r.noTeam || (pg !== 'rn' && pg !== 'dc' && r.noExec)).length, ne = R.done.filter(r => r.rdc && r.noExec).length;
+  R.msg = `Saved ${R.done.length} of ${R.n} ${lab}${R.n === 1 ? '' : 's'} from ${file.name}${R.skip ? ` · ${R.skip} already saved (skipped)` : ''}.` +
+    (pg === 'mi' && nt ? ` ${nt} without team / executive: open the GRN and press Edit.` : '') + (ne ? ` ${ne} returnable DC${ne === 1 ? '' : 's'} without executive: open it and press Edit.` : '');
+  await logAct('Inventory', `Tally XML import (${lab}): ${R.done.length} saved, ${R.fail.length} not saved`);
+  ACT.nav({dataset:{k:MX_REG[pg], keep:1}}); forceRender = true; render();
+}
+document.addEventListener('change', ev => { if (ev.target.classList && ev.target.classList.contains('matxml')) matXmlFile(ev.target); });
 async function poFill(x, say, quiet){
       let g = String(x.supplier_gstin || '').toUpperCase().replace(/[^0-9A-Z]/g, ''); if (OUR_GSTS.includes(g)) g = '';
       const sm = supFind({supGst:g, supName:String(x.supplier_name || '').trim()});
@@ -2605,15 +2669,15 @@ const MATACT = {
     await Store.del(col, d.id); await logAct('Inventory', `${m === 'mi' ? 'GRN' : m === 'dc' ? 'Delivery Challan' : m === 'ps' ? 'Physical Stock' : 'Receipt Note'} deleted: ${m === 'mi' ? d.invNo + ' · ' + d.supName : d.no + ' · ' + d.party}`); forceRender = true; render(); },
   matSave:async t => { try { return await MATACT.matSave2(t); } catch(e){ t.disabled = false; console.error(e); toast('Could not save: ' + (e.message || e)); } },
   matSave2:async t => {
-    const m = t.dataset.m, d = F[m], col = MATCOL[m], err = document.getElementById(m + '_err'), bad = s => { err.textContent = s; toast(s); try { err.scrollIntoView({block:'center'}); } catch(e){} return false; };
+    const m = t.dataset.m, d = F[m], col = MATCOL[m], B = !!d.bulk, err = document.getElementById(m + '_err') || {}, bad = s => { F.matBadMsg = s; if (B) return false; err.textContent = s; toast(s); try { err.scrollIntoView({block:'center'}); } catch(e){} return false; };
     const lines = d.lines.filter(l => m === 'mi' ? (l.item || +l.taxable > 0 || String(l.name || '').trim()) : m === 'rn' ? (l.item && +l.qty > 0) : (l.item || +l.qty));
     if (m === 'rn' && !d.dc) return bad('Pick the delivery challan the samples came back against.');
     if (m === 'rn' && !lines.length) return bad('Type how many came back for at least one item.');
     if (m === 'mi'){
       d.invNo = String(d.invNo || '').trim(); d.supName = String(d.supName || '').trim(); d.supGst = String(d.supGst || '').toUpperCase().trim();
       if (!d.invNo || !d.invDate || !d.supName) return bad('Fill in the invoice number, invoice date and supplier.');
-      if (!TEAMS.includes(d.comp)) return bad('Pick the team (Karthik, Vignesh or Sundar).');
-      if (!d.exec || !userName(d.exec)) return bad('Pick the executive.');
+      if (!B && !TEAMS.includes(d.comp)) return bad('Pick the team (Karthik, Vignesh or Sundar).');
+      if (!B && (!d.exec || !userName(d.exec))) return bad('Pick the executive.');
       if (d.supGst && !/^\d{2}[A-Z0-9]{13}$/.test(d.supGst)) return bad('The supplier GST number should be 15 characters.');
       if (OUR_GSTS.includes(d.supGst)) return bad('That GST number is ours. Type the supplier GST number.');
       if (!lines.length) return bad('Add at least one product.');
@@ -2622,7 +2686,7 @@ const MATACT = {
       { const PM = poRecvMap(d.id), seen = {}; const xi = lines.findIndex(l => { if (!l.po) return false; const po = D.mat_po.get(l.po), pl = po && po.lines[l.pl]; if (!pl) return false; const k = l.po + '|' + l.pl; seen[k] = (seen[k] || 0) + (+l.qty || 0); const left = (+pl.qty || 0) - (PM.get(k) || {q:0}).q; if (seen[k] > left + 1e-9) return !l.exWhy; l.exWhy = ''; return false; });
         if (xi >= 0) return bad(`Row ${xi + 1}: more than the PO quantity was received. Pick why (keep, return or free) below the stock item.`); }
       const nw = lines.map((l, i) => [l, i]).filter(([l]) => l.item === '__new');
-      for (const [l, i] of nw){ l.ni.comp = d.comp; const e = niCheck(l, nw.findIndex(x => x[1] === i)); if (e) return bad(e); }
+      for (const [l, i] of nw){ l.ni.comp = d.comp; if (B) continue; const e = niCheck(l, nw.findIndex(x => x[1] === i)); if (e) return bad(e); }
       const nn = nw.map(([l]) => normName(l.ni.name)); if (new Set(nn).size < nn.length) return bad('Two new stock items have the same name. Change one, or choose the same existing item.');
       var needSup = !!(d.supName && SUPL !== null && !supKnown(d) && (!d.ns || d.ns.on !== false));
       if (needSup){ const n = d.ns || {};
@@ -2633,7 +2697,7 @@ const MATACT = {
       d.no = String(d.no || '').trim(); d.party = String(d.party || '').trim();
       if (!d.no || !d.date || (!d.party && m !== 'ps')) return bad(m === 'ps' ? 'Fill in the number and date.' : `Fill in the ${m === 'dc' ? 'DC' : 'receipt note'} number, date and customer.`);
       if ((m === 'dc' || m === 'rn') && shipOk(d)) return bad(shipOk(d));
-      if (m === 'dc' && dcKind(d) === 'rdc' && !d.exec) return bad('Pick the executive who takes the samples.');
+      if (!B && m === 'dc' && dcKind(d) === 'rdc' && !d.exec) return bad('Pick the executive who takes the samples.');
       if (m === 'dc' && d.refNo && d.sale && [...D.mat_dc.values()].some(x => x.id !== d.id && normName(x.refNo) === normName(d.refNo))) return bad('A DC for sales invoice ' + d.refNo + ' is already saved.');
       if ([...D[col].values()].some(x => x.id !== d.id && normName(x.no) === normName(d.no))) return bad('This number is already used.');
       if (!lines.length) return bad('Add at least one item.');
@@ -2647,7 +2711,7 @@ const MATACT = {
     const doc = {...d, id, lines:clean, by:d.by || S.me, at:d.at || nowISO(), editedBy:d.id ? S.me : undefined, editedAt:d.id ? nowISO() : undefined};
     if (m === 'dc' || m === 'rn') doc.ship = shipClean(d);
     if (m === 'rn'){ const dc0 = D.mat_dc.get(d.dc) || {}; ['addr1', 'addr2', 'addr3', 'gstin'].forEach(f => { if (doc[f] == null) doc[f] = dc0[f] || ''; }); }
-    doc.co = coOf(d, col); delete doc.aiTotal; delete doc.ks; delete doc.teamSet; delete doc.execSet; doc.execName = doc.exec ? userName(doc.exec) : ''; if (m === 'mi'){ const T = miTotals(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; doc.igst = T.inter; doc.comp = compOf(doc.comp); if (!doc.grnNo) doc.grnNo = vno('mat_in', 'GRN', 'grnNo', doc.at, doc.co);
+    doc.co = coOf(d, col); delete doc.bulk; delete doc.aiTotal; delete doc.ks; delete doc.teamSet; delete doc.execSet; doc.execName = doc.exec ? userName(doc.exec) : ''; if (m === 'mi'){ const T = miTotals(doc); doc.taxable = T.tx; doc.tax = T.tax; doc.total = T.total; doc.igst = T.inter; doc.comp = compOf(doc.comp); if (!doc.grnNo) doc.grnNo = vno('mat_in', 'GRN', 'grnNo', doc.at, doc.co);
       const sm = (SUPL || []).find(x => (doc.supGst && x.gstin === doc.supGst) || normName(x.name) === normName(doc.supName)), sp = d.ks && d.ks.addr1 ? d.ks : sm && sm.addr1 ? sm : (d.ns && d.ns.addr1 ? d.ns : sm); if (sp) doc.supAddr = {addr1:sp.addr1 || '', addr2:sp.addr2 || '', addr3:sp.addr3 || ''}; }
     if (m === 'dc'){ doc.kind = dcKind(doc); doc.comp = 'Expert'; if (doc.sale){ doc.saleInv = doc.sale.inv; delete doc.sale; } delete doc.nc; delete doc.keepCust; }
     if (m !== 'mi' && !d.id && isAutoNo(doc.no) && !doc.no.endsWith('/' + fyOf(doc.date))) doc.no = vno(col, doc.no.split('/')[0], 'no', doc.date, doc.co);
@@ -2675,6 +2739,7 @@ const MATACT = {
       await logAct('Inventory', `${m === 'mi' ? 'GRN' : m === 'dc' ? 'Delivery Challan' : m === 'ps' ? 'Physical Stock' : 'Receipt Note'} ${d.id ? 'edited' : 'saved'}: ${m === 'mi' ? doc.invNo + ' · ' + doc.supName + ' · ' + inr(doc.total) : doc.no + ' · ' + doc.party}`);
       if (m === 'dc' && !d.id && doc.party && !custKnown(doc.party) && (!d.nc || d.nc.on !== false)){ try { await Store.set('cust_addr', mapKey(doc.party), {party:doc.party, addr1:doc.addr1 || '', addr2:doc.addr2 || '', addr3:doc.addr3 || '', gstin:String(doc.gstin || '').toUpperCase(), email:String((d.nc || {}).email || '').trim(), mobile:String((d.nc || {}).mobile || '').trim(), exec:doc.exec || '', mgr:doc.mgr || '', by:S.me, at:nowISO()}); await logAct('Sales', 'Customer created from DC: ' + doc.party); } catch(e){ toast('DC saved, but the customer could not be added: ' + (e.message || e)); } }
       delete doc.addrFor; delete doc.nc; delete doc.keepCust;
+      if (B){ F[m] = null; F.matBulkDone = doc; return true; }
       F[m] = null; F[m + 'Ais'] = ''; F.justSaved = id; toastOk('Saved ' + (m === 'mi' ? doc.grnNo : doc.no) + '.'); ACT.nav({dataset:{k:m === 'mi' ? 'mat_in' : m === 'dc' ? (dcKind(doc) === 'rdc' ? 'mat_rdc' : 'mat_dc') : m === 'ps' ? 'mat_ps' : 'mat_rn'}}); F.justSaved = id; forceRender = true; render();
     } catch(e){ t.disabled = false; bad('Could not save: ' + (e.message || e)); }
   }
@@ -3597,7 +3662,7 @@ async function exportX(){
 
 /* ---------- events ---------- */
 const ACT = {
-  nav:t => { S.editRow = null; if (t.dataset.k === 'mat_dc' && !t.dataset.keep) F.dcty = 'dc'; if (t.dataset.k === 'mat_rdc' && !t.dataset.keep) F.dcty = 'rdc'; if (t.dataset.k === 'inv_stock' && !t.dataset.keep){ F.stkI = ''; F.stkM = null; } if (t.dataset.k === 'cls_stock' && !t.dataset.keep){ F.csI = ''; F.stkM = null; } if (t.dataset.k === 'mat_po' && !t.dataset.keep) F.poView = ''; if (t.dataset.k !== 'mat_po') F.poXmlRes = null; ['pi', 'so', 'si'].forEach(m => { if (t.dataset.k !== AVK[m].regK) F['avRes_' + m] = null; if (t.dataset.k === AVK[m].regK && !t.dataset.keep && F.avView) F.avView[m] = ''; }); if (!t.dataset.keep && !/_new$/.test(t.dataset.k)) F.stkRet = null; S.view = t.dataset.k; if (t.dataset.role){ F.cr = t.dataset.role; createMsg = ''; S.createOpen = true; } closeDrawer(); forceRender = true; render(); },
+  nav:t => { S.editRow = null; if (t.dataset.k === 'mat_dc' && !t.dataset.keep) F.dcty = 'dc'; if (t.dataset.k === 'mat_rdc' && !t.dataset.keep) F.dcty = 'rdc'; if (t.dataset.k === 'inv_stock' && !t.dataset.keep){ F.stkI = ''; F.stkM = null; } if (t.dataset.k === 'cls_stock' && !t.dataset.keep){ F.csI = ''; F.stkM = null; } if (t.dataset.k === 'mat_po' && !t.dataset.keep) F.poView = ''; if (t.dataset.k !== 'mat_po') F.poXmlRes = null; if (F.matXmlRes && !F.matXmlRes.busy && !t.dataset.keep && t.dataset.k !== MX_REG[F.matXmlRes.pg]) F.matXmlRes = null; ['pi', 'so', 'si'].forEach(m => { if (t.dataset.k !== AVK[m].regK) F['avRes_' + m] = null; if (t.dataset.k === AVK[m].regK && !t.dataset.keep && F.avView) F.avView[m] = ''; }); if (!t.dataset.keep && !/_new$/.test(t.dataset.k)) F.stkRet = null; S.view = t.dataset.k; if (t.dataset.role){ F.cr = t.dataset.role; createMsg = ''; S.createOpen = true; } closeDrawer(); forceRender = true; render(); },
   billDelAll:() => { if (!isAdm()) return; openModal(`<h2>Delete all bill details?</h2><p>This permanently deletes all <b>${D.billing.size}</b> billing rows for every area. You can import them again from Excel afterwards. This cannot be undone.</p><div class="acts"><button class="btn" data-act="closeModal">No</button><button class="btn dng" data-act="billDelAllYes">Yes, delete all</button></div>`); },
   billDelAllYes:async t => { if (!isAdm()) return; t.disabled = true; const n = D.billing.size; const ok = await Store.delAll('billing'); if (ok) await logAct('Billing delete all', n + ' billing rows deleted'); closeModal(); forceRender = true; render(); },
   addBill:() => { if (canBill()) billModal(); },
