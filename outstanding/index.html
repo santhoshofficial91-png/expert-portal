@@ -943,10 +943,12 @@ const MATCOL = {mi:'mat_in', dc:'mat_dc', rn:'mat_rn', ps:'mat_ps', po:'mat_po',
 // two companies in one app: every voucher belongs to one; numbers, registers and stock are kept per company
 const COS = {B:{key:'Excoso', name:'Branditude'}, E:{key:'Expert', name:'Expert'}};
 const CO_DEF = {mat_in:'B', mat_po:'B', mat_pi:'B', mat_dc:'E', mat_rn:'E', mat_ps:'E', mat_so:'E', mat_si:'E'};   // vouchers saved before this change: the company they printed in
-const coOf = (d, col) => d && (d.co === 'B' || d.co === 'E') ? d.co : (CO_DEF[col] || 'E');
+// stock vouchers always belong to one company: GRN in Branditude; DC, Returnable DC, Receipt Note and Physical Stock in Expert. Stock itself is one, for both.
+const FIXED_CO = {mat_in:'B', mat_dc:'E', mat_rn:'E', mat_ps:'E'};
+const coOf = (d, col) => FIXED_CO[col] || (d && (d.co === 'B' || d.co === 'E') ? d.co : (CO_DEF[col] || 'E'));
 const curCo = () => { if (F.co !== 'B' && F.co !== 'E'){ try { F.co = localStorage.getItem('eo_co') === 'E' ? 'E' : 'B'; } catch(e){ F.co = 'B'; } } return F.co; };
 const inCo = (col, co) => d => coOf(d, col) === (co || curCo());
-const CO_VIEWS = {po_new:'po', pi_new:'pi', mat_in_new:'mi', so_new:'so', si_new:'si', dc_new:'dc', rdc_new:'dc', rn_new:'rn', ps_new:'ps', mat_po:1, mat_pi:1, mat_in:1, mat_so:1, mat_si:1, mat_dc:1, mat_rn:1, mat_ps:1, po_rep:1, inv_stock:1, cls_stock:1};
+const CO_VIEWS = {po_new:'po', pi_new:'pi', so_new:'so', si_new:'si', mat_po:1, mat_pi:1, mat_so:1, mat_si:1, po_rep:1};
 function coBar(){ const c = curCo(); return `<div class="cobar" role="tablist" aria-label="Company">${['B', 'E'].map(k => `<button class="cotab${c === k ? ' on' : ''}" role="tab" aria-selected="${c === k}" data-act="coSet" data-co="${k}">${COS[k].name}</button>`).join('')}</div>`; }
 const coWrap = (v, html) => { const m = typeof CO_VIEWS[v] === 'string' ? CO_VIEWS[v] : ''; if (m && F[m] && !F[m].id && F[m].co !== curCo()) F[m].co = curCo(); return CO_VIEWS[v] ? coBar() + html : html; };
 const isInter = g => /^\d{2}[A-Z]/.test(String(g || '').toUpperCase()) && String(g).slice(0, 2) !== '33';
@@ -967,8 +969,8 @@ function guessItem(name, hsn){
 const itemGst = id => { const x = D.inv_items.get(id), g = x && D.inv_gst.get(x.gst); return g ? +g.rate : ''; };
 // stock per item: in (GRN) - out (Delivery Challan) + back (Receipt Note); value goes out at the value it came in
 function stockMap(skip, co){
-  co = co || curCo(); const M = new Map(), g = id => { if (!M.has(id)) M.set(id, {inQ:0, inV:0, outQ:0, outV:0, retQ:0, retV:0}); return M.get(id); };
-  const on = col => d => coOf(d, col) === co;
+  const M = new Map(), g = id => { if (!M.has(id)) M.set(id, {inQ:0, inV:0, outQ:0, outV:0, retQ:0, retV:0}); return M.get(id); };
+  const on = col => d => true;   // one stock for both companies
   [...D.mat_in.values()].filter(on('mat_in')).forEach(d => (d.lines || []).forEach(l => { if (l.item){ const s = g(l.item); s.inQ += +l.qty || 0; s.inV += +l.taxable || 0; } }));
   [...D.mat_ps.values()].filter(on('mat_ps')).forEach(d => { if (d.id === skip) return; (d.lines || []).forEach(l => { if (l.item){ const s = g(l.item); s.inQ += +l.qty || 0; s.inV += +l.value || 0; } }); });
   [...D.mat_dc.values()].filter(on('mat_dc')).forEach(d => { if (d.id === skip) return; (d.lines || []).forEach(l => { if (l.item){ const s = g(l.item); s.outQ += +l.qty || 0; s.outV += +l.value || 0; } }); });
@@ -981,7 +983,7 @@ function dcBack(dcId, skip){ const b = {}; D.mat_rn.forEach(r => { if (r.dc !== 
 function dcPending(d, skip){ const b = dcBack(d.id, skip); return (d.lines || []).map(l => ({...l, back: b[l.item] || 0, left: r2((+l.qty || 0) - (b[l.item] || 0))})); }
 const fyOf = dt => { const d = new Date(dt || TODAY), y = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1; return String(y % 100).padStart(2, '0') + String((y + 1) % 100).padStart(2, '0'); };
 // voucher numbers: GRN/001/2627, DC/001/2627, RDC/001/2627, RN/001/2627 (counting again from 001 each financial year)
-const vno = (col, pre, f = 'no', dt, co) => { const fy = fyOf(dt), re = new RegExp('^' + pre + '/(\\d+)/' + fy + '$'); let m = 0; co = co || curCo(); D[col].forEach(d => { if (coOf(d, col) !== co) return; const k = String(d[f] || '').match(re); if (k) m = Math.max(m, +k[1]); }); return `${pre}/${String(m + 1).padStart(3, '0')}/${fy}`; };
+const vno = (col, pre, f = 'no', dt, co) => { const fy = fyOf(dt), re = new RegExp('^' + pre + '/(\\d+)/' + fy + '$'); let m = 0; co = FIXED_CO[col] || co || curCo(); D[col].forEach(d => { if (coOf(d, col) !== co) return; const k = String(d[f] || '').match(re); if (k) m = Math.max(m, +k[1]); }); return `${pre}/${String(m + 1).padStart(3, '0')}/${fy}`; };
 const isAutoNo = v => /^[A-Z]+\/\d{3,}\/\d{4}$/.test(String(v || ''));
 function miTotals(d){
   const by = {}; let tx = 0;
@@ -1136,7 +1138,7 @@ function miFormHTML(){
 }
 
 // Receipt Note: pick the customer, see their DCs with items still out, receive against one DC
-const pendDCs = party => [...D.mat_dc.values()].filter(x => coOf(x, 'mat_dc') === curCo() && dcKind(x) === 'rdc' && (!party || normName(x.party) === normName(party)) && dcPending(x).some(l => l.left > 0)).sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.no).localeCompare(String(b.no)));
+const pendDCs = party => [...D.mat_dc.values()].filter(x => dcKind(x) === 'rdc' && (!party || normName(x.party) === normName(party)) && dcPending(x).some(l => l.left > 0)).sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.no).localeCompare(String(b.no)));
 const dcParties = () => [...new Set(pendDCs('').map(x => x.party))].sort((a, b) => a.localeCompare(b));
 const exName = id => D.users.get(id)?.name || '';
 const daysOut = d => Math.max(0, Math.round((new Date(TODAY) - new Date(d)) / 864e5));
@@ -1153,8 +1155,8 @@ function viewSamplesPending(){
   <div class="tw"><table><thead><tr class="ttop"><td colspan="3"></td><td class="r">Total (${rows.length})</td><td class="r num">${qtyF(T('outQ'))}</td><td class="r num">${qtyF(T('inQ'))}</td><td class="r num">${qtyF(T('left'))}</td><td class="r num">${inr(T('leftV'))}</td></tr><tr><th>Customer</th><th>Executive</th><th>Stock item</th><th>Pending RDC</th><th class="r">Out</th><th class="r">In</th><th class="r">Pending</th><th class="r">Pending value</th></tr></thead><tbody>${body || '<tr><td colspan="8" class="empty">No samples pending. Every returnable DC has come back.</td></tr>'}</tbody></table></div>`;
 }
 // Ship to on a voucher: same as the default (customer / our office) unless unticked; typed here, saved only on this voucher
-const OUR_ADDR = () => { const C = COINFO.Excoso || {}; return {name:C.name || 'BRANDITUDE CORPORATE PRIVATE LIMITED', addr1:(C.lines || [])[0] || '', addr2:(C.lines || [])[1] || '', addr3:(C.lines || [])[2] || '', gstin:C.gstin || ''}; };
-const shipDefault = (m, d) => m === 'dc' ? {name:d.party || '', addr1:d.addr1 || '', addr2:d.addr2 || '', addr3:d.addr3 || '', gstin:d.gstin || ''} : OUR_ADDR();
+const OUR_ADDR = (k = 'Excoso') => { const C = COINFO[k] || {}; return {name:C.name || 'BRANDITUDE CORPORATE PRIVATE LIMITED', addr1:(C.lines || [])[0] || '', addr2:(C.lines || [])[1] || '', addr3:(C.lines || [])[2] || '', gstin:C.gstin || ''}; };
+const shipDefault = (m, d) => m === 'dc' ? {name:d.party || '', addr1:d.addr1 || '', addr2:d.addr2 || '', addr3:d.addr3 || '', gstin:d.gstin || ''} : OUR_ADDR(COS[coOf(d, MATCOL[m])].key);
 function shipBox(m, d, sameLbl){
   const sh = d.ship || {same:true}, on = sh.same !== false, f = (k, l) => `<label class="f">${l}<input class="mdi" id="${m}_ship_${k}" data-m="${m}" data-k="ship.${k}" value="${esc(sh[k] || '')}" autocomplete="off"></label>`;
   return `<h3 style="margin:12px 0 4px;font-size:14px">Ship to</h3><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" class="mdi" id="${m}_ship_same" data-m="${m}" data-k="ship.same" ${on ? 'checked' : ''}> ${esc(sameLbl)}</label>
@@ -1180,7 +1182,7 @@ function rnFormHTML(){
       <label class="f">Customer *${mInp('rn', 'party', d.party, {list:'rn_parties'})}</label>
       <label class="f">Remarks${mInp('rn', 'remarks', d.remarks)}</label>
     </div><datalist id="rn_parties">${dcParties().map(s => `<option value="${esc(s)}">`).join('')}</datalist>
-    ${d.party ? `<h3 style="margin:12px 0 4px;font-size:14px">Bill from <span class="mut" style="font-weight:400;font-size:12px">· from the delivery challan; a change here is saved only on this receipt note</span></h3><div class="igrid"><label class="f">Address line 1${mInp('rn', 'addr1', d.addr1 ?? (sel || {}).addr1)}</label><label class="f">Address line 2${mInp('rn', 'addr2', d.addr2 ?? (sel || {}).addr2)}</label><label class="f">Address line 3${mInp('rn', 'addr3', d.addr3 ?? (sel || {}).addr3)}</label><label class="f">Customer GSTIN${mInp('rn', 'gstin', d.gstin ?? (sel || {}).gstin)}</label></div>${shipBox('rn', d, 'Ship to our office (Branditude)')}` : ''}
+    ${d.party ? `<h3 style="margin:12px 0 4px;font-size:14px">Bill from <span class="mut" style="font-weight:400;font-size:12px">· from the delivery challan; a change here is saved only on this receipt note</span></h3><div class="igrid"><label class="f">Address line 1${mInp('rn', 'addr1', d.addr1 ?? (sel || {}).addr1)}</label><label class="f">Address line 2${mInp('rn', 'addr2', d.addr2 ?? (sel || {}).addr2)}</label><label class="f">Address line 3${mInp('rn', 'addr3', d.addr3 ?? (sel || {}).addr3)}</label><label class="f">Customer GSTIN${mInp('rn', 'gstin', d.gstin ?? (sel || {}).gstin)}</label></div>${shipBox('rn', d, 'Ship to our office (Expert)')}` : ''}
     ${scanBox('rn')}
     ${dcTable}
     ${sel ? `<h3 style="margin:14px 0 6px">Items coming back against ${esc(sel.no)}</h3><div class="tw"><table class="mtab"><thead><tr><th>Stock item</th><th class="r">Pending</th><th class="r">Qty back *</th><th class="r">Rate</th><th class="r">Value</th></tr></thead><tbody>${rows}</tbody><tfoot><tr><td colspan="4" class="r"><b>Total value</b></td><td class="r num" id="rn_tot"><b>${inr(tot)}</b></td></tr></tfoot></table></div>
@@ -1681,7 +1683,7 @@ function viewMatIn(mode){
     if (!F.mi) F.mi = {invNo:'', invDate:TODAY, supName:'', supGst:'', comp:'', lines:[blankLine('mi')]};
     loadPrDir();
     return `<div class="head"><div><h1>${F.mi.id ? 'Edit GRN' : 'Create GRN'}</h1><p class="sub">Goods received from a supplier. Upload the purchase invoice and AI fills the entry, or type it.</p></div><button class="btn" data-act="go" data-k="mat_in">GRN Register</button></div>
-    ${F.mi.id ? '' : aiBar('mi', 'purchase invoice')}${F.mi.id || F.mi.po ? '' : (L => L.length ? `<div class="bar" style="margin:6px 0 10px"><label class="sf"><span>Or receive against an open purchase order</span><select id="mi_pofill"><option value="">Pick a PO…</option>${L.map(po => `<option value="${esc(po.id)}">${esc(po.no + ' · ' + po.supName + (po.enq ? ' · ENQ ' + po.enq : ''))}</option>`).join('')}</select></label></div>` : '')([...D.mat_po.values()].filter(inCo('mat_po')).filter(poOpen).sort((a, b) => String(b.date).localeCompare(String(a.date))))}${miFormHTML()}`;
+    ${F.mi.id ? '' : aiBar('mi', 'purchase invoice')}${F.mi.id || F.mi.po ? '' : (L => L.length ? `<div class="bar" style="margin:6px 0 10px"><label class="sf"><span>Or receive against an open purchase order</span><select id="mi_pofill"><option value="">Pick a PO…</option>${L.map(po => `<option value="${esc(po.id)}">${esc(po.no + ' · ' + po.supName + (po.enq ? ' · ENQ ' + po.enq : ''))}</option>`).join('')}</select></label></div>` : '')([...D.mat_po.values()].filter(poOpen).sort((a, b) => String(b.date).localeCompare(String(a.date))))}${miFormHTML()}`;
   }
   return regHTML('mi', 'GRN Register', `${D.mat_in.size} GRN${D.mat_in.size === 1 ? '' : 's'} · saved items add to the closing stock`, '<button class="btn pri" data-act="go" data-k="mat_in_new">+ Create GRN</button>', {extra:[{h:'Team', v:d => esc(compOf(d.comp) || '—')}, {h:'Executive', v:d => esc(d.execName || userName(d.exec) || '—')}]});
 }
@@ -1895,7 +1897,7 @@ function regHTML(m, title, sub, newBtns, opts = {}){
   const no = d => m === 'mi' ? (d.grnNo || '') : d.no;
   const party = d => m === 'mi' ? d.supName : m === 'ps' ? (d.remarks || '') : d.party;
   const val = d => (d.lines || []).reduce((a, l) => a + (+(m === 'mi' ? l.taxable : l.value) || 0), 0);
-  let docs = [...D[col].values()].filter(inCo(col));
+  let docs = [...D[col].values()];
   if (opts.filter) docs = docs.filter(opts.filter);
   const fFrom = F['rf_' + m] || '', fTo = F['rt_' + m] || '', fParty = F['rp_' + m] || '', fEx = F['re_' + m] || '', fItem = F['ri_' + m] || '';
   const partiesAll = [...new Set(docs.map(party).filter(Boolean))].sort((a, b) => a.localeCompare(b));
@@ -2145,7 +2147,7 @@ document.addEventListener('keydown', ev => { const r = ev.target; if (r.tagName 
 /* ---------- Stock List → item month summary → month vouchers → the entry (like Tally Stock Item Monthly Summary) ---------- */
 const MVT = {mi:'GRN', ps:'Physical Stock', dc:'Delivery Challan', rdc:'Returnable DC', rn:'Receipt Note'};
 function itemMoves(id, co){
-  co = co || curCo(); const on = col => d => coOf(d, col) === co; const out = [], add = (m, d, date, party, no, l, dir) => out.push({m, id:d.id, date:String(date || '').slice(0, 10), party:party || '', no:no || '', type:MVT[m === 'dc' ? (dcKind(d) === 'dc' ? 'dc' : 'rdc') : m], inQ:dir > 0 ? +l.qty || 0 : 0, inV:dir > 0 ? +(m === 'mi' ? l.taxable : l.value) || 0 : 0, outQ:dir < 0 ? +l.qty || 0 : 0, outV:dir < 0 ? +l.value || 0 : 0});
+  const on = col => d => true; const out = [], add = (m, d, date, party, no, l, dir) => out.push({m, id:d.id, date:String(date || '').slice(0, 10), party:party || '', no:no || '', type:MVT[m === 'dc' ? (dcKind(d) === 'dc' ? 'dc' : 'rdc') : m], inQ:dir > 0 ? +l.qty || 0 : 0, inV:dir > 0 ? +(m === 'mi' ? l.taxable : l.value) || 0 : 0, outQ:dir < 0 ? +l.qty || 0 : 0, outV:dir < 0 ? +l.value || 0 : 0});
   [...D.mat_in.values()].filter(on('mat_in')).forEach(d => (d.lines || []).forEach(l => { if (l.item === id) add('mi', d, d.at || d.invDate, d.supName, d.grnNo || d.invNo, l, 1); }));
   [...D.mat_ps.values()].filter(on('mat_ps')).forEach(d => (d.lines || []).forEach(l => { if (l.item === id) add('ps', d, d.date, d.remarks ? 'Physical Stock · ' + d.remarks : 'Physical Stock', d.no, l, 1); }));
   [...D.mat_dc.values()].filter(on('mat_dc')).forEach(d => (d.lines || []).forEach(l => { if (l.item === id) add('dc', d, d.date, d.party, d.no, l, -1); }));
@@ -2196,7 +2198,7 @@ function viewStock(){
   const used = stockMap(), list = [...D.inv_items.values()].filter(x => used.has(x.id)).filter(x => !q || [x.name, x.part, x.code, nm('inv_brands', x.brand), nm('inv_cats', x.cat), nm('inv_subs', x.sub)].join(' ').toLowerCase().includes(q)).sort((a, b) => String(a.part).localeCompare(String(b.part)));
   const P = pg(list, 'stklist', 50);
   const body = P.items.map(x => `<tr class="clk${F.stkLast === x.id ? ' sel' : ''}" data-act="stkOpen" data-id="${esc(x.id)}" tabindex="0" title="Show in / out details"><td class="mono">${esc(x.part)}</td><td class="wrap"><b>${esc(x.name)}</b></td><td>${esc(nm('inv_brands', x.brand))}</td><td>${esc(nm('inv_cats', x.cat))}</td><td>${esc(nm('inv_subs', x.sub))}</td><td>${compOf(x.comp) ? esc(compOf(x.comp)) : '<span class="mut">—</span>'}</td><td class="nowrap">${canMEdit() ? `<button class="btn sm" data-act="stkEdit" data-id="${esc(x.id)}">Edit</button>` : ''}${isAdm() ? ` <button class="btn sm dng" data-act="invDel" data-id="${esc(x.id)}">Delete</button>` : ''}</td></tr>`).join('');
-  return `<div class="head"><div><h1>Stock List</h1><p class="sub">${list.length} stock items with entries in ${COS[curCo()].name} · click one to see month-wise in, out and closing stock</p></div>${XB('xStock')}</div>
+  return `<div class="head"><div><h1>Stock List</h1><p class="sub">${list.length} stock items · click one to see month-wise in, out and closing stock</p></div>${XB('xStock')}</div>
   <div class="bar sfb"><label class="sf"><span>Search</span><input id="stq" data-f="stq" type="search" placeholder="Product, part no, brand, category" value="${esc(F.stq || '')}" autocomplete="off"></label></div>
   <div class="tw"><table class="stkl"><thead><tr><th>Part no</th><th>Product</th><th>Brand</th><th>Category</th><th>Sub category</th><th>Team</th><th></th></tr></thead><tbody>${body || '<tr><td colspan="7" class="empty">No stock items yet. Create them in Create Stock Item or from a GRN.</td></tr>'}</tbody></table></div>${P.html}`;
 }
@@ -2580,7 +2582,7 @@ const MATACT = {
   stkDoc:t => { F.stkLastD = t.dataset.id; F.stkRet = {i:S.view === 'cls_stock' ? F.csI : F.stkI, m:F.stkM, y:F.stkY, v:S.view}; ACT.matEdit(t); },
   stkRet:() => { const r = F.stkRet; F.stkRet = null; if (!r) return; if (r.v === 'cls_stock') F.csI = r.i; else F.stkI = r.i; F.stkM = r.m; F.stkY = r.y; ['mi','dc','rn','ps'].forEach(k => { if (F[k] && F[k].id) F[k] = null; }); ACT.nav({dataset:{k:r.v === 'cls_stock' ? 'cls_stock' : 'inv_stock', keep:'1'}}); stkFocus(); },
   matCancel:t => { const m = t.dataset.m; F[m] = null; ACT.nav({dataset:{k:m === 'mi' ? 'mat_in' : m === 'dc' ? 'mat_dc' : m === 'ps' ? 'mat_ps' : 'mat_rn'}}); },
-  matEdit:t => { const m = t.dataset.m, d = D[MATCOL[m]].get(t.dataset.id); if (!d) return; F[m] = JSON.parse(JSON.stringify(d)); F[m].co = F.co = coOf(d, MATCOL[m]); (F[m].lines || []).forEach(l => { l.rateTyped = 1; l.gstTouched = 1; }); F.justSaved = ''; ACT.nav({dataset:{k:m === 'mi' ? 'mat_in_new' : m === 'rn' ? 'rn_new' : m === 'ps' ? 'ps_new' : (dcKind(d) === 'dc' ? 'dc_new' : 'rdc_new')}}); },
+  matEdit:t => { const m = t.dataset.m, d = D[MATCOL[m]].get(t.dataset.id); if (!d) return; F[m] = JSON.parse(JSON.stringify(d)); F[m].co = coOf(d, MATCOL[m]); (F[m].lines || []).forEach(l => { l.rateTyped = 1; l.gstTouched = 1; }); F.justSaved = ''; ACT.nav({dataset:{k:m === 'mi' ? 'mat_in_new' : m === 'rn' ? 'rn_new' : m === 'ps' ? 'ps_new' : (dcKind(d) === 'dc' ? 'dc_new' : 'rdc_new')}}); },
   matDel:async t => { const m = t.dataset.m, col = MATCOL[m], d = D[col].get(t.dataset.id); if (!d) return;
     if (m === 'dc' && [...D.mat_rn.values()].some(r => r.dc === d.id)){ toast('Delete its Receipt Notes first.'); return; }
     if (!confirm(`Delete ${m === 'mi' ? 'GRN ' + d.invNo : d.no}? Stock changes back.`)) return;
