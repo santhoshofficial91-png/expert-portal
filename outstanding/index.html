@@ -1389,7 +1389,10 @@ async function poMasterEdit(oldNo, doc){
   const r = await Store.sb.rpc('po_master_edit', {p_old:oldNo || doc.no, p_po:doc.no, p_enq:[...new Set((doc.lines || []).map(l => l.enq).filter(Boolean))].join(', '), p_date:dMon(doc.date), p_sup:doc.supName, p_value:poGross(doc)});
   if (r.error) throw r.error; return r.data;
 }
+// POs imported from Tally XML go to the PO Master only when dated after this day (older ones: Register only)
+const PM_XML_FROM = '2026-11-26';
 async function poMaster(doc){
+  if (doc.src === 'xml' && String(doc.date || '') < PM_XML_FROM) return 'old';
   const s = supFind(doc), req = doc.execName || (s && s.exec_name ? s.exec_name : '');
   const r = await Store.sb.rpc('po_master_add', {p_po:doc.no, p_enq:[...new Set((doc.lines || []).map(l => l.enq).filter(Boolean))].join(', ') || doc.enq || '', p_date:dMon(doc.date), p_sup:doc.supName, p_value:poGross(doc), p_req:req});
   if (r.error) throw r.error; return r.data;
@@ -1536,7 +1539,7 @@ const POACT = {
     try { await Store.set('mat_po', id, doc); await logAct('Inventory', `Purchase Order ${d.id ? 'edited' : 'saved'}: ${doc.no} · ${doc.supName}`); } catch(e){ t.disabled = false; return bad('Could not save: ' + (e.message || e)); }
     let pm = ''; try { pm = d.id ? await poMasterEdit(oldNo, doc) : await poMaster(doc); } catch(e){ toast('PO saved, but it could not be added to the PO Master: ' + (e.message || e)); }
     if (B){ F.po = null; F.poBulkDone = {doc, pm}; return true; }
-    toastOk(`Saved ${doc.no}${pm === 'added' ? ' and added to the PO Master' : pm === 'updated' ? ' · PO Master updated too' : pm === 'exists' ? ' in the Purchase Order Register (it was already in the PO Master)' : ''}.`);
+    toastOk(`Saved ${doc.no}${pm === 'added' ? ' and added to the PO Master' : pm === 'updated' ? ' · PO Master updated too' : pm === 'exists' ? ' in the Purchase Order Register (it was already in the PO Master)' : pm === 'old' ? ' in the Purchase Order Register (dated on or before 25-Nov-2026, so not added to the PO Master)' : ''}.`);
     F.po = null; F.justSaved = id;
     if (F.poQueue && F.poQueue.length){ const nx = F.poQueue.shift(); ACT.nav({dataset:{k:'po_new'}}); await poFill(nx, s2 => { F.poAis = s2; const e = document.getElementById('po_ais'); if (e) e.textContent = s2; }); if (F.poQueue.length) toast(`${F.poQueue.length} more PO${F.poQueue.length === 1 ? '' : 's'} from the XML after this one.`); return; }
     ACT.nav({dataset:{k:'mat_po'}}); },
@@ -2481,7 +2484,9 @@ async function poXmlFile(t){
   }
   F.po = null; F.poXmlRes.busy = false;
   const R = F.poXmlRes, miss = [...D.inv_items.values()].filter(x => R.done.some(r => (D.mat_po.get(r.id)?.lines || []).some(l => l.item === x.id)) && (!x.brand || !x.cat || !x.sub || !x.unit)).length;
+  const pmN = k => R.done.filter(r => r.pm === k).length;
   R.msg = `Saved ${R.done.length} of ${R.n} PO${R.n === 1 ? '' : 's'} from ${file.name}${skip ? ` · ${skip} already in the register (skipped)` : ''}.` +
+    (R.done.length ? ` PO Master: ${pmN('added')} added${pmN('exists') ? `, ${pmN('exists')} already there (left as it is)` : ''}${pmN('old') ? `, ${pmN('old')} dated on or before 25-Nov-2026 (Register only)` : ''}.` : '') +
     (R.done.some(r => r.noTeam || r.noExec) ? ` ${R.done.filter(r => r.noTeam || r.noExec).length} without team / executive: open the PO and press Edit.` : '') +
     (miss ? ` ${miss} new stock item${miss === 1 ? '' : 's'} without brand / category / unit: Create Stock Item → Export Excel, fill them, Import Excel.` : '');
   ACT.nav({dataset:{k:'mat_po'}}); forceRender = true; render();
@@ -2500,7 +2505,7 @@ async function poFill(x, say, quiet){
       const gw = String(x.supplier_gstin || '').toUpperCase().replace(/[^0-9A-Z]/g, ''), ourG = OUR_GSTS.includes(gw);
       const nNew = F.po.lines.filter(l => l.item === '__new').length, enqs = [...new Set(F.po.lines.map(l => l.enq).filter(Boolean))].join(', ');
       say(`${F.po.inMaster ? 'Already in the PO Master: saving adds it to the Purchase Order Register only, the PO Master stays as it is. ' : ''}Done: ${lines.length} product row${lines.length === 1 ? '' : 's'} read${enqs ? ' · ENQ ' + enqs : ''}.${nNew ? ' ' + nNew + ' new stock item' + (nNew === 1 ? '' : 's') + ' will be created (check the yellow boxes).' : ''}${ourG ? ' The supplier GST number on this PO is our own GST number; correct the supplier in Tally and type their GST number here.' : ''} Check and save.`);
-      if (x.fromXml) await poClassify(F.po);
+      if (x.fromXml){ F.po.src = 'xml'; await poClassify(F.po); }
       if (quiet) return true;
       forceRender = true; render(); document.getElementById('mform')?.scrollIntoView({block:'start'}); return true;
 }
