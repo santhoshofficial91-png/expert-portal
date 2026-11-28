@@ -1826,7 +1826,7 @@ function docHTML(M){
 }
 function docModel(m, d){
   // the company printed is fixed per document: Purchase Order and GRN in Branditude, DC / Returnable DC / Receipt Note in Expert
-  const cid = COS[coOf(d, MATCOL[m])].key, co = COINFO[cid], it = id => D.inv_items.get(id) || {};
+  const cid = COS[coOf(d, AVK[m] ? AVK[m].col : MATCOL[m])].key, co = COINFO[cid], it = id => D.inv_items.get(id) || {};
   const coBlock = {title:co.name, logo:cid === 'Excoso' ? BRLOGO : '', short:cid === 'Expert' ? 'EXPERT' : '', pan:co.pan, lines:[...co.lines, co.mob ? 'Mob : ' + co.mob : '', 'GSTIN/UIN: ' + co.gstin, `State Name : ${co.state}, Code : ${co.code}`, co.cin ? 'CIN: ' + co.cin : '', co.email ? 'E-Mail : ' + co.email : ''].filter(Boolean)};
   const us = lab => ({label:lab, title:co.name, lines:[...co.lines, co.mob ? 'Mob : ' + co.mob : '', co.email ? 'e-mail : ' + co.email : '', 'GSTIN/UIN : ' + co.gstin, `State Name : ${co.state}, Code : ${co.code}`].filter(Boolean)});
   const stName = g => { const c = String(g || '').slice(0, 2); return STCODE[c] ? `${STCODE[c]}, Code : ${c}` : ''; };
@@ -1838,6 +1838,16 @@ function docModel(m, d){
       todLabel:'Terms of Delivery', tod:d.tod || '', remarks:d.remarks || '',
       lines:(d.lines || []).map(l => ({name:l.name || it(l.item).name || '', hsn:l.hsn || it(l.item).hsn || '', gst:+l.gst || 0, due:fd(d.date), qty:+l.qty || 0, unit:String(l.unit || unitOf(l.item) || 'nos').toLowerCase(), rate:+l.rate || 0, amt:+l.value || 0})),
       leftHtml:'<div style="border:1px solid #000;padding:4px 6px;font-size:9.5px;line-height:1.35">The supplier must mandatorily mention our Purchase Order (PO) number on the invoice. Invoices will be processed only if they strictly match the PO in terms of PO number, quantity, and value. Invoices without a PO reference or with discrepancies will not be accepted.</div>'};
+  }
+  if (AVK[m]){
+    // Purchase Invoice / Sales Order / Sales Invoice: everything printed comes from the voucher itself (party, GST, address, products)
+    const g = d.gstin || '', pty = {title:d.party, lines:[d.addr1, d.addr2, d.addr3, g ? 'GSTIN/UIN : ' + g : '', stName(g) ? 'State Name : ' + stName(g) : ''].filter(Boolean)};
+    const T = {pi:['PURCHASE INVOICE', 'PI', 'Supplier (Bill from)', 'Consignee (Ship to)'], so:['SALES ORDER', 'SO', 'Buyer (Bill to)', 'Consignee (Ship to)'], si:['TAX INVOICE', 'SI', 'Buyer (Bill to)', 'Consignee (Ship to)']}[m];
+    const parties = m === 'pi' ? [us(T[3]), {label:T[2], ...pty}] : [{label:T[3], ...pty}, {label:T[2], ...pty}];
+    return {kind:m, title:T[0], tag:T[1], no:d.no, co:coBlock, parties, inter:isInter(g), inputTax:m === 'pi', hsnSummary:m !== 'so',
+      meta:[['Voucher No.', d.no, 'Dated', fd(d.date)], [AVK[m].ref, d.ref || '', 'Other References', d.enq || '']],
+      todLabel:'Remarks', tod:d.remarks || '',
+      lines:(d.lines || []).map(l => ({name:l.name || '', hsn:l.hsn || '', gst:+l.gst || 0, qty:+l.qty || 0, unit:String(l.unit || 'nos').toLowerCase(), rate:+l.rate || 0, amt:+l.value || r2((+l.qty || 0) * (+l.rate || 0))}))};
   }
   if (m === 'mi'){
     const s = (SUPL || []).find(x => (d.supGst && x.gstin === d.supGst) || normName(x.name) === normName(d.supName)) || {}, a = (d.supAddr && d.supAddr.addr1) ? d.supAddr : s;
@@ -1862,7 +1872,7 @@ function docModel(m, d){
     todLabel:'Terms of Delivery', tod:d.tod || (rdc ? 'Returnable samples - not for sale. To be returned in good condition.' : ''), lines, remarks:d.remarks || '', leftFoot:'Recd. in Good Condition'};
 }
 function printDoc(m, id){
-  const d = D[MATCOL[m]].get(id); if (!d) return;
+  const d = D[AVK[m] ? AVK[m].col : MATCOL[m]].get(id); if (!d) return;
   const w = window.open('', '_blank'); if (!w){ toast('Allow pop-ups for this site to print.'); return; }
   w.document.open(); w.document.write(docHTML(docModel(m, d))); w.document.close(); w.focus(); setTimeout(() => { try { w.print(); } catch(e){} }, 400);
 }
@@ -2410,7 +2420,7 @@ function viewAvReg(m){
    <label class="sf"><span>${K.party}</span><select data-f="avp_${m}"><option value="">All</option>${parties.map(x => `<option ${fp === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label></div>
   <div class="tw"><table><thead><tr class="ttop"><td colspan="4"></td><td class="r">Total (${L.length})</td><td class="r num">${inr(tot)}</td><td></td></tr><tr><th>Date</th><th>Voucher no</th><th>${K.party}</th><th>Reference</th><th>ENQ</th><th class="r">Amount (with GST)</th><th></th></tr>${cfRow('av' + m, 6, 1)}</thead><tbody>${body || `<tr><td colspan="7" class="empty">${cfAny('av' + m) || q || fp ? `No ${K.one.toLowerCase()} matches these filters.` : `No ${K.one.toLowerCase()}s in ${COS[curCo()].name} yet. Create one or import the Tally XML.`}</td></tr>`}</tbody></table></div>${P.html}`;
 }
-const avActs = (m, x) => isAdm() ? `<button class="btn sm" data-act="avEdit" data-m="${m}" data-id="${esc(x.id)}">Edit</button> <button class="btn sm dng" data-act="avDel" data-m="${m}" data-id="${esc(x.id)}">Delete</button>` : '';
+const avActs = (m, x) => `<button class="btn sm" data-act="matPrint" data-m="${m}" data-id="${esc(x.id)}">Print preview</button> ` + (isAdm() ? `<button class="btn sm" data-act="avEdit" data-m="${m}" data-id="${esc(x.id)}">Edit</button> <button class="btn sm dng" data-act="avDel" data-m="${m}" data-id="${esc(x.id)}">Delete</button>` : '');
 function viewAvOne(m, x){
   const K = AVK[m], T = avTot(x), f = (k, v) => `<div><div class="mut" style="font-size:12px">${k}</div><b>${v || '—'}</b></div>`;
   const rows = (x.lines || []).map((l, i) => `<tr><td class="c">${i + 1}</td><td class="wrap"><b>${esc(l.name)}</b></td><td class="mono">${esc(l.hsn || '')}</td><td class="r">${esc(String(+l.gst || 0))}%</td><td class="r num">${qtyF(l.qty)} ${esc(String(l.unit || '').toUpperCase())}</td><td class="r num">${inr(l.rate)}</td><td class="r num">${inr(l.value)}</td></tr>`).join('');
@@ -2434,8 +2444,8 @@ async function avXmlFile(t){
   if (L[0].co && L[0].co !== curCo()){ F.co = L[0].co; try { localStorage.setItem('eo_co', F.co); } catch(e){} }
   let n = 0, skip = 0, nSup = 0, nIt = 0; const bad = [], made = new Map();
   F['avRes_' + m] = {bad:0, msg:`Importing ${L.length} ${K.one.toLowerCase()}${L.length === 1 ? '' : 's'} from ${file.name}… keep this page open.`}; ACT.nav({dataset:{k:K.regK, keep:1}}); forceRender = true; render();
-  // Purchase Invoice: a supplier not in the Supplier List is created (name, GST number, address); a product not in the
-  // stock items is created as a stock item (name, HSN, GST %, unit). Stock quantity does not change, only GRN moves stock.
+  // Purchase Invoice: a supplier not in the Supplier List is created (name, GST number, address). Products, HSN, GST %,
+  // qty and value stay only inside the voucher: no stock items are created and stock does not change.
   if (m === 'pi' && SB){ try { const r = await Store.sb.from('pr_suppliers').select('id,name,gstin,addr1,addr2,addr3,state,pincode,mobile,email,exec_id,exec_name,mgr_id,mgr_name,team'); if (!r.error) SUPL = r.data || []; } catch(e){} }
   for (const x of L){
     if (avDup(m, x.po_no)){ skip++; continue; }
@@ -2445,20 +2455,13 @@ async function avXmlFile(t){
       const sm = Array.isArray(SUPL) ? supFind(sd) : null;
       if (sm) x.supplier_name = sm.name;
       else if (sd.supName && Array.isArray(SUPL)){ try { await poSupplier(sd, 'Purchase Invoice'); x.supplier_name = sd.supName; nSup++; } catch(e){ if (!/already in the (supplier )?list/i.test(e.message || '')) bad.push(x.po_no + ': supplier ' + sd.supName + ' not created (' + (e.message || e) + ')'); } }
-      for (const l of x.lines){
-        const nm = String(l.name || '').replace(/\s+/g, ' ').trim(); if (!nm) continue;
-        let it = mxItem(l) || made.get(normName(enqStrip(nm) || nm));
-        if (!it){ const gst = l.gst === '' || l.gst == null || isNaN(+l.gst) ? '' : Math.round(+l.gst * 100) / 100, o = {ni:{name:enqStrip(nm) || nm, code:'', comp:'', brand:'', cat:'', sub:'', unit:String(l.unit || '').toUpperCase()}, hsn:String(l.hsn || '').replace(/\D/g, ''), gst, from:'Purchase Invoice'};
-          try { await niCreate(o); it = o.item; made.set(normName(enqStrip(nm) || nm), it); nIt++; } catch(e){ bad.push(x.po_no + ': item ' + nm + ' not created (' + (e.message || e) + ')'); } }
-        if (it) l.item = it;
-      }
     }
     const doc = avClean(m, {co:curCo(), no:x.po_no, date:x.po_date || TODAY, party:x.supplier_name, gstin:x.supplier_gstin || '', addr1:x.supplier_addr1 || '', addr2:x.supplier_addr2 || '', addr3:x.supplier_addr3 || '', ref:'', enq:x.enq || '', remarks:String(x.notes || '').trim().slice(0, 300), total:x.total || 0,
       lines:x.lines.map(l => ({name:l.name, item:l.item || undefined, hsn:l.hsn, qty:l.qty, unit:l.unit, rate:l.rate, value:l.amount, gst:l.gst})), src:'tally_xml'});
     try { await avStore(m, doc); n++; } catch(e){ bad.push(x.po_no + ': ' + (e.message || e)); }
   }
-  F['avRes_' + m] = {bad:bad.length, msg:`Saved ${n} of ${L.length} ${K.one.toLowerCase()}${L.length === 1 ? '' : 's'} from ${file.name} in ${COS[curCo()].name}${skip ? ` · ${skip} already in the register (skipped)` : ''}${m === 'pi' ? ` · new suppliers created: ${nSup} · new stock items created: ${nIt}` : ''}${bad.length ? ' · Problems: ' + bad.join(' · ') : ''}.`};
-  if (m === 'pi' && (nSup || nIt)) await logAct('Inventory', `Purchase Invoice XML import: ${n} saved, ${nSup} suppliers and ${nIt} stock items created`);
+  F['avRes_' + m] = {bad:bad.length, msg:`Saved ${n} of ${L.length} ${K.one.toLowerCase()}${L.length === 1 ? '' : 's'} from ${file.name} in ${COS[curCo()].name}${skip ? ` · ${skip} already in the register (skipped)` : ''}${m === 'pi' ? ` · new suppliers created: ${nSup}` : ''}${bad.length ? ' · Problems: ' + bad.join(' · ') : ''}.`};
+  if (m === 'pi' && nSup) await logAct('Inventory', `Purchase Invoice XML import: ${n} saved, ${nSup} suppliers created`);
   F.avView = {}; ACT.nav({dataset:{k:K.regK, keep:1}}); forceRender = true; render();
 }
 document.addEventListener('change', ev => { if (ev.target.classList && ev.target.classList.contains('avxml')) avXmlFile(ev.target); });
