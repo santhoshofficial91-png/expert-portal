@@ -779,7 +779,7 @@ function mailStep3(P, th, rows, picked){
   const use = picked.length ? picked : rows, pl = mailPlan(th, use), t = F.mtype || 'inv';
   const pickType = th ? `<p class="mut" style="margin:0 0 8px">Next mail in this thread: <b>${pl.kind === 'rem' ? 'Reminder ' + pl.remN + ' (due date crossed)' : 'Follow-up (before the due date)'}</b></p>`
     : `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px" role="group" aria-label="Mail type"><button class="btn ${t === 'inv' ? 'pri' : ''}" data-act="mtype" data-k="inv" aria-pressed="${t === 'inv'}">Invoice mail</button><button class="btn ${t === 'out' ? 'pri' : ''}" data-act="mtype" data-k="out" aria-pressed="${t === 'out'}">Outstanding mail</button></div>
-      <p class="mut" style="margin:0 0 8px">${t === 'inv' ? 'Invoice mail: send the invoice copy so the customer accounts it. From 7 days before the due date a follow-up mail goes every day; after the due date Reminder 1, 2, 3… every day.' : 'Outstanding mail: for invoices already overdue. After this, Reminder 1, 2, 3… go every day in the same thread.'}</p>`;
+      <p class="mut" style="margin:0 0 8px">${t === 'inv' ? 'Invoice mail: send the invoice copy so the customer accounts it. From 7 days before the due date a follow-up mail goes every day except Sunday; after the due date Reminder 1, 2, 3… every day.' : 'Outstanding mail: for invoices already overdue. After this, Reminder 1, 2, 3… go every day in the same thread.'}</p>`;
   const prev = !use.length ? '<p class="mut">No open invoices for this customer.</p>'
     : (picked.length ? '' : `<div class="note" style="margin:0 0 8px;background:#fff7e0;border:1px solid #e0a800;color:#6b4e00">No invoice ticked yet. This preview shows all the invoices above — tick the ones you want to send.</div>`) +
       `<div class="mprev" style="${picked.length ? '' : 'opacity:.75'}">${mailBody(P, use, pl.kind, pl.remN, TODAY)}</div>`;
@@ -793,8 +793,8 @@ function autoCard(th, rows){
   else if (!on) st = 'Automatic mails are switched OFF for all customers (Send Payment Mail page).';
   else if (paused) st = 'Automatic mails are <b>paused for this customer</b>.';
   else if (th.repliedAt) st = 'Stopped because the customer replied.';
-  else if (over) st = `Next automatic mail: <b>Reminder ${nextKind(th, rows, TODAY).remN}</b> at <b>${tm12(time)}</b> every day.`;
-  else if (dmin != null && dmin <= 7) st = `Next automatic mail: <b>Follow-up</b> (due in ${dmin} day${dmin === 1 ? '' : 's'}) at <b>${tm12(time)}</b> every day.`;
+  else if (over) st = `Next automatic mail: <b>Reminder ${nextKind(th, rows, TODAY).remN}</b> at <b>${tm12(time)}</b>, Monday to Saturday (no mails on Sunday).`;
+  else if (dmin != null && dmin <= 7) st = `Next automatic mail: <b>Follow-up</b> (due in ${dmin} day${dmin === 1 ? '' : 's'}) at <b>${tm12(time)}</b>, Monday to Saturday (no mails on Sunday).`;
   else st = dmin == null ? 'No due date on these invoices — no automatic mails.' : `Automatic follow-ups start on <b>${fmtD(new Date(Date.UTC(1970, 0, 1 + TDN + dmin - 7)).toISOString().slice(0, 10))}</b> (7 days before the due date) at <b>${tm12(time)}</b>.`;
   const err = th.autoErr ? `<br><span style="color:#b42318">Last automatic mail failed: ${esc(th.autoErr)}</span>` : '';
   return `<div class="card" style="margin-top:12px"><h2 style="margin:0 0 8px">Automatic mails</h2><div class="note info" style="margin:0 0 10px">${st}${err}</div>

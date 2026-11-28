@@ -150,7 +150,9 @@ async function runCron() {
   const ths = (data ?? []).map((r: any) => ({ id: r.id, t: r.data }));
   const A = (await getDoc('meta', 'mailauto')) ?? {}, on = A.on !== false, time = /^\d\d:\d\d$/.test(A.time || '') ? A.time : '10:00';
   const ist = istNow(), today = ist.toISOString().slice(0, 10), mins = ist.getUTCHours() * 60 + ist.getUTCMinutes();
-  const [h, m] = time.split(':').map(Number), sm = h * 60 + m, inWindow = on && mins >= sm && mins - sm < 180;
+  // no mails to customers on Sundays (IST); Monday's run sends as usual. Reply checks still run.
+  const sunday = ist.getUTCDay() === 0;
+  const [h, m] = time.split(':').map(Number), sm = h * 60 + m, inWindow = on && !sunday && mins >= sm && mins - sm < 180;
   const nowMs = Date.now();
   const due = inWindow ? ths.filter(({ t }) => !t.repliedAt && t.lastDay !== today) : [];
   const stale = ths.filter(({ t }) => !t.repliedAt && (!t.lastCheck || nowMs - new Date(t.lastCheck).getTime() > 20 * 60000));
@@ -177,7 +179,7 @@ async function runCron() {
       sent++;
     } catch (e) { errs.push(t.party + ': ' + (e as Error).message); await putDoc('mailthread', id, { ...t, lastDay: today, autoErr: (e as Error).message }); }
   }
-  return { on, time, checked: toCheck.length, replied, sent, skipped, errs };
+  return { on, time, sunday, checked: toCheck.length, replied, sent, skipped, errs };
 }
 
 Deno.serve(async (req) => {
